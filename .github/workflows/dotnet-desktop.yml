@@ -66,6 +66,17 @@ jobs:
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
+  
+    - name: Setup Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+  
+    - name: Build Rust native DLL
+      run: cargo build --release --manifest-path src/OpenChat.Native/Cargo.toml
+  
+    - name: Copy DLL to Desktop project
+      run: cp src/OpenChat.Native/target/release/openchat_native.dll src/OpenChat.Desktop/
 
     # Install the .NET Core workload
     - name: Install .NET Core
