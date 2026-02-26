@@ -33,23 +33,10 @@
                                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12">
                                     <!-- User Avatar -->
                                     <Panel Width="40" Height="40">
-                                        <!-- Loading spinner -->
+                                        <!-- Fallback avatar (no picture) -->
                                         <Border Width="40" Height="40" CornerRadius="20"
-                                                Background="{StaticResource SurfaceSecondaryBrush}"
-                                                IsVisible="{Binding IsHeaderLoading}">
-                                            <ProgressBar IsIndeterminate="True" Width="24" Height="3"
-                                                         HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                         Foreground="{StaticResource NostrPurpleBrush}" />
-                                        </Border>
-                                        <!-- Fallback avatar (no picture, not loading) -->
-                                        <Border Width="40" Height="40" CornerRadius="20"
-                                                Background="{StaticResource NostrPurpleBrush}">
-                                            <Border.IsVisible>
-                                                <MultiBinding Converter="{x:Static BoolConverters.And}">
-                                                    <Binding Path="!IsHeaderLoading" />
-                                                    <Binding Path="MyPictureUrl" Converter="{x:Static StringConverters.IsNullOrEmpty}" />
-                                                </MultiBinding>
-                                            </Border.IsVisible>
+                                                Background="{StaticResource NostrPurpleBrush}"
+                                                IsVisible="{Binding MyPictureUrl, Converter={x:Static StringConverters.IsNullOrEmpty}}">
                                             <TextBlock Text="U" FontSize="18" FontWeight="SemiBold"
                                                        HorizontalAlignment="Center" VerticalAlignment="Center"
                                                        Foreground="White" />

@@ -13,18 +13,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenChat.Core.Tests", "test
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenChat.UI.Tests", "tests\OpenChat.UI.Tests\OpenChat.UI.Tests.csproj", "{E5F6A7B8-C9D0-1234-EF01-345678901234}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MarmutMdk.Core", "..\marmut-mdk\src\MarmutMdk.Core\MarmutMdk.Core.csproj", "{11111111-1111-1111-1111-111111111101}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MarmutMdk.Mls", "..\marmut-mdk\src\MarmutMdk.Mls\MarmutMdk.Mls.csproj", "{11111111-1111-1111-1111-111111111102}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MarmutMdk.Mls.Crypto", "..\marmut-mdk\src\MarmutMdk.Mls.Crypto\MarmutMdk.Mls.Crypto.csproj", "{11111111-1111-1111-1111-111111111103}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MarmutMdk.Protocol", "..\marmut-mdk\src\MarmutMdk.Protocol\MarmutMdk.Protocol.csproj", "{11111111-1111-1111-1111-111111111104}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MarmutMdk.Storage.Abstractions", "..\marmut-mdk\src\MarmutMdk.Storage.Abstractions\MarmutMdk.Storage.Abstractions.csproj", "{11111111-1111-1111-1111-111111111105}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MarmutMdk.Storage.Memory", "..\marmut-mdk\src\MarmutMdk.Storage.Memory\MarmutMdk.Storage.Memory.csproj", "{11111111-1111-1111-1111-111111111106}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -51,29 +39,5 @@ Global
 		{E5F6A7B8-C9D0-1234-EF01-345678901234}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E5F6A7B8-C9D0-1234-EF01-345678901234}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{E5F6A7B8-C9D0-1234-EF01-345678901234}.Release|Any CPU.Build.0 = Release|Any CPU
-		{11111111-1111-1111-1111-111111111101}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{11111111-1111-1111-1111-111111111101}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{11111111-1111-1111-1111-111111111101}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{11111111-1111-1111-1111-111111111101}.Release|Any CPU.Build.0 = Release|Any CPU
-		{11111111-1111-1111-1111-111111111102}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{11111111-1111-1111-1111-111111111102}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{11111111-1111-1111-1111-111111111102}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{11111111-1111-1111-1111-111111111102}.Release|Any CPU.Build.0 = Release|Any CPU
-		{11111111-1111-1111-1111-111111111103}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{11111111-1111-1111-1111-111111111103}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{11111111-1111-1111-1111-111111111103}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{11111111-1111-1111-1111-111111111103}.Release|Any CPU.Build.0 = Release|Any CPU
-		{11111111-1111-1111-1111-111111111104}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{11111111-1111-1111-1111-111111111104}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{11111111-1111-1111-1111-111111111104}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{11111111-1111-1111-1111-111111111104}.Release|Any CPU.Build.0 = Release|Any CPU
-		{11111111-1111-1111-1111-111111111105}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{11111111-1111-1111-1111-111111111105}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{11111111-1111-1111-1111-111111111105}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{11111111-1111-1111-1111-111111111105}.Release|Any CPU.Build.0 = Release|Any CPU
-		{11111111-1111-1111-1111-111111111106}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{11111111-1111-1111-1111-111111111106}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{11111111-1111-1111-1111-111111111106}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{11111111-1111-1111-1111-111111111106}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

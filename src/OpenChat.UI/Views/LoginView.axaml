@@ -201,18 +201,11 @@
                                    Stretch="Uniform" />
                         </Border>
 
-                        <!-- Scanning for request label (visible when QR is shown and waiting) -->
+                        <!-- Scanning for request label (visible when waiting for signer) -->
                         <TextBlock Text="Scanning for request..."
                                    IsVisible="{Binding IsExternalSignerConnecting}"
                                    HorizontalAlignment="Center"
                                    Classes="secondary" FontSize="13" FontStyle="Italic" />
-
-                        <!-- Connection Status (errors, connected, etc.) -->
-                        <Border IsVisible="{Binding ExternalSignerStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                Background="{StaticResource SurfaceSecondaryBrush}"
-                                CornerRadius="8" Padding="12">
-                            <TextBlock Text="{Binding ExternalSignerStatus}" TextWrapping="Wrap" />
-                        </Border>
 
                         <!-- Help Text -->
                         <Border Background="#3D8B5CF6" CornerRadius="4" Padding="8">
