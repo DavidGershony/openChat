@@ -1,0 +1,188 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Nostr-inspired Color Palette -->
+    <!-- Primary Purple: Nostr brand color -->
+    <!-- Dark mode friendly with purple accents -->
+
+    <Style>
+        <Style.Resources>
+            <!-- Primary Colors - Nostr Purple -->
+            <Color x:Key="NostrPurple">#8B5CF6</Color>
+            <Color x:Key="NostrPurpleLight">#A78BFA</Color>
+            <Color x:Key="NostrPurpleDark">#7C3AED</Color>
+            <Color x:Key="NostrPurpleAccent">#C4B5FD</Color>
+
+            <!-- Background Colors - Dark Theme -->
+            <Color x:Key="BackgroundDark">#0F0F23</Color>
+            <Color x:Key="BackgroundMedium">#1A1A2E</Color>
+            <Color x:Key="BackgroundLight">#252542</Color>
+            <Color x:Key="BackgroundCard">#2D2D4A</Color>
+
+            <!-- Surface Colors -->
+            <Color x:Key="SurfacePrimary">#1E1E3F</Color>
+            <Color x:Key="SurfaceSecondary">#2A2A4A</Color>
+            <Color x:Key="SurfaceTertiary">#363660</Color>
+            <Color x:Key="SurfaceHover">#3A3A5A</Color>
+
+            <!-- Text Colors -->
+            <Color x:Key="TextPrimary">#FFFFFF</Color>
+            <Color x:Key="TextSecondary">#A0A0C0</Color>
+            <Color x:Key="TextMuted">#6B6B8D</Color>
+
+            <!-- Message Bubble Colors -->
+            <Color x:Key="BubbleSent">#7C3AED</Color>
+            <Color x:Key="BubbleReceived">#2D2D4A</Color>
+            <Color x:Key="BubbleSentText">#FFFFFF</Color>
+            <Color x:Key="BubbleReceivedText">#E0E0FF</Color>
+
+            <!-- Status Colors -->
+            <Color x:Key="StatusOnline">#10B981</Color>
+            <Color x:Key="StatusOffline">#6B7280</Color>
+            <Color x:Key="StatusError">#EF4444</Color>
+            <Color x:Key="StatusWarning">#F59E0B</Color>
+
+            <!-- Border Colors -->
+            <Color x:Key="BorderDefault">#3A3A5A</Color>
+            <Color x:Key="BorderFocused">#8B5CF6</Color>
+
+            <!-- Brushes -->
+            <SolidColorBrush x:Key="NostrPurpleBrush" Color="{StaticResource NostrPurple}" />
+            <SolidColorBrush x:Key="NostrPurpleLightBrush" Color="{StaticResource NostrPurpleLight}" />
+            <SolidColorBrush x:Key="NostrPurpleDarkBrush" Color="{StaticResource NostrPurpleDark}" />
+
+            <SolidColorBrush x:Key="BackgroundDarkBrush" Color="{StaticResource BackgroundDark}" />
+            <SolidColorBrush x:Key="BackgroundMediumBrush" Color="{StaticResource BackgroundMedium}" />
+            <SolidColorBrush x:Key="BackgroundLightBrush" Color="{StaticResource BackgroundLight}" />
+            <SolidColorBrush x:Key="BackgroundCardBrush" Color="{StaticResource BackgroundCard}" />
+
+            <SolidColorBrush x:Key="SurfacePrimaryBrush" Color="{StaticResource SurfacePrimary}" />
+            <SolidColorBrush x:Key="SurfaceSecondaryBrush" Color="{StaticResource SurfaceSecondary}" />
+            <SolidColorBrush x:Key="SurfaceTertiaryBrush" Color="{StaticResource SurfaceTertiary}" />
+            <SolidColorBrush x:Key="SurfaceHoverBrush" Color="{StaticResource SurfaceHover}" />
+
+            <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimary}" />
+            <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondary}" />
+            <SolidColorBrush x:Key="TextMutedBrush" Color="{StaticResource TextMuted}" />
+
+            <SolidColorBrush x:Key="BubbleSentBrush" Color="{StaticResource BubbleSent}" />
+            <SolidColorBrush x:Key="BubbleReceivedBrush" Color="{StaticResource BubbleReceived}" />
+
+            <SolidColorBrush x:Key="BorderDefaultBrush" Color="{StaticResource BorderDefault}" />
+            <SolidColorBrush x:Key="BorderFocusedBrush" Color="{StaticResource BorderFocused}" />
+
+            <SolidColorBrush x:Key="StatusOnlineBrush" Color="{StaticResource StatusOnline}" />
+            <SolidColorBrush x:Key="StatusErrorBrush" Color="{StaticResource StatusError}" />
+            <SolidColorBrush x:Key="StatusWarningBrush" Color="{StaticResource StatusWarning}" />
+        </Style.Resources>
+    </Style>
+
+    <!-- Window Style -->
+    <Style Selector="Window">
+        <Setter Property="Background" Value="{StaticResource BackgroundDarkBrush}" />
+    </Style>
+
+    <!-- TextBlock Styles -->
+    <Style Selector="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+    </Style>
+
+    <Style Selector="TextBlock.secondary">
+        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+    </Style>
+
+    <Style Selector="TextBlock.muted">
+        <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+    </Style>
+
+    <Style Selector="TextBlock.header">
+        <Setter Property="FontSize" Value="18" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <!-- Button Styles -->
+    <Style Selector="Button.primary">
+        <Setter Property="Background" Value="{StaticResource NostrPurpleBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Padding" Value="16,8" />
+    </Style>
+
+    <Style Selector="Button.primary:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource NostrPurpleLightBrush}" />
+    </Style>
+
+    <Style Selector="Button.secondary">
+        <Setter Property="Background" Value="{StaticResource SurfaceSecondaryBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Padding" Value="16,8" />
+    </Style>
+
+    <Style Selector="Button.icon">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+        <Setter Property="Padding" Value="8" />
+        <Setter Property="CornerRadius" Value="20" />
+    </Style>
+
+    <Style Selector="Button.icon:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource SurfaceHoverBrush}" />
+    </Style>
+
+    <!-- TextBox Styles -->
+    <Style Selector="TextBox">
+        <Setter Property="Background" Value="{StaticResource SurfaceSecondaryBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource BorderDefaultBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Padding" Value="12,8" />
+    </Style>
+
+    <Style Selector="TextBox:focus /template/ Border">
+        <Setter Property="BorderBrush" Value="{StaticResource BorderFocusedBrush}" />
+    </Style>
+
+    <Style Selector="TextBox:pointerover /template/ Border">
+        <Setter Property="BorderBrush" Value="{StaticResource NostrPurpleLightBrush}" />
+    </Style>
+
+    <!-- ListBox Styles -->
+    <Style Selector="ListBox">
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+
+    <Style Selector="ListBoxItem">
+        <Setter Property="Padding" Value="12,8" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Margin" Value="4,2" />
+    </Style>
+
+    <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource SurfaceHoverBrush}" />
+    </Style>
+
+    <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource NostrPurpleDarkBrush}" />
+    </Style>
+
+    <!-- ScrollViewer Styles -->
+    <Style Selector="ScrollViewer">
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+
+    <!-- Border Styles -->
+    <Style Selector="Border.card">
+        <Setter Property="Background" Value="{StaticResource BackgroundCardBrush}" />
+        <Setter Property="CornerRadius" Value="12" />
+        <Setter Property="Padding" Value="16" />
+    </Style>
+
+    <Style Selector="Border.sidebar">
+        <Setter Property="Background" Value="{StaticResource BackgroundMediumBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource BorderDefaultBrush}" />
+        <Setter Property="BorderThickness" Value="0,0,1,0" />
+    </Style>
+
+</Styles>

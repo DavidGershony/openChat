@@ -1,0 +1,338 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:OpenChat.UI.ViewModels"
+        xmlns:views="using:OpenChat.UI.Views"
+        xmlns:asyncImageLoader="using:AsyncImageLoader"
+        mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
+        x:Class="OpenChat.UI.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Title="OpenChat"
+        Width="1200" Height="800"
+        MinWidth="800" MinHeight="600"
+        WindowStartupLocation="CenterScreen">
+
+    <Design.DataContext>
+        <vm:MainViewModel />
+    </Design.DataContext>
+
+    <Grid>
+        <!-- Main Chat View (shown when logged in) -->
+        <Grid IsVisible="{Binding IsLoggedIn}" ColumnDefinitions="320,*">
+
+            <!-- Left Sidebar -->
+            <Border Grid.Column="0" Classes="sidebar">
+                <Grid RowDefinitions="Auto,*,Auto">
+
+                    <!-- Header -->
+                    <Border Grid.Row="0" Padding="16,12" Background="{StaticResource BackgroundLightBrush}">
+                        <StackPanel Spacing="10">
+                            <!-- Top row: avatar + name + action buttons -->
+                            <Grid ColumnDefinitions="Auto,*,Auto">
+                                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12">
+                                    <!-- User Avatar -->
+                                    <Panel Width="40" Height="40">
+                                        <!-- Loading spinner -->
+                                        <Border Width="40" Height="40" CornerRadius="20"
+                                                Background="{StaticResource SurfaceSecondaryBrush}"
+                                                IsVisible="{Binding IsHeaderLoading}">
+                                            <ProgressBar IsIndeterminate="True" Width="24" Height="3"
+                                                         HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                         Foreground="{StaticResource NostrPurpleBrush}" />
+                                        </Border>
+                                        <!-- Fallback avatar (no picture, not loading) -->
+                                        <Border Width="40" Height="40" CornerRadius="20"
+                                                Background="{StaticResource NostrPurpleBrush}">
+                                            <Border.IsVisible>
+                                                <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                                    <Binding Path="!IsHeaderLoading" />
+                                                    <Binding Path="MyPictureUrl" Converter="{x:Static StringConverters.IsNullOrEmpty}" />
+                                                </MultiBinding>
+                                            </Border.IsVisible>
+                                            <TextBlock Text="U" FontSize="18" FontWeight="SemiBold"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                       Foreground="White" />
+                                        </Border>
+                                        <!-- Profile picture -->
+                                        <Border Width="40" Height="40" CornerRadius="20" ClipToBounds="True"
+                                                IsVisible="{Binding MyPictureUrl, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                            <Image asyncImageLoader:ImageLoader.Source="{Binding MyPictureUrl}"
+                                                   Stretch="UniformToFill" />
+                                        </Border>
+                                    </Panel>
+                                    <!-- Name or loading indicator -->
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding HeaderDisplayName}" FontSize="18" FontWeight="Bold"
+                                                   TextTrimming="CharacterEllipsis" MaxWidth="160"
+                                                   IsVisible="{Binding !IsHeaderLoading}" />
+                                        <ProgressBar IsIndeterminate="True" Width="80" Height="3"
+                                                     Foreground="{StaticResource NostrPurpleBrush}"
+                                                     IsVisible="{Binding IsHeaderLoading}" />
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
+                                    <!-- My Profile / Export npub -->
+                                    <Button Classes="icon" Command="{Binding ShowMyProfileCommand}" ToolTip.Tip="My Profile / Export npub">
+                                        <PathIcon Data="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"
+                                                  Width="20" Height="20" />
+                                    </Button>
+                                    <!-- Settings -->
+                                    <Button Classes="icon" Command="{Binding ShowSettingsCommand}" ToolTip.Tip="Settings">
+                                        <PathIcon Data="M12 15.5A3.5 3.5 0 0 1 8.5 12A3.5 3.5 0 0 1 12 8.5a3.5 3.5 0 0 1 3.5 3.5a3.5 3.5 0 0 1-3.5 3.5m7.43-2.53c.04-.32.07-.64.07-.97c0-.33-.03-.66-.07-1l2.11-1.63c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.31-.61-.22l-2.49 1c-.52-.39-1.06-.73-1.69-.98l-.37-2.65A.506.506 0 0 0 14 2h-4c-.25 0-.46.18-.5.42l-.37 2.65c-.63.25-1.17.59-1.69.98l-2.49-1c-.22-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64L4.57 11c-.04.34-.07.67-.07 1c0 .33.03.65.07.97l-2.11 1.66c-.19.15-.25.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1.01c.52.4 1.06.74 1.69.99l.37 2.65c.04.24.25.42.5.42h4c.25 0 .46-.18.5-.42l.37-2.65c.63-.26 1.17-.59 1.69-.99l2.49 1.01c.22.08.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.66Z"
+                                                  Width="20" Height="20" />
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- Relay status list -->
+                            <ItemsControl ItemsSource="{Binding RelayStatuses}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:RelayStatusViewModel">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,1">
+                                            <!-- Green/Red dot -->
+                                            <Panel Grid.Column="0" Width="7" Height="7"
+                                                   VerticalAlignment="Center" Margin="0,0,6,0">
+                                                <Ellipse Width="7" Height="7"
+                                                         Fill="{StaticResource StatusOnlineBrush}"
+                                                         IsVisible="{Binding IsConnected}" />
+                                                <Ellipse Width="7" Height="7"
+                                                         Fill="{StaticResource StatusErrorBrush}"
+                                                         IsVisible="{Binding !IsConnected}" />
+                                            </Panel>
+                                            <!-- Relay name -->
+                                            <TextBlock Grid.Column="1" Text="{Binding DisplayName}"
+                                                       Classes="muted" FontSize="11"
+                                                       VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <!-- Per-relay reconnect button -->
+                                            <Button Grid.Column="2" Classes="secondary"
+                                                    Padding="4,1" FontSize="9" Margin="4,0,0,0"
+                                                    IsVisible="{Binding !IsConnected}"
+                                                    IsEnabled="{Binding !IsReconnecting}"
+                                                    Command="{Binding $parent[ItemsControl].DataContext.ReconnectRelayCommand}"
+                                                    CommandParameter="{Binding}"
+                                                    ToolTip.Tip="Reconnect this relay">
+                                                <Panel>
+                                                    <PathIcon Data="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"
+                                                              Width="10" Height="10"
+                                                              IsVisible="{Binding !IsReconnecting}" />
+                                                    <TextBlock Text="..." FontSize="9"
+                                                               IsVisible="{Binding IsReconnecting}" />
+                                                </Panel>
+                                            </Button>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <!-- Reconnect All button -->
+                            <Button Content="Reconnect All"
+                                    Command="{Binding ReconnectCommand}"
+                                    IsVisible="{Binding !IsConnected}"
+                                    Classes="secondary"
+                                    Padding="8,3"
+                                    FontSize="10"
+                                    HorizontalAlignment="Left" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Chat List -->
+                    <views:ChatListView Grid.Row="1" DataContext="{Binding ChatListViewModel}" />
+
+                    <!-- Footer Buttons -->
+                    <Border Grid.Row="2" Padding="12" Background="{StaticResource BackgroundLightBrush}">
+                        <StackPanel Spacing="8">
+                            <!-- New Chat Button -->
+                            <Button Classes="primary" HorizontalAlignment="Stretch"
+                                    Command="{Binding ChatListViewModel.NewChatCommand}">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <PathIcon Data="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" Width="18" Height="18" />
+                                    <TextBlock Text="New Chat" />
+                                </StackPanel>
+                            </Button>
+                            <!-- Group Buttons Row -->
+                            <Grid ColumnDefinitions="*,8,*">
+                                <Button Grid.Column="0" Classes="secondary" HorizontalAlignment="Stretch"
+                                        Command="{Binding ChatListViewModel.NewGroupCommand}"
+                                        HorizontalContentAlignment="Center">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <PathIcon Data="M12 12.75c1.63 0 3.07.39 4.24.9 1.08.48 1.76 1.56 1.76 2.73V18H6v-1.61c0-1.18.68-2.26 1.76-2.73 1.17-.52 2.61-.91 4.24-.91zM4 13c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm1.13 1.1c-.37-.06-.74-.1-1.13-.1-.99 0-1.93.21-2.78.58A2.01 2.01 0 0 0 0 16.43V18h4.5v-1.61c0-.83.23-1.61.63-2.29zM20 13c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm4 3.43c0-.81-.48-1.53-1.22-1.85A6.95 6.95 0 0 0 20 14c-.39 0-.76.04-1.13.1.4.68.63 1.46.63 2.29V18H24v-1.57zM12 6c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3z"
+                                                  Width="16" Height="16" />
+                                        <TextBlock Text="New Group" FontSize="12" />
+                                    </StackPanel>
+                                </Button>
+                                <Button Grid.Column="2" Classes="secondary" HorizontalAlignment="Stretch"
+                                        Command="{Binding ChatListViewModel.JoinGroupCommand}"
+                                        HorizontalContentAlignment="Center">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <PathIcon Data="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"
+                                                  Width="16" Height="16" />
+                                        <TextBlock Text="Join Group" FontSize="12" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <!-- Main Content Area -->
+            <Grid Grid.Column="1">
+                <!-- Settings View (when CurrentView is SettingsViewModel) -->
+                <views:SettingsView DataContext="{Binding SettingsViewModel}"
+                                    IsVisible="{Binding $parent[Window].DataContext.CurrentView, Converter={x:Static ObjectConverters.IsNotNull}}" />
+
+                <!-- Chat View (when no special view selected) -->
+                <views:ChatView DataContext="{Binding ChatViewModel}"
+                                IsVisible="{Binding $parent[Window].DataContext.CurrentView, Converter={x:Static ObjectConverters.IsNull}}" />
+
+                <!-- Empty State (when no chat selected and not in settings) -->
+                <StackPanel IsVisible="{Binding !ChatViewModel.HasChat}"
+                            VerticalAlignment="Center" HorizontalAlignment="Center"
+                            Spacing="16">
+                    <StackPanel.IsVisible>
+                        <MultiBinding Converter="{x:Static BoolConverters.And}">
+                            <Binding Path="!ChatViewModel.HasChat" />
+                            <Binding Path="CurrentView" Converter="{x:Static ObjectConverters.IsNull}" />
+                        </MultiBinding>
+                    </StackPanel.IsVisible>
+                    <Border Width="120" Height="120" CornerRadius="60"
+                            Background="{StaticResource SurfaceSecondaryBrush}">
+                        <PathIcon Data="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"
+                                  Width="60" Height="60" Foreground="{StaticResource TextMutedBrush}" />
+                    </Border>
+                    <TextBlock Text="Select a chat to start messaging"
+                               Classes="secondary" FontSize="16" HorizontalAlignment="Center" />
+                    <TextBlock Text="Or create a new chat using the button below"
+                               Classes="muted" FontSize="14" HorizontalAlignment="Center" />
+                </StackPanel>
+            </Grid>
+        </Grid>
+
+        <!-- Login View (shown when not logged in) -->
+        <views:LoginView DataContext="{Binding LoginViewModel}"
+                         IsVisible="{Binding !DataContext.IsLoggedIn, RelativeSource={RelativeSource AncestorType=Window}}" />
+
+        <!-- My Profile / Export npub Dialog -->
+        <Border IsVisible="{Binding ShowMyProfileDialog}"
+                Background="#80000000"
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+            <Border Classes="card"
+                    Background="{StaticResource BackgroundCardBrush}"
+                    CornerRadius="16"
+                    Padding="24"
+                    Margin="20"
+                    VerticalAlignment="Center"
+                    HorizontalAlignment="Center"
+                    MinWidth="400" MaxWidth="500">
+                <StackPanel Spacing="20">
+                    <!-- Header -->
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="My Profile"
+                                   FontSize="22" FontWeight="Bold"
+                                   VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Classes="icon"
+                                Command="{Binding CloseMyProfileCommand}"
+                                ToolTip.Tip="Close">
+                            <PathIcon Data="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+                                      Width="20" Height="20" />
+                        </Button>
+                    </Grid>
+
+                    <!-- Avatar with Profile Picture -->
+                    <Panel Width="80" Height="80" HorizontalAlignment="Center">
+                        <!-- Fallback avatar -->
+                        <Border Width="80" Height="80" CornerRadius="40"
+                                Background="{StaticResource NostrPurpleBrush}"
+                                IsVisible="{Binding MyPictureUrl, Converter={x:Static StringConverters.IsNullOrEmpty}}">
+                            <TextBlock Text="U" FontSize="32" FontWeight="Bold" Foreground="White"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <!-- Profile picture -->
+                        <Border Width="80" Height="80" CornerRadius="40" ClipToBounds="True"
+                                IsVisible="{Binding MyPictureUrl, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                            <Image asyncImageLoader:ImageLoader.Source="{Binding MyPictureUrl}"
+                                   Stretch="UniformToFill" />
+                        </Border>
+                        <!-- Loading indicator -->
+                        <Border Width="80" Height="80" CornerRadius="40"
+                                Background="#80000000"
+                                IsVisible="{Binding IsLoadingProfile}">
+                            <TextBlock Text="..." FontSize="24" Foreground="White"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </Panel>
+
+                    <!-- Profile Name -->
+                    <StackPanel Spacing="4" HorizontalAlignment="Center"
+                                IsVisible="{Binding MyDisplayName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                        <TextBlock Text="{Binding MyDisplayName}"
+                                   FontSize="18" FontWeight="SemiBold"
+                                   HorizontalAlignment="Center" />
+                        <TextBlock Text="{Binding MyName, StringFormat='@{0}'}"
+                                   Classes="muted" FontSize="13"
+                                   HorizontalAlignment="Center"
+                                   IsVisible="{Binding MyName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    </StackPanel>
+                    <!-- Fallback to just name if no display name -->
+                    <TextBlock Text="{Binding MyName}"
+                               FontSize="18" FontWeight="SemiBold"
+                               HorizontalAlignment="Center"
+                               IsVisible="{Binding MyDisplayName, Converter={x:Static StringConverters.IsNullOrEmpty}}">
+                        <TextBlock.IsVisible>
+                            <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                <Binding Path="MyDisplayName" Converter="{x:Static StringConverters.IsNullOrEmpty}" />
+                                <Binding Path="MyName" Converter="{x:Static StringConverters.IsNotNullOrEmpty}" />
+                            </MultiBinding>
+                        </TextBlock.IsVisible>
+                    </TextBlock>
+
+                    <!-- About -->
+                    <Border Background="{StaticResource SurfaceSecondaryBrush}"
+                            CornerRadius="8" Padding="12"
+                            IsVisible="{Binding MyAbout, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                        <TextBlock Text="{Binding MyAbout}"
+                                   Classes="secondary" FontSize="13"
+                                   TextWrapping="Wrap" />
+                    </Border>
+
+                    <!-- Public Key Section -->
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Your Public Key (npub)"
+                                   Classes="secondary" FontSize="13" FontWeight="SemiBold" />
+                        <Border Background="{StaticResource SurfaceSecondaryBrush}"
+                                CornerRadius="8" Padding="12">
+                            <SelectableTextBlock Text="{Binding MyNpub}"
+                                                 FontSize="12" FontFamily="Consolas, Courier New"
+                                                 TextWrapping="Wrap"
+                                                 Foreground="{StaticResource TextSecondaryBrush}" />
+                        </Border>
+                        <TextBlock Text="Share this key with others so they can message you on Nostr."
+                                   Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <!-- Copy Button -->
+                    <Button Classes="primary"
+                            Command="{Binding CopyNpubCommand}"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <PathIcon Data="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"
+                                      Width="18" Height="18" />
+                            <TextBlock Text="Copy to Clipboard" />
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Copy Status -->
+                    <TextBlock Text="{Binding CopyStatusMessage}"
+                               Foreground="{StaticResource StatusOnlineBrush}"
+                               FontSize="13"
+                               HorizontalAlignment="Center"
+                               IsVisible="{Binding CopyStatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                </StackPanel>
+            </Border>
+        </Border>
+    </Grid>
+</Window>

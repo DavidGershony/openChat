@@ -1,0 +1,575 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:OpenChat.UI.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="320" d:DesignHeight="600"
+             x:Class="OpenChat.UI.Views.ChatListView"
+             x:DataType="vm:ChatListViewModel">
+
+    <Grid>
+        <!-- Main Content -->
+        <Grid RowDefinitions="Auto,Auto,*,Auto">
+
+            <!-- Search Box -->
+        <Border Grid.Row="0" Padding="12">
+            <TextBox Text="{Binding SearchText}"
+                     Watermark="Search chats..."
+                     Classes="search">
+                <TextBox.InnerLeftContent>
+                    <PathIcon Data="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"
+                              Width="18" Height="18" Foreground="{StaticResource TextMutedBrush}"
+                              Margin="8,0,0,0" />
+                </TextBox.InnerLeftContent>
+            </TextBox>
+        </Border>
+
+        <!-- Pending Invites Section -->
+        <Border Grid.Row="1" Padding="12,0,12,8">
+            <StackPanel Spacing="8">
+                <!-- Section Header with Rescan Button -->
+                <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,4">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                        <PathIcon Data="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"
+                                  Width="16" Height="16" Foreground="{StaticResource NostrPurpleBrush}" />
+                        <TextBlock Text="Invites" FontWeight="SemiBold" FontSize="13"
+                                   Foreground="{StaticResource NostrPurpleBrush}" VerticalAlignment="Center" />
+                        <Border Background="{StaticResource NostrPurpleBrush}" CornerRadius="8"
+                                MinWidth="20" Height="18" Padding="5,0"
+                                IsVisible="{Binding PendingInvites.Count}">
+                            <TextBlock Text="{Binding PendingInviteCount}" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </StackPanel>
+                    <Button Grid.Column="1" Classes="secondary" Padding="8,4"
+                            Command="{Binding RescanInvitesCommand}"
+                            IsEnabled="{Binding !IsRescanningInvites}"
+                            ToolTip.Tip="Re-scan relays for pending invites">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <PathIcon Data="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"
+                                      Width="14" Height="14"
+                                      IsVisible="{Binding !IsRescanningInvites}" />
+                            <TextBlock Text="Scanning..."
+                                       FontSize="11" VerticalAlignment="Center"
+                                       IsVisible="{Binding IsRescanningInvites}" />
+                            <TextBlock Text="Scan"
+                                       FontSize="11" VerticalAlignment="Center"
+                                       IsVisible="{Binding !IsRescanningInvites}" />
+                        </StackPanel>
+                    </Button>
+                </Grid>
+
+                <!-- Invite Items -->
+                <ItemsControl ItemsSource="{Binding PendingInvites}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:PendingInviteItemViewModel">
+                            <Border Background="{StaticResource SurfaceSecondaryBrush}"
+                                    CornerRadius="8" Padding="12" Margin="0,0,0,4">
+                                <StackPanel>
+                                <Grid ColumnDefinitions="Auto,*,Auto">
+                                    <!-- Sender Avatar -->
+                                    <Border Grid.Column="0" Width="40" Height="40" CornerRadius="20"
+                                            Background="{StaticResource NostrPurpleBrush}" Margin="0,0,10,0">
+                                        <TextBlock Text="{Binding SenderInitial}"
+                                                   FontSize="16" FontWeight="SemiBold" Foreground="White"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+
+                                    <!-- Invite Info -->
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                        <TextBlock Text="{Binding SenderName, StringFormat='Group invite from {0}'}"
+                                                   FontSize="13" FontWeight="SemiBold"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock Text="{Binding TimeAgo}"
+                                                       Classes="muted" FontSize="11" />
+                                            <TextBlock Text="{Binding GroupId, StringFormat='Group: {0}'}"
+                                                       Classes="muted" FontSize="11"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       MaxWidth="120"
+                                                       IsVisible="{Binding GroupId, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <!-- Accept/Decline Buttons -->
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6"
+                                                VerticalAlignment="Center">
+                                        <Button Classes="primary" Padding="8,4"
+                                                Command="{Binding #ChatListBox.DataContext.AcceptInviteCommand}"
+                                                CommandParameter="{Binding}"
+                                                IsEnabled="{Binding !IsProcessing}"
+                                                ToolTip.Tip="Accept invite">
+                                            <Panel>
+                                                <PathIcon Data="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"
+                                                          Width="14" Height="14"
+                                                          IsVisible="{Binding !IsAccepting}" />
+                                                <TextBlock Text="Accepting..."
+                                                           FontSize="11" VerticalAlignment="Center"
+                                                           IsVisible="{Binding IsAccepting}" />
+                                            </Panel>
+                                        </Button>
+                                        <Button Classes="secondary" Padding="8,4"
+                                                Command="{Binding #ChatListBox.DataContext.DeclineInviteCommand}"
+                                                CommandParameter="{Binding}"
+                                                IsEnabled="{Binding !IsProcessing}"
+                                                ToolTip.Tip="Decline invite">
+                                            <Panel>
+                                                <PathIcon Data="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+                                                          Width="14" Height="14"
+                                                          IsVisible="{Binding !IsDeclining}" />
+                                                <TextBlock Text="Declining..."
+                                                           FontSize="11" VerticalAlignment="Center"
+                                                           IsVisible="{Binding IsDeclining}" />
+                                            </Panel>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- Processing indicator below the invite -->
+                                <TextBlock Text="Processing invite..."
+                                           Classes="muted" FontSize="11"
+                                           Margin="50,4,0,0"
+                                           IsVisible="{Binding IsProcessing}" />
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+
+        <!-- Chat List -->
+        <ListBox Grid.Row="2"
+                 x:Name="ChatListBox"
+                 ItemsSource="{Binding Chats}"
+                 SelectedItem="{Binding SelectedChat}"
+                 Background="Transparent">
+            <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:ChatItemViewModel">
+                    <Grid ColumnDefinitions="Auto,*,Auto" IsVisible="{Binding IsVisible}">
+                        <Grid.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Delete"
+                                          Command="{Binding #ChatListBox.DataContext.DeleteChatCommand}"
+                                          CommandParameter="{Binding}">
+                                    <MenuItem.Icon>
+                                        <PathIcon Data="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
+                                                  Width="16" Height="16" />
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                            </ContextMenu>
+                        </Grid.ContextMenu>
+                        <!-- Avatar -->
+                        <Border Grid.Column="0" Width="48" Height="48" CornerRadius="24"
+                                Background="{StaticResource NostrPurpleBrush}" Margin="0,0,12,0">
+                            <Panel>
+                                <!-- Placeholder Initial -->
+                                <TextBlock Text="{Binding Name[0]}"
+                                           FontSize="20" FontWeight="SemiBold" Foreground="White"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+                                <!-- Group Icon Indicator -->
+                                <Border Width="18" Height="18" CornerRadius="9"
+                                        Background="{StaticResource BackgroundLightBrush}"
+                                        HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                        IsVisible="{Binding IsGroup}">
+                                    <PathIcon Data="M12 12.75c1.63 0 3.07.39 4.24.9 1.08.48 1.76 1.56 1.76 2.73V18H6v-1.61c0-1.18.68-2.26 1.76-2.73 1.17-.52 2.61-.91 4.24-.91zM4 13c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm1.13 1.1c-.37-.06-.74-.1-1.13-.1-.99 0-1.93.21-2.78.58A2.01 2.01 0 0 0 0 16.43V18h4.5v-1.61c0-.83.23-1.61.63-2.29zM20 13c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm4 3.43c0-.81-.48-1.53-1.22-1.85A6.95 6.95 0 0 0 20 14c-.39 0-.76.04-1.13.1.4.68.63 1.46.63 2.29V18H24v-1.57zM12 6c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3z"
+                                              Width="12" Height="12" Foreground="{StaticResource TextSecondaryBrush}" />
+                                </Border>
+                            </Panel>
+                        </Border>
+
+                        <!-- Chat Info -->
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="{Binding Name}"
+                                           FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Grid.Column="1" Text="{Binding LastActivityAt, StringFormat={}{0:HH:mm}}"
+                                           Classes="muted" FontSize="12" Margin="8,0,0,0" />
+                            </Grid>
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="{Binding LastMessagePreview}"
+                                           Classes="secondary" FontSize="13"
+                                           TextTrimming="CharacterEllipsis"
+                                           MaxLines="1" />
+
+                                <!-- Unread Badge -->
+                                <Border Grid.Column="1"
+                                        IsVisible="{Binding UnreadCount, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                        Background="{StaticResource NostrPurpleBrush}"
+                                        CornerRadius="10" MinWidth="20" Height="20"
+                                        Padding="6,0" Margin="8,0,0,0">
+                                    <TextBlock Text="{Binding UnreadCount}"
+                                               FontSize="11" FontWeight="SemiBold"
+                                               Foreground="White"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                            </Grid>
+                        </StackPanel>
+
+                        <!-- Status Indicators -->
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
+                                    VerticalAlignment="Top" Margin="4,4,0,0">
+                            <!-- Muted Icon -->
+                            <PathIcon Data="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"
+                                      Width="14" Height="14" Foreground="{StaticResource TextMutedBrush}"
+                                      IsVisible="{Binding IsMuted}" />
+
+                            <!-- Pinned Icon -->
+                            <PathIcon Data="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"
+                                      Width="14" Height="14" Foreground="{StaticResource TextMutedBrush}"
+                                      IsVisible="{Binding IsPinned}" />
+                        </StackPanel>
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <!-- Loading Indicator -->
+        <Border Grid.Row="2" Background="{StaticResource BackgroundMediumBrush}"
+                IsVisible="{Binding IsLoading}" Opacity="0.9">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16">
+                <!-- Spinning circle indicator -->
+                <Border Width="40" Height="40" HorizontalAlignment="Center">
+                    <Border Width="40" Height="40" CornerRadius="20"
+                            BorderThickness="3" BorderBrush="{StaticResource SurfaceSecondaryBrush}">
+                        <Border.RenderTransform>
+                            <RotateTransform />
+                        </Border.RenderTransform>
+                    </Border>
+                </Border>
+                <ProgressBar IsIndeterminate="True" Width="120" Height="3"
+                             Foreground="{StaticResource NostrPurpleBrush}" />
+                <TextBlock Text="Loading conversations..." Classes="secondary" FontSize="13"
+                           HorizontalAlignment="Center" />
+            </StackPanel>
+        </Border>
+
+            <!-- Empty State (hidden while loading) -->
+            <StackPanel Grid.Row="2" VerticalAlignment="Center" HorizontalAlignment="Center"
+                        Spacing="8">
+                <StackPanel.IsVisible>
+                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                        <Binding Path="!Chats.Count" />
+                        <Binding Path="!IsLoading" />
+                    </MultiBinding>
+                </StackPanel.IsVisible>
+                <PathIcon Data="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"
+                          Width="48" Height="48" Foreground="{StaticResource TextMutedBrush}" />
+                <TextBlock Text="No chats yet" Classes="secondary" HorizontalAlignment="Center" />
+            </StackPanel>
+
+            <!-- Status Bar -->
+            <Border Grid.Row="3"
+                    Background="{StaticResource SurfaceSecondaryBrush}"
+                    Padding="12,8"
+                    IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="&#x23F3;" FontSize="12" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding StatusMessage}"
+                               Classes="secondary" FontSize="12"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- New Chat Dialog Overlay -->
+        <Border IsVisible="{Binding ShowNewChatDialog}"
+                Background="#80000000"
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+            <Border Classes="card"
+                    Background="{StaticResource BackgroundCardBrush}"
+                    CornerRadius="12"
+                    Padding="20"
+                    Margin="16"
+                    VerticalAlignment="Center"
+                    HorizontalAlignment="Stretch"
+                    MaxWidth="350">
+                <StackPanel Spacing="16">
+                    <!-- Dialog Title -->
+                    <TextBlock Text="New Chat"
+                               FontSize="20" FontWeight="Bold"
+                               HorizontalAlignment="Center" />
+
+                    <!-- Public Key Input -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Public Key (npub or hex)" Classes="secondary" FontSize="13" />
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBox Grid.Column="0" Text="{Binding NewChatPublicKey}"
+                                     Watermark="npub1... or hex public key"
+                                     AcceptsReturn="False" />
+                            <Button Grid.Column="1" Classes="secondary"
+                                    Content="Lookup"
+                                    Command="{Binding LookupKeyPackageCommand}"
+                                    IsEnabled="{Binding !IsLookingUpKeyPackage}"
+                                    Margin="8,0,0,0"
+                                    ToolTip.Tip="Look up user's KeyPackage on relays" />
+                        </Grid>
+                    </StackPanel>
+
+                    <!-- KeyPackage Status -->
+                    <Border Background="{StaticResource SurfaceSecondaryBrush}"
+                            CornerRadius="8" Padding="12"
+                            IsVisible="{Binding KeyPackageStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                        <StackPanel Spacing="6">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <!-- Status Icon -->
+                                <PathIcon IsVisible="{Binding HasKeyPackage}"
+                                          Data="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"
+                                          Width="16" Height="16" Foreground="{StaticResource StatusOnlineBrush}" />
+                                <PathIcon IsVisible="{Binding !HasKeyPackage}"
+                                          Data="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"
+                                          Width="16" Height="16" Foreground="{StaticResource StatusWarningBrush}" />
+                                <TextBlock Text="{Binding KeyPackageStatus}"
+                                           FontSize="13" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <!-- KeyPackage Details -->
+                            <StackPanel IsVisible="{Binding HasKeyPackage}" Spacing="2">
+                                <TextBlock Text="{Binding KeyPackageCreatedAt, StringFormat='Created: {0:g}'}"
+                                           Classes="muted" FontSize="11" />
+                                <TextBlock Text="{Binding KeyPackageRelays, StringFormat='Relays: {0}'}"
+                                           Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                            <!-- Loading Indicator -->
+                            <TextBlock Text="Looking up..."
+                                       Classes="muted" FontSize="11"
+                                       IsVisible="{Binding IsLookingUpKeyPackage}" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Name Input (Optional) -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Name (optional)" Classes="secondary" FontSize="13" />
+                        <TextBox Text="{Binding NewChatName}"
+                                 Watermark="Contact name"
+                                 AcceptsReturn="False" />
+                    </StackPanel>
+
+                    <!-- Error Message -->
+                    <TextBlock Text="{Binding NewChatError}"
+                               Foreground="{StaticResource StatusErrorBrush}"
+                               FontSize="13"
+                               TextWrapping="Wrap"
+                               IsVisible="{Binding NewChatError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                    <!-- Buttons -->
+                    <Grid ColumnDefinitions="*,12,*" Margin="0,8,0,0">
+                        <Button Grid.Column="0"
+                                Classes="secondary"
+                                Content="Cancel"
+                                Command="{Binding CancelNewChatCommand}"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center" />
+                        <Button Grid.Column="2"
+                                Classes="primary"
+                                Content="Create"
+                                Command="{Binding CreateChatCommand}"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Border>
+
+        <!-- New Group Dialog Overlay -->
+        <Border IsVisible="{Binding ShowNewGroupDialog}"
+                Background="#80000000"
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+            <Border Classes="card"
+                    Background="{StaticResource BackgroundCardBrush}"
+                    CornerRadius="12"
+                    Padding="20"
+                    Margin="16"
+                    VerticalAlignment="Center"
+                    HorizontalAlignment="Stretch"
+                    MaxWidth="400">
+                <StackPanel Spacing="16">
+                    <!-- Dialog Title -->
+                    <TextBlock Text="Create New Group"
+                               FontSize="20" FontWeight="Bold"
+                               HorizontalAlignment="Center" />
+
+                    <!-- Group Name -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Group Name" Classes="secondary" FontSize="13" />
+                        <TextBox Text="{Binding NewGroupName}"
+                                 Watermark="My Awesome Group"
+                                 AcceptsReturn="False" />
+                    </StackPanel>
+
+                    <!-- Description (Optional) -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Description (optional)" Classes="secondary" FontSize="13" />
+                        <TextBox Text="{Binding NewGroupDescription}"
+                                 Watermark="What's this group about?"
+                                 AcceptsReturn="False" />
+                    </StackPanel>
+
+                    <!-- Initial Members (Optional) -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Invite Members (optional)" Classes="secondary" FontSize="13" />
+                        <TextBox Text="{Binding NewGroupMembers}"
+                                 Watermark="npub1..., npub2... (comma separated)"
+                                 AcceptsReturn="True"
+                                 Height="60"
+                                 TextWrapping="Wrap" />
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="You can also invite members later"
+                                       Classes="muted" FontSize="11" VerticalAlignment="Center" />
+                            <Button Grid.Column="1" Classes="secondary"
+                                    Content="Check KeyPackages"
+                                    Command="{Binding LookupGroupKeyPackagesCommand}"
+                                    IsEnabled="{Binding !IsLookingUpGroupKeyPackages}"
+                                    Padding="8,4"
+                                    FontSize="11" />
+                        </Grid>
+                    </StackPanel>
+
+                    <!-- Group KeyPackage Status -->
+                    <Border Background="{StaticResource SurfaceSecondaryBrush}"
+                            CornerRadius="8" Padding="12"
+                            IsVisible="{Binding GroupKeyPackageStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="KeyPackage Status:" FontWeight="SemiBold" FontSize="12" />
+                            <TextBlock Text="{Binding GroupKeyPackageStatus}"
+                                       FontSize="11" FontFamily="Consolas"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Text="Checking..."
+                                       Classes="muted" FontSize="11"
+                                       IsVisible="{Binding IsLookingUpGroupKeyPackages}" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Error Message -->
+                    <TextBlock Text="{Binding NewGroupError}"
+                               Foreground="{StaticResource StatusErrorBrush}"
+                               FontSize="13"
+                               TextWrapping="Wrap"
+                               IsVisible="{Binding NewGroupError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                    <!-- Buttons -->
+                    <Grid ColumnDefinitions="*,12,*" Margin="0,8,0,0">
+                        <Button Grid.Column="0"
+                                Classes="secondary"
+                                Content="Cancel"
+                                Command="{Binding CancelNewGroupCommand}"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center" />
+                        <Button Grid.Column="2"
+                                Classes="primary"
+                                Content="Create Group"
+                                Command="{Binding CreateGroupCommand}"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Border>
+
+        <!-- Join Group Dialog Overlay -->
+        <Border IsVisible="{Binding ShowJoinGroupDialog}"
+                Background="#80000000"
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+            <Border Classes="card"
+                    Background="{StaticResource BackgroundCardBrush}"
+                    CornerRadius="12"
+                    Padding="20"
+                    Margin="16"
+                    VerticalAlignment="Center"
+                    HorizontalAlignment="Stretch"
+                    MaxWidth="380">
+                <StackPanel Spacing="16">
+                    <!-- Dialog Title -->
+                    <TextBlock Text="Join Group"
+                               FontSize="20" FontWeight="Bold"
+                               HorizontalAlignment="Center" />
+
+                    <!-- Group ID Input -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Group ID or Invite Link" Classes="secondary" FontSize="13" />
+                        <TextBox Text="{Binding JoinGroupId}"
+                                 Watermark="Paste group ID here..."
+                                 AcceptsReturn="False" />
+                        <TextBlock Text="Get the group ID from someone who's already in the group"
+                                   Classes="muted" FontSize="11" TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <!-- Error Message -->
+                    <TextBlock Text="{Binding JoinGroupError}"
+                               Foreground="{StaticResource StatusErrorBrush}"
+                               FontSize="13"
+                               TextWrapping="Wrap"
+                               IsVisible="{Binding JoinGroupError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                    <!-- Buttons -->
+                    <Grid ColumnDefinitions="*,12,*" Margin="0,8,0,0">
+                        <Button Grid.Column="0"
+                                Classes="secondary"
+                                Content="Cancel"
+                                Command="{Binding CancelJoinGroupCommand}"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center" />
+                        <Button Grid.Column="2"
+                                Classes="primary"
+                                Content="Join"
+                                Command="{Binding ConfirmJoinGroupCommand}"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Border>
+
+        <!-- Delete Chat Confirmation Dialog -->
+        <Border IsVisible="{Binding ShowDeleteChatDialog}"
+                Background="#80000000"
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+            <Border Classes="card"
+                    Background="{StaticResource BackgroundCardBrush}"
+                    CornerRadius="12"
+                    Padding="20"
+                    Margin="16"
+                    VerticalAlignment="Center"
+                    HorizontalAlignment="Stretch"
+                    MaxWidth="350">
+                <StackPanel Spacing="16">
+                    <!-- Dialog Title -->
+                    <TextBlock Text="Delete Conversation"
+                               FontSize="20" FontWeight="Bold"
+                               HorizontalAlignment="Center" />
+
+                    <!-- Confirmation Message -->
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Are you sure you want to delete this conversation?"
+                                   TextWrapping="Wrap"
+                                   HorizontalAlignment="Center" />
+                        <TextBlock Text="{Binding ChatToDelete.Name}"
+                                   FontWeight="SemiBold"
+                                   HorizontalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="This will delete all messages in this chat. This action cannot be undone."
+                                   Classes="secondary" FontSize="12"
+                                   TextWrapping="Wrap"
+                                   HorizontalAlignment="Center" />
+                    </StackPanel>
+
+                    <!-- Buttons -->
+                    <Grid ColumnDefinitions="*,12,*" Margin="0,8,0,0">
+                        <Button Grid.Column="0"
+                                Classes="secondary"
+                                Content="Cancel"
+                                Command="{Binding CancelDeleteChatCommand}"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center" />
+                        <Button Grid.Column="2"
+                                Background="{StaticResource StatusErrorBrush}"
+                                Content="Delete"
+                                Command="{Binding ConfirmDeleteChatCommand}"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Border>
+    </Grid>
+</UserControl>

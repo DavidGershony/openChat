@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="OpenChat.Core.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
+    <PackageReference Include="NBitcoin.Secp256k1" Version="3.1.6" />
+    <PackageReference Include="Serilog" Version="3.1.1" />
+    <PackageReference Include="Serilog.Extensions.Logging" Version="8.0.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="5.0.1" />
+    <PackageReference Include="Serilog.Sinks.File" Version="5.0.0" />
+    <PackageReference Include="System.Reactive" Version="6.1.0" />
+  </ItemGroup>
+
+  <!-- marmut-mdk references disabled until NuGet package is published
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\marmut-mdk\src\MarmutMdk.Core\MarmutMdk.Core.csproj" />
+    <ProjectReference Include="..\..\..\marmut-mdk\src\MarmutMdk.Mls\MarmutMdk.Mls.csproj" />
+    <ProjectReference Include="..\..\..\marmut-mdk\src\MarmutMdk.Mls.Crypto\MarmutMdk.Mls.Crypto.csproj" />
+    <ProjectReference Include="..\..\..\marmut-mdk\src\MarmutMdk.Protocol\MarmutMdk.Protocol.csproj" />
+    <ProjectReference Include="..\..\..\marmut-mdk\src\MarmutMdk.Storage.Abstractions\MarmutMdk.Storage.Abstractions.csproj" />
+    <ProjectReference Include="..\..\..\marmut-mdk\src\MarmutMdk.Storage.Memory\MarmutMdk.Storage.Memory.csproj" />
+  </ItemGroup>
+  -->
+
+</Project>

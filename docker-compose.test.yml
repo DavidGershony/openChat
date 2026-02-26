@@ -1,0 +1,16 @@
+services:
+  nostr-relay:
+    image: scsibug/nostr-rs-relay:latest
+    ports:
+      - "7777:8080"
+    volumes:
+      - relay-data:/usr/src/app/db
+    healthcheck:
+      test: ["CMD-SHELL", "echo 'healthy'"]
+      interval: 2s
+      timeout: 5s
+      retries: 3
+      start_period: 3s
+
+volumes:
+  relay-data:

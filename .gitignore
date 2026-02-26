@@ -1,0 +1,29 @@
+# Build artifacts
+bin/
+obj/
+
+# Rust build artifacts
+src/OpenChat.Native/target/
+
+# Native DLL (build from source with `cargo build --release`)
+src/OpenChat.Desktop/openchat_native.dll
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.rsuser
+*.suo
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Claude Code
+.claude/
+
+# Misc
+nul
+*.log

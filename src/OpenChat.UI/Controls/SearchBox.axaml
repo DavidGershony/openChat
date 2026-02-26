@@ -1,0 +1,29 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="40"
+             x:Class="OpenChat.UI.Controls.SearchBox"
+             x:Name="Root">
+
+    <TextBox Text="{Binding SearchText, ElementName=Root, Mode=TwoWay}"
+             Watermark="{Binding Watermark, ElementName=Root}"
+             Background="{StaticResource SurfaceSecondaryBrush}"
+             CornerRadius="20">
+        <TextBox.InnerLeftContent>
+            <PathIcon Data="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"
+                      Width="18" Height="18"
+                      Foreground="{StaticResource TextMutedBrush}"
+                      Margin="12,0,0,0" />
+        </TextBox.InnerLeftContent>
+        <TextBox.InnerRightContent>
+            <Button Classes="icon" Padding="4"
+                    IsVisible="{Binding SearchText, ElementName=Root, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                    Command="{Binding ClearCommand, ElementName=Root}"
+                    Margin="0,0,8,0">
+                <PathIcon Data="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+                          Width="14" Height="14" Foreground="{StaticResource TextMutedBrush}" />
+            </Button>
+        </TextBox.InnerRightContent>
+    </TextBox>
+</UserControl>
