@@ -164,11 +164,8 @@ public class MainViewModel : ViewModelBase
             await _nostrService.DisconnectAsync();
             await _nostrService.ConnectAsync(defaultRelays);
 
-            // Re-subscribe to Welcome messages
-            if (!string.IsNullOrEmpty(CurrentUser?.PublicKeyHex))
-            {
-                await _nostrService.SubscribeToWelcomesAsync(CurrentUser.PublicKeyHex);
-            }
+            // Subscriptions are now automatically re-sent by NostrService.ConnectToRelayAsync
+            // via ResendSubscriptionsToRelayAsync, so no manual re-subscribe needed here.
         });
 
         ReconnectRelayCommand = ReactiveCommand.CreateFromTask<RelayStatusViewModel>(async relay =>

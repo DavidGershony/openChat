@@ -79,6 +79,9 @@ public class NostrService : INostrService, IDisposable
 
             // Start listening for events in background
             _ = ListenToRelayAsync(relayUrl, ws, cts.Token);
+
+            // Re-send any active subscriptions to this relay
+            await ResendSubscriptionsToRelayAsync(relayUrl, ws);
         }
         catch (Exception ex)
         {
@@ -89,6 +92,53 @@ public class NostrService : INostrService, IDisposable
                 IsConnected = false,
                 Error = ex.Message
             });
+        }
+    }
+
+    /// <summary>
+    /// Re-sends all active subscriptions (welcomes + group messages) to a newly connected relay.
+    /// This ensures subscriptions survive reconnections and app restarts.
+    /// </summary>
+    private async Task ResendSubscriptionsToRelayAsync(string relayUrl, ClientWebSocket ws)
+    {
+        try
+        {
+            // Re-subscribe to Welcome messages (kind 444)
+            if (!string.IsNullOrEmpty(_subscribedUserPubKey) && ws.State == WebSocketState.Open)
+            {
+                var subId = $"welcome_{Guid.NewGuid():N}"[..16];
+                var filter = new Dictionary<string, object>
+                {
+                    { "kinds", new[] { 444 } },
+                    { "#p", new[] { _subscribedUserPubKey } }
+                };
+
+                var reqMessage = JsonSerializer.Serialize(new object[] { "REQ", subId, filter });
+                var reqBytes = Encoding.UTF8.GetBytes(reqMessage);
+                await ws.SendAsync(new ArraySegment<byte>(reqBytes), WebSocketMessageType.Text, true, CancellationToken.None);
+                _logger.LogInformation("Re-sent Welcome subscription to {RelayUrl}", relayUrl);
+            }
+
+            // Re-subscribe to Group messages (kind 445)
+            if (_subscribedGroupIds.Count > 0 && ws.State == WebSocketState.Open)
+            {
+                var subId = $"group_{Guid.NewGuid():N}"[..16];
+                var filter = new Dictionary<string, object>
+                {
+                    { "kinds", new[] { 445 } },
+                    { "#h", _subscribedGroupIds.ToArray() }
+                };
+
+                var reqMessage = JsonSerializer.Serialize(new object[] { "REQ", subId, filter });
+                var reqBytes = Encoding.UTF8.GetBytes(reqMessage);
+                await ws.SendAsync(new ArraySegment<byte>(reqBytes), WebSocketMessageType.Text, true, CancellationToken.None);
+                _logger.LogInformation("Re-sent Group subscription ({Count} groups) to {RelayUrl}",
+                    _subscribedGroupIds.Count, relayUrl);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to re-send subscriptions to {RelayUrl}", relayUrl);
         }
     }
 
