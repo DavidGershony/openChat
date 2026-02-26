@@ -88,7 +88,7 @@ public class NostrServiceTests
         Assert.Equal(npub, importedNpub);
     }
 
-    [Fact]
+    [Fact(Skip = "Requires local relay on ws://localhost:7777")]
     public async Task ConnectAsync_ShouldUpdateConnectionStatus()
     {
         // Arrange
@@ -104,7 +104,7 @@ public class NostrServiceTests
         Assert.True(statusUpdates[0].IsConnected);
     }
 
-    [Fact]
+    [Fact(Skip = "Requires local relay on ws://localhost:7777")]
     public async Task DisconnectAsync_ShouldUpdateConnectionStatus()
     {
         // Arrange
