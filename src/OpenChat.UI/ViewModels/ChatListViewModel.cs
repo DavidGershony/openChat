@@ -692,7 +692,7 @@ public class ChatListViewModel : ViewModelBase
                     Description = string.IsNullOrWhiteSpace(NewGroupDescription) ? null : NewGroupDescription.Trim(),
                     Type = ChatType.Group,
                     ParticipantPublicKeys = memberKeys,
-                    MlsGroupId = System.Text.Encoding.UTF8.GetBytes(groupId),
+                    MlsGroupId = Guid.Parse(groupId).ToByteArray(),
                     CreatedAt = DateTime.UtcNow,
                     LastActivityAt = DateTime.UtcNow
                 };
@@ -782,7 +782,7 @@ public class ChatListViewModel : ViewModelBase
                 Id = groupId,
                 Name = $"Group {groupId[..Math.Min(8, groupId.Length)]}...",
                 Type = ChatType.Group,
-                MlsGroupId = System.Text.Encoding.UTF8.GetBytes(groupId),
+                MlsGroupId = Convert.FromHexString(groupId),
                 CreatedAt = DateTime.UtcNow,
                 LastActivityAt = DateTime.UtcNow
             };

@@ -610,7 +610,17 @@ public class NostrService : INostrService, IDisposable
 
     public async Task SubscribeToGroupMessagesAsync(IEnumerable<string> groupIds)
     {
-        var groupList = groupIds.ToList();
+        // Filter out invalid group IDs (max 64 hex chars = 32 bytes, typical for MLS group IDs)
+        var groupList = groupIds
+            .Where(id =>
+            {
+                if (id.Length <= 64) return true;
+                _logger.LogWarning("Skipping oversized group ID ({Length} chars): {Preview}...",
+                    id.Length, id[..Math.Min(32, id.Length)]);
+                return false;
+            })
+            .ToList();
+
         if (groupList.Count == 0)
         {
             _logger.LogDebug("No groups to subscribe to");
