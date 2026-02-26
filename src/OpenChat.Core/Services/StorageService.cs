@@ -751,7 +751,7 @@ public class StorageService : IStorageService
         {
             Id = reader.GetString(reader.GetOrdinal("Id")),
             PublicKeyHex = reader.GetString(reader.GetOrdinal("PublicKeyHex")),
-            Npub = reader.IsDBNull(reader.GetOrdinal("Npub")) ? null : reader.GetString(reader.GetOrdinal("Npub")),
+            Npub = reader.IsDBNull(reader.GetOrdinal("Npub")) ? string.Empty : reader.GetString(reader.GetOrdinal("Npub")),
             PrivateKeyHex = reader.IsDBNull(reader.GetOrdinal("PrivateKeyHex")) ? null : reader.GetString(reader.GetOrdinal("PrivateKeyHex")),
             Nsec = reader.IsDBNull(reader.GetOrdinal("Nsec")) ? null : reader.GetString(reader.GetOrdinal("Nsec")),
             DisplayName = reader.GetString(reader.GetOrdinal("DisplayName")),

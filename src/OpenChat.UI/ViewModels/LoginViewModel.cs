@@ -249,7 +249,7 @@ public class LoginViewModel : ViewModelBase
             {
                 Id = Guid.NewGuid().ToString(),
                 PublicKeyHex = publicKeyHex,
-                Npub = npub,
+                Npub = npub ?? string.Empty,
                 DisplayName = $"User {npub?[..12]}...",
                 CreatedAt = DateTime.UtcNow,
                 IsCurrentUser = true,

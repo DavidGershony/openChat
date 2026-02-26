@@ -1019,7 +1019,7 @@ public class ChatItemViewModel : ViewModelBase
 {
     public string Id { get; }
 
-    [Reactive] public string Name { get; set; }
+    [Reactive] public string Name { get; set; } = string.Empty;
     [Reactive] public string? AvatarUrl { get; set; }
     [Reactive] public string? LastMessagePreview { get; set; }
     [Reactive] public DateTime LastActivityAt { get; set; }
