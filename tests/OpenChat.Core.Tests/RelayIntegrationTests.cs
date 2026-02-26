@@ -55,7 +55,7 @@ public class RelayIntegrationTests : IAsyncLifetime
         (_nostrServiceB as IDisposable)?.Dispose();
     }
 
-    [Fact]
+    [Fact(Skip = "Requires local relay on ws://localhost:7777")]
     public async Task ConnectToRelay_ShouldSucceed()
     {
         // Connection was established in InitializeAsync.
@@ -69,7 +69,7 @@ public class RelayIntegrationTests : IAsyncLifetime
         Assert.Equal(64, eventId.Length);
     }
 
-    [Fact]
+    [Fact(Skip = "Requires local relay on ws://localhost:7777")]
     public async Task PublishKeyPackage_ShouldReturnEventId()
     {
         var keyPackageData = new byte[256];
@@ -89,7 +89,7 @@ public class RelayIntegrationTests : IAsyncLifetime
         Assert.Equal(64, eventId.Length); // Nostr event IDs are 32-byte hex
     }
 
-    [Fact]
+    [Fact(Skip = "Requires local relay on ws://localhost:7777")]
     public async Task PublishAndFetchKeyPackage_UserBSeesUserAPackage()
     {
         // User A publishes a KeyPackage
@@ -117,7 +117,7 @@ public class RelayIntegrationTests : IAsyncLifetime
         Assert.Contains(kpList, kp => kp.Data.Length > 0);
     }
 
-    [Fact]
+    [Fact(Skip = "Requires local relay on ws://localhost:7777")]
     public async Task PublishWelcome_ShouldReturnEventId()
     {
         var welcomeData = new byte[512];
@@ -131,7 +131,7 @@ public class RelayIntegrationTests : IAsyncLifetime
         Assert.Equal(64, eventId.Length);
     }
 
-    [Fact]
+    [Fact(Skip = "Requires local relay on ws://localhost:7777")]
     public async Task PublishWelcome_UserBReceivesViaSubscription()
     {
         // User B subscribes to welcomes
@@ -169,7 +169,7 @@ public class RelayIntegrationTests : IAsyncLifetime
         Assert.Equal(welcomeData, decodedWelcome);
     }
 
-    [Fact]
+    [Fact(Skip = "Requires local relay on ws://localhost:7777")]
     public async Task PublishGroupMessage_ShouldReturnEventId()
     {
         var encryptedData = new byte[64];
@@ -184,7 +184,7 @@ public class RelayIntegrationTests : IAsyncLifetime
         Assert.Equal(64, eventId.Length);
     }
 
-    [Fact]
+    [Fact(Skip = "Requires local relay on ws://localhost:7777")]
     public async Task FullRelayRoundtrip_KeyPackageAndWelcome()
     {
         // Phase 1: User A publishes a KeyPackage

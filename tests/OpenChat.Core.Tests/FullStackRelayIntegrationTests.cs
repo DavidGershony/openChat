@@ -132,7 +132,7 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
     /// This tests the FULL pipeline: publish → relay → WebSocket → Events observable →
     /// MessageService.OnNostrEventReceived → HandleWelcomeEventAsync → PendingInvite.
     /// </summary>
-    [Fact]
+    [Fact(Skip = "Requires local relay on ws://localhost:7777")]
     public async Task FullStack_WelcomePublished_ArriveAsPendingInvite()
     {
         _output.WriteLine($"User A pubkey: {_pubKeyA}");
@@ -216,7 +216,7 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
     /// Test that RescanInvitesAsync (used by the Rescan button in UI) can find
     /// Welcome events that were published BEFORE the subscription was set up.
     /// </summary>
-    [Fact]
+    [Fact(Skip = "Requires local relay on ws://localhost:7777")]
     public async Task FullStack_RescanInvites_FindsHistoricalWelcomes()
     {
         _output.WriteLine($"User A pubkey: {_pubKeyA}");
@@ -255,7 +255,7 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
     /// <summary>
     /// Test the complete invite acceptance flow after receiving via real relay.
     /// </summary>
-    [Fact]
+    [Fact(Skip = "Requires local relay on ws://localhost:7777")]
     public async Task FullStack_AcceptInvite_CreatesGroupChat()
     {
         _output.WriteLine($"User A pubkey: {_pubKeyA}");
