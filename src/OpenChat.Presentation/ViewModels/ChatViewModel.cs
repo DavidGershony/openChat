@@ -8,8 +8,9 @@ using ReactiveUI.Fody.Helpers;
 using OpenChat.Core.Logging;
 using OpenChat.Core.Models;
 using OpenChat.Core.Services;
+using OpenChat.Presentation.Services;
 
-namespace OpenChat.UI.ViewModels;
+namespace OpenChat.Presentation.ViewModels;
 
 public class ChatViewModel : ViewModelBase
 {
@@ -18,6 +19,7 @@ public class ChatViewModel : ViewModelBase
     private readonly IStorageService _storageService;
     private readonly INostrService _nostrService;
     private readonly IMlsService _mlsService;
+    private readonly IPlatformClipboard _clipboard;
     private IDisposable? _messageSubscription;
     private Chat? _currentChat;
     private string? _currentUserPrivateKeyHex;
@@ -70,13 +72,14 @@ public class ChatViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> SendInviteCommand { get; }
     public ReactiveCommand<Unit, Unit> CopyGroupLinkCommand { get; }
 
-    public ChatViewModel(IMessageService messageService, IStorageService storageService, INostrService nostrService, IMlsService mlsService)
+    public ChatViewModel(IMessageService messageService, IStorageService storageService, INostrService nostrService, IMlsService mlsService, IPlatformClipboard clipboard)
     {
         _logger = LoggingConfiguration.CreateLogger<ChatViewModel>();
         _messageService = messageService;
         _storageService = storageService;
         _nostrService = nostrService;
         _mlsService = mlsService;
+        _clipboard = clipboard;
 
         var canSend = this.WhenAnyValue(
             x => x.MessageText,
@@ -138,17 +141,10 @@ public class ChatViewModel : ViewModelBase
 
             try
             {
-                if (Avalonia.Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
-                {
-                    var clipboard = desktop.MainWindow?.Clipboard;
-                    if (clipboard != null)
-                    {
-                        await clipboard.SetTextAsync(GroupInviteLink);
-                        InviteSuccess = "Group ID copied to clipboard!";
-                        await Task.Delay(2000);
-                        if (ShowInviteDialog) InviteSuccess = null;
-                    }
-                }
+                await _clipboard.SetTextAsync(GroupInviteLink);
+                InviteSuccess = "Group ID copied to clipboard!";
+                await Task.Delay(2000);
+                if (ShowInviteDialog) InviteSuccess = null;
             }
             catch (Exception ex)
             {

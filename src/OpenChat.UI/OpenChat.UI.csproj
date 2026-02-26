@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\OpenChat.Core\OpenChat.Core.csproj" />
+    <ProjectReference Include="..\OpenChat.Presentation\OpenChat.Presentation.csproj" />
   </ItemGroup>
 
 </Project>

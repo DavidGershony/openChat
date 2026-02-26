@@ -1,6 +1,6 @@
 using ReactiveUI;
 
-namespace OpenChat.UI.ViewModels;
+namespace OpenChat.Presentation.ViewModels;
 
 public abstract class ViewModelBase : ReactiveObject
 {

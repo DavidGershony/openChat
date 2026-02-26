@@ -8,7 +8,13 @@ namespace OpenChat.Core.Marmot;
 /// </summary>
 internal static partial class MarmotInterop
 {
+#if ANDROID
+    private const string LibraryName = "libopenchat_native";
+#elif IOS
+    private const string LibraryName = "__Internal";
+#else
     private const string LibraryName = "openchat_native";
+#endif
 
     [LibraryImport(LibraryName, EntryPoint = "marmot_create_client")]
     internal static partial IntPtr CreateClient(

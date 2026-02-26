@@ -6,7 +6,8 @@ using Avalonia.Threading;
 using Moq;
 using OpenChat.Core.Models;
 using OpenChat.Core.Services;
-using OpenChat.UI.ViewModels;
+using OpenChat.Presentation.Services;
+using OpenChat.Presentation.ViewModels;
 using OpenChat.UI.Views;
 using Xunit;
 
@@ -26,7 +27,7 @@ public class HeadlessIntegrationTests
     [AvaloniaFact]
     public void LoginFlow_SetsIsLoggedIn_MainUIBecomesVisible()
     {
-        var (mockMessage, mockNostr, mockStorage, mockMls) = CreateMocks();
+        var (mockMessage, mockNostr, mockStorage, mockMls, mockClipboard, mockQrGenerator, mockLauncher) = CreateMocks();
 
         // Pre-configure: no existing user
         mockStorage.Setup(s => s.InitializeAsync()).Returns(Task.CompletedTask);
@@ -42,7 +43,7 @@ public class HeadlessIntegrationTests
         mockStorage.Setup(s => s.SaveCurrentUserAsync(It.IsAny<User>()))
             .Returns(Task.CompletedTask);
 
-        var mainVm = new MainViewModel(mockMessage.Object, mockNostr.Object, mockStorage.Object, mockMls.Object);
+        var mainVm = new MainViewModel(mockMessage.Object, mockNostr.Object, mockStorage.Object, mockMls.Object, mockClipboard.Object, mockQrGenerator.Object, mockLauncher.Object);
         Dispatcher.UIThread.RunJobs();
 
         // Initially not logged in
@@ -74,11 +75,11 @@ public class HeadlessIntegrationTests
     [AvaloniaFact]
     public void MainWindow_WhenNotLoggedIn_LoginViewIsVisible()
     {
-        var (mockMessage, mockNostr, mockStorage, mockMls) = CreateMocks();
+        var (mockMessage, mockNostr, mockStorage, mockMls, mockClipboard, mockQrGenerator, mockLauncher) = CreateMocks();
         mockStorage.Setup(s => s.InitializeAsync()).Returns(Task.CompletedTask);
         mockStorage.Setup(s => s.GetCurrentUserAsync()).ReturnsAsync((User?)null);
 
-        var mainVm = new MainViewModel(mockMessage.Object, mockNostr.Object, mockStorage.Object, mockMls.Object);
+        var mainVm = new MainViewModel(mockMessage.Object, mockNostr.Object, mockStorage.Object, mockMls.Object, mockClipboard.Object, mockQrGenerator.Object, mockLauncher.Object);
         var window = new MainWindow { DataContext = mainVm };
 
         window.Show();
@@ -98,7 +99,7 @@ public class HeadlessIntegrationTests
     public void PendingInvite_ArrivesViaObservable_AppearsInChatList()
     {
         var inviteSubject = new Subject<PendingInvite>();
-        var (mockMessage, mockNostr, mockStorage, mockMls) = CreateMocks();
+        var (mockMessage, mockNostr, mockStorage, mockMls, mockClipboard, mockQrGenerator, mockLauncher) = CreateMocks();
 
         mockMessage.Setup(m => m.NewInvites).Returns(inviteSubject.AsObservable());
         mockMessage.Setup(m => m.GetChatsAsync()).ReturnsAsync(Enumerable.Empty<Chat>());
@@ -137,7 +138,7 @@ public class HeadlessIntegrationTests
     {
         var inviteSubject = new Subject<PendingInvite>();
         var chatUpdateSubject = new Subject<Chat>();
-        var (mockMessage, mockNostr, mockStorage, mockMls) = CreateMocks();
+        var (mockMessage, mockNostr, mockStorage, mockMls, mockClipboard, mockQrGenerator, mockLauncher) = CreateMocks();
 
         mockMessage.Setup(m => m.NewInvites).Returns(inviteSubject.AsObservable());
         mockMessage.Setup(m => m.ChatUpdates).Returns(chatUpdateSubject.AsObservable());
@@ -194,7 +195,7 @@ public class HeadlessIntegrationTests
     public void ChatListView_RendersPendingInvites()
     {
         var inviteSubject = new Subject<PendingInvite>();
-        var (mockMessage, mockNostr, mockStorage, mockMls) = CreateMocks();
+        var (mockMessage, mockNostr, mockStorage, mockMls, mockClipboard, mockQrGenerator, mockLauncher) = CreateMocks();
 
         mockMessage.Setup(m => m.NewInvites).Returns(inviteSubject.AsObservable());
         mockMessage.Setup(m => m.GetChatsAsync()).ReturnsAsync(Enumerable.Empty<Chat>());
@@ -234,11 +235,11 @@ public class HeadlessIntegrationTests
     [AvaloniaFact]
     public void ChatSelection_LoadsChatInChatViewModel()
     {
-        var (mockMessage, mockNostr, mockStorage, mockMls) = CreateMocks();
+        var (mockMessage, mockNostr, mockStorage, mockMls, mockClipboard, mockQrGenerator, mockLauncher) = CreateMocks();
         mockStorage.Setup(s => s.InitializeAsync()).Returns(Task.CompletedTask);
         mockStorage.Setup(s => s.GetCurrentUserAsync()).ReturnsAsync((User?)null);
 
-        var mainVm = new MainViewModel(mockMessage.Object, mockNostr.Object, mockStorage.Object, mockMls.Object);
+        var mainVm = new MainViewModel(mockMessage.Object, mockNostr.Object, mockStorage.Object, mockMls.Object, mockClipboard.Object, mockQrGenerator.Object, mockLauncher.Object);
         Dispatcher.UIThread.RunJobs();
 
         var chat = new Chat
@@ -272,7 +273,7 @@ public class HeadlessIntegrationTests
     [AvaloniaFact]
     public void NewGroupDialog_OpensAndBindsGroupName()
     {
-        var (mockMessage, mockNostr, mockStorage, mockMls) = CreateMocks();
+        var (mockMessage, mockNostr, mockStorage, mockMls, mockClipboard, mockQrGenerator, mockLauncher) = CreateMocks();
         mockMessage.Setup(m => m.GetChatsAsync()).ReturnsAsync(Enumerable.Empty<Chat>());
         mockMessage.Setup(m => m.GetPendingInvitesAsync()).ReturnsAsync(Enumerable.Empty<PendingInvite>());
 
@@ -306,11 +307,11 @@ public class HeadlessIntegrationTests
     [AvaloniaFact]
     public void SettingsNavigation_TogglesCurrentView()
     {
-        var (mockMessage, mockNostr, mockStorage, mockMls) = CreateMocks();
+        var (mockMessage, mockNostr, mockStorage, mockMls, mockClipboard, mockQrGenerator, mockLauncher) = CreateMocks();
         mockStorage.Setup(s => s.InitializeAsync()).Returns(Task.CompletedTask);
         mockStorage.Setup(s => s.GetCurrentUserAsync()).ReturnsAsync((User?)null);
 
-        var mainVm = new MainViewModel(mockMessage.Object, mockNostr.Object, mockStorage.Object, mockMls.Object);
+        var mainVm = new MainViewModel(mockMessage.Object, mockNostr.Object, mockStorage.Object, mockMls.Object, mockClipboard.Object, mockQrGenerator.Object, mockLauncher.Object);
         Dispatcher.UIThread.RunJobs();
 
         // Initially no settings view
@@ -338,7 +339,7 @@ public class HeadlessIntegrationTests
     public async Task FullFlow_Login_CreateGroup_AppearsInChatList()
     {
         var chatUpdateSubject = new Subject<Chat>();
-        var (mockMessage, mockNostr, mockStorage, mockMls) = CreateMocks();
+        var (mockMessage, mockNostr, mockStorage, mockMls, mockClipboard, mockQrGenerator, mockLauncher) = CreateMocks();
 
         mockStorage.Setup(s => s.InitializeAsync()).Returns(Task.CompletedTask);
         mockStorage.Setup(s => s.GetCurrentUserAsync()).ReturnsAsync((User?)null);
@@ -366,7 +367,7 @@ public class HeadlessIntegrationTests
                 IsCurrentUser = true
             });
 
-        var mainVm = new MainViewModel(mockMessage.Object, mockNostr.Object, mockStorage.Object, mockMls.Object);
+        var mainVm = new MainViewModel(mockMessage.Object, mockNostr.Object, mockStorage.Object, mockMls.Object, mockClipboard.Object, mockQrGenerator.Object, mockLauncher.Object);
         Dispatcher.UIThread.RunJobs();
 
         // Login
@@ -558,12 +559,15 @@ public class HeadlessIntegrationTests
     // Helpers
     // ═══════════════════════════════════════════════════════════════════
 
-    private static (Mock<IMessageService>, Mock<INostrService>, Mock<IStorageService>, Mock<IMlsService>) CreateMocks()
+    private static (Mock<IMessageService>, Mock<INostrService>, Mock<IStorageService>, Mock<IMlsService>, Mock<IPlatformClipboard>, Mock<IQrCodeGenerator>, Mock<IPlatformLauncher>) CreateMocks()
     {
         var mockMessage = new Mock<IMessageService>();
         var mockNostr = new Mock<INostrService>();
         var mockStorage = new Mock<IStorageService>();
         var mockMls = new Mock<IMlsService>();
+        var mockClipboard = new Mock<IPlatformClipboard>();
+        var mockQrGenerator = new Mock<IQrCodeGenerator>();
+        var mockLauncher = new Mock<IPlatformLauncher>();
 
         // Default observable setups
         mockMessage.Setup(m => m.NewMessages).Returns(Observable.Empty<Message>());
@@ -594,6 +598,6 @@ public class HeadlessIntegrationTests
 
         mockStorage.Setup(s => s.InitializeAsync()).Returns(Task.CompletedTask);
 
-        return (mockMessage, mockNostr, mockStorage, mockMls);
+        return (mockMessage, mockNostr, mockStorage, mockMls, mockClipboard, mockQrGenerator, mockLauncher);
     }
 }

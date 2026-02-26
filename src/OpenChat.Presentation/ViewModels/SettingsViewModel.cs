@@ -5,8 +5,9 @@ using ReactiveUI;
 using ReactiveUI.Fody.Helpers;
 using OpenChat.Core.Logging;
 using OpenChat.Core.Services;
+using OpenChat.Presentation.Services;
 
-namespace OpenChat.UI.ViewModels;
+namespace OpenChat.Presentation.ViewModels;
 
 public class SettingsViewModel : ViewModelBase
 {
@@ -14,6 +15,7 @@ public class SettingsViewModel : ViewModelBase
     private readonly INostrService _nostrService;
     private readonly IStorageService _storageService;
     private readonly IMlsService _mlsService;
+    private readonly IPlatformLauncher _launcher;
 
     [Reactive] public string? PublicKeyHex { get; set; }
     [Reactive] public string? PrivateKeyHex { get; set; }
@@ -47,12 +49,13 @@ public class SettingsViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> OpenLogFolderCommand { get; }
     public ReactiveCommand<Unit, Unit> PublishKeyPackageCommand { get; }
 
-    public SettingsViewModel(INostrService nostrService, IStorageService storageService, IMlsService mlsService)
+    public SettingsViewModel(INostrService nostrService, IStorageService storageService, IMlsService mlsService, IPlatformLauncher launcher)
     {
         _logger = LoggingConfiguration.CreateLogger<SettingsViewModel>();
         _nostrService = nostrService;
         _storageService = storageService;
         _mlsService = mlsService;
+        _launcher = launcher;
 
         SaveProfileCommand = ReactiveCommand.CreateFromTask(SaveProfileAsync);
 
@@ -96,11 +99,7 @@ public class SettingsViewModel : ViewModelBase
                 var logDir = LoggingConfiguration.LogDirectory;
                 if (Directory.Exists(logDir))
                 {
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                    {
-                        FileName = logDir,
-                        UseShellExecute = true
-                    });
+                    _launcher.OpenFolder(logDir);
                 }
             }
             catch (Exception ex)

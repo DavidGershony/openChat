@@ -8,7 +8,8 @@ using Microsoft.Extensions.Logging;
 using OpenChat.Core.Configuration;
 using OpenChat.Core.Logging;
 using OpenChat.UI.Views;
-using OpenChat.UI.ViewModels;
+using OpenChat.UI.Services;
+using OpenChat.Presentation.ViewModels;
 using OpenChat.Core.Services;
 using ReactiveUI;
 
@@ -55,8 +56,13 @@ public partial class App : Application
                 _logger?.LogInformation("Using Rust MLS backend (managed backend temporarily disabled)");
                 var messageService = new MessageService(storageService, nostrService, mlsService);
 
+                _logger?.LogDebug("Creating platform services...");
+                var clipboard = new AvaloniaClipboard();
+                var qrCodeGenerator = new AvaloniaQrCodeGenerator();
+                var launcher = new AvaloniaLauncher();
+
                 _logger?.LogDebug("Creating MainViewModel...");
-                var mainViewModel = new MainViewModel(messageService, nostrService, storageService, mlsService);
+                var mainViewModel = new MainViewModel(messageService, nostrService, storageService, mlsService, clipboard, qrCodeGenerator, launcher);
 
                 _logger?.LogDebug("Creating MainWindow...");
                 desktop.MainWindow = new MainWindow

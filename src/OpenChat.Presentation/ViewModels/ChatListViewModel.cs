@@ -8,7 +8,7 @@ using OpenChat.Core.Logging;
 using OpenChat.Core.Models;
 using OpenChat.Core.Services;
 
-namespace OpenChat.UI.ViewModels;
+namespace OpenChat.Presentation.ViewModels;
 
 public class ChatListViewModel : ViewModelBase
 {

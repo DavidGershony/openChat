@@ -1,16 +1,15 @@
 using System.Reactive;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
-using Avalonia.Media.Imaging;
 using Microsoft.Extensions.Logging;
-using QRCoder;
 using ReactiveUI;
 using ReactiveUI.Fody.Helpers;
 using OpenChat.Core.Logging;
 using OpenChat.Core.Models;
 using OpenChat.Core.Services;
+using OpenChat.Presentation.Services;
 
-namespace OpenChat.UI.ViewModels;
+namespace OpenChat.Presentation.ViewModels;
 
 public class LoginViewModel : ViewModelBase
 {
@@ -18,6 +17,7 @@ public class LoginViewModel : ViewModelBase
     private readonly INostrService _nostrService;
     private readonly IStorageService _storageService;
     private readonly IExternalSigner? _externalSigner;
+    private readonly IQrCodeGenerator _qrCodeGenerator;
 
     [Reactive] public string PrivateKeyInput { get; set; } = string.Empty;
     [Reactive] public string BunkerUrl { get; set; } = string.Empty;
@@ -35,7 +35,8 @@ public class LoginViewModel : ViewModelBase
     [Reactive] public bool IsExternalSignerConnecting { get; set; }
     [Reactive] public string ExternalSignerStatus { get; set; } = string.Empty;
     [Reactive] public string? NostrConnectUri { get; set; }
-    [Reactive] public Bitmap? NostrConnectQrBitmap { get; set; }
+    /// <summary>QR code as PNG bytes (platform-neutral). Views convert to their image type.</summary>
+    [Reactive] public byte[]? NostrConnectQrPngBytes { get; set; }
 
     // Login method selection
     [Reactive] public LoginMethod SelectedLoginMethod { get; set; } = LoginMethod.PrivateKey;
@@ -48,13 +49,14 @@ public class LoginViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> CopyNpubCommand { get; }
     public ReactiveCommand<LoginMethod, Unit> SelectLoginMethodCommand { get; }
 
-    public LoginViewModel(INostrService nostrService, IStorageService storageService, IExternalSigner? externalSigner = null)
+    public LoginViewModel(INostrService nostrService, IStorageService storageService, IQrCodeGenerator qrCodeGenerator, IExternalSigner? externalSigner = null)
     {
         _logger = LoggingConfiguration.CreateLogger<LoginViewModel>();
         _logger.LogDebug("LoginViewModel initializing");
 
         _nostrService = nostrService;
         _storageService = storageService;
+        _qrCodeGenerator = qrCodeGenerator;
         _externalSigner = externalSigner ?? new ExternalSignerService();
 
         GenerateNewKeyCommand = ReactiveCommand.Create(GenerateNewKey);
@@ -141,8 +143,7 @@ public class LoginViewModel : ViewModelBase
         {
             var uri = await _externalSigner!.GenerateAndListenForConnectionAsync("wss://relay.damus.io");
             NostrConnectUri = uri;
-            NostrConnectQrBitmap?.Dispose();
-            NostrConnectQrBitmap = GenerateQrBitmap(uri);
+            NostrConnectQrPngBytes = _qrCodeGenerator.GeneratePng(uri);
             _logger.LogInformation("Generated nostrconnect QR. URI: {Uri}", uri);
         }
         catch (Exception ex)
@@ -267,16 +268,6 @@ public class LoginViewModel : ViewModelBase
             _logger.LogError(ex, "Failed to complete login after signer connected");
             ErrorMessage = $"Failed to complete login: {ex.Message}";
         }
-    }
-
-    private static Bitmap GenerateQrBitmap(string text)
-    {
-        using var generator = new QRCodeGenerator();
-        using var data = generator.CreateQrCode(text, QRCodeGenerator.ECCLevel.M);
-        var pngCode = new PngByteQRCode(data);
-        var pngBytes = pngCode.GetGraphic(8);
-        using var ms = new MemoryStream(pngBytes);
-        return new Bitmap(ms);
     }
 
     private async Task ConnectExternalSignerAsync()

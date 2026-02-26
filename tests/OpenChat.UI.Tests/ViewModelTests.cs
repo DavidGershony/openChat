@@ -1,7 +1,8 @@
 using Moq;
 using OpenChat.Core.Models;
 using OpenChat.Core.Services;
-using OpenChat.UI.ViewModels;
+using OpenChat.Presentation.Services;
+using OpenChat.Presentation.ViewModels;
 using Xunit;
 
 namespace OpenChat.UI.Tests;
@@ -117,7 +118,8 @@ public class ViewModelTests
 
         var mockStorageService = new Mock<IStorageService>();
 
-        var viewModel = new LoginViewModel(mockNostrService.Object, mockStorageService.Object);
+        var mockQrGenerator = new Mock<IQrCodeGenerator>();
+        var viewModel = new LoginViewModel(mockNostrService.Object, mockStorageService.Object, mockQrGenerator.Object);
 
         // Act
         viewModel.GenerateNewKeyCommand.Execute().Subscribe();
@@ -144,7 +146,8 @@ public class ViewModelTests
         mockStorageService.Setup(x => x.InitializeAsync())
             .Returns(Task.CompletedTask);
 
-        var viewModel = new LoginViewModel(mockNostrService.Object, mockStorageService.Object);
+        var mockQrGenerator = new Mock<IQrCodeGenerator>();
+        var viewModel = new LoginViewModel(mockNostrService.Object, mockStorageService.Object, mockQrGenerator.Object);
         viewModel.PrivateKeyInput = "nsec1test";
 
         // Act

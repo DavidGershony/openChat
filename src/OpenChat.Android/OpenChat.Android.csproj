@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>OpenChat.Android</RootNamespace>
+    <ApplicationId>com.openchat.app</ApplicationId>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>0.1.0</ApplicationDisplayVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ReactiveUI.AndroidX" Version="20.1.52" />
+    <PackageReference Include="Xamarin.Google.Android.Material" Version="1.11.0.3" />
+    <PackageReference Include="QRCoder" Version="1.6.0" />
+    <PackageReference Include="System.Reactive" Version="6.1.0" />
+    <!-- Resolve diamond dependency conflict between Material and ReactiveUI.AndroidX -->
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData.Core" Version="2.8.5.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenChat.Core\OpenChat.Core.csproj" />
+    <ProjectReference Include="..\OpenChat.Presentation\OpenChat.Presentation.csproj" />
+  </ItemGroup>
+
+</Project>

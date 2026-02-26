@@ -3,16 +3,15 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Reactive;
 using System.Reactive.Linq;
-using Avalonia;
-using Avalonia.Controls.ApplicationLifetimes;
 using ReactiveUI;
 using ReactiveUI.Fody.Helpers;
 using Microsoft.Extensions.Logging;
 using OpenChat.Core.Logging;
 using OpenChat.Core.Models;
 using OpenChat.Core.Services;
+using OpenChat.Presentation.Services;
 
-namespace OpenChat.UI.ViewModels;
+namespace OpenChat.Presentation.ViewModels;
 
 public class MainViewModel : ViewModelBase
 {
@@ -21,6 +20,7 @@ public class MainViewModel : ViewModelBase
     private readonly INostrService _nostrService;
     private readonly IStorageService _storageService;
     private readonly IMlsService _mlsService;
+    private readonly IPlatformClipboard _clipboard;
 
     [Reactive] public User? CurrentUser { get; set; }
     [Reactive] public bool IsLoggedIn { get; set; }
@@ -57,18 +57,20 @@ public class MainViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> ReconnectCommand { get; }
     public ReactiveCommand<RelayStatusViewModel, Unit> ReconnectRelayCommand { get; }
 
-    public MainViewModel(IMessageService messageService, INostrService nostrService, IStorageService storageService, IMlsService mlsService)
+    public MainViewModel(IMessageService messageService, INostrService nostrService, IStorageService storageService, IMlsService mlsService,
+        IPlatformClipboard clipboard, IQrCodeGenerator qrCodeGenerator, IPlatformLauncher launcher)
     {
         _messageService = messageService;
         _nostrService = nostrService;
         _storageService = storageService;
         _mlsService = mlsService;
+        _clipboard = clipboard;
 
         // Initialize child view models
         ChatListViewModel = new ChatListViewModel(messageService, storageService, mlsService, nostrService);
-        ChatViewModel = new ChatViewModel(messageService, storageService, nostrService, mlsService);
-        SettingsViewModel = new SettingsViewModel(nostrService, storageService, mlsService);
-        LoginViewModel = new LoginViewModel(nostrService, storageService);
+        ChatViewModel = new ChatViewModel(messageService, storageService, nostrService, mlsService, clipboard);
+        SettingsViewModel = new SettingsViewModel(nostrService, storageService, mlsService, launcher);
+        LoginViewModel = new LoginViewModel(nostrService, storageService, qrCodeGenerator);
 
         // Set up commands
         ShowSettingsCommand = ReactiveCommand.Create(() =>
@@ -131,19 +133,12 @@ public class MainViewModel : ViewModelBase
 
             try
             {
-                if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
-                {
-                    var clipboard = desktop.MainWindow?.Clipboard;
-                    if (clipboard != null)
-                    {
-                        await clipboard.SetTextAsync(MyNpub);
-                        CopyStatusMessage = "Copied to clipboard!";
+                await _clipboard.SetTextAsync(MyNpub);
+                CopyStatusMessage = "Copied to clipboard!";
 
-                        // Clear the message after 2 seconds
-                        await Task.Delay(2000);
-                        CopyStatusMessage = null;
-                    }
-                }
+                // Clear the message after 2 seconds
+                await Task.Delay(2000);
+                CopyStatusMessage = null;
             }
             catch
             {

@@ -2,10 +2,15 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:vm="using:OpenChat.UI.ViewModels"
+             xmlns:vm="using:OpenChat.Presentation.ViewModels"
+             xmlns:converters="using:OpenChat.UI.Converters"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="700"
              x:Class="OpenChat.UI.Views.LoginView"
              x:DataType="vm:LoginViewModel">
+
+    <UserControl.Resources>
+        <converters:PngBytesToBitmapConverter x:Key="PngBytesToBitmapConverter" />
+    </UserControl.Resources>
 
     <Grid Background="{StaticResource BackgroundDarkBrush}">
         <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -193,10 +198,10 @@
                                    Classes="secondary" FontSize="13" TextWrapping="Wrap" />
 
                         <!-- QR Code -->
-                        <Border IsVisible="{Binding NostrConnectQrBitmap, Converter={x:Static ObjectConverters.IsNotNull}}"
+                        <Border IsVisible="{Binding NostrConnectQrPngBytes, Converter={x:Static ObjectConverters.IsNotNull}}"
                                 HorizontalAlignment="Center"
                                 Background="White" CornerRadius="8" Padding="8">
-                            <Image Source="{Binding NostrConnectQrBitmap}"
+                            <Image Source="{Binding NostrConnectQrPngBytes, Converter={StaticResource PngBytesToBitmapConverter}}"
                                    Width="200" Height="200"
                                    Stretch="Uniform" />
                         </Border>
