@@ -192,54 +192,27 @@
                         <TextBlock Text="Use Amber, nsecBunker, or other NIP-46 compatible signers"
                                    Classes="secondary" FontSize="13" TextWrapping="Wrap" />
 
-                        <!-- Supported Signers Info -->
-                        <Border Background="{StaticResource SurfaceSecondaryBrush}" CornerRadius="8" Padding="12">
-                            <StackPanel Spacing="8">
-                                <TextBlock Text="Supported signers:" Classes="muted" FontSize="12" />
-                                <StackPanel Orientation="Horizontal" Spacing="16">
-                                    <StackPanel Orientation="Horizontal" Spacing="4">
-                                        <Ellipse Width="8" Height="8" Fill="{StaticResource NostrPurpleBrush}" />
-                                        <TextBlock Text="Amber" FontSize="12" />
-                                    </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Spacing="4">
-                                        <Ellipse Width="8" Height="8" Fill="{StaticResource NostrPurpleBrush}" />
-                                        <TextBlock Text="nsecBunker" FontSize="12" />
-                                    </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Spacing="4">
-                                        <Ellipse Width="8" Height="8" Fill="{StaticResource NostrPurpleBrush}" />
-                                        <TextBlock Text="Nostr Connect" FontSize="12" />
-                                    </StackPanel>
-                                </StackPanel>
-                            </StackPanel>
+                        <!-- QR Code -->
+                        <Border IsVisible="{Binding NostrConnectQrBitmap, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                HorizontalAlignment="Center"
+                                Background="White" CornerRadius="8" Padding="8">
+                            <Image Source="{Binding NostrConnectQrBitmap}"
+                                   Width="200" Height="200"
+                                   Stretch="Uniform" />
                         </Border>
 
-                        <StackPanel Spacing="4">
-                            <TextBlock Text="Bunker URL" Classes="muted" FontSize="12" />
-                            <TextBox Text="{Binding BunkerUrl}"
-                                     Watermark="bunker://pubkey?relay=wss://relay.example.com"
-                                     TextWrapping="Wrap" />
-                        </StackPanel>
+                        <!-- Scanning for request label (visible when QR is shown and waiting) -->
+                        <TextBlock Text="Scanning for request..."
+                                   IsVisible="{Binding IsExternalSignerConnecting}"
+                                   HorizontalAlignment="Center"
+                                   Classes="secondary" FontSize="13" FontStyle="Italic" />
 
-                        <!-- Connection Status -->
+                        <!-- Connection Status (errors, connected, etc.) -->
                         <Border IsVisible="{Binding ExternalSignerStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                 Background="{StaticResource SurfaceSecondaryBrush}"
                                 CornerRadius="8" Padding="12">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <TextBlock Text="⏳" IsVisible="{Binding IsExternalSignerConnecting}" />
-                                <TextBlock Text="{Binding ExternalSignerStatus}" TextWrapping="Wrap" />
-                            </StackPanel>
+                            <TextBlock Text="{Binding ExternalSignerStatus}" TextWrapping="Wrap" />
                         </Border>
-
-                        <Button Classes="primary" HorizontalAlignment="Stretch"
-                                Command="{Binding ConnectExternalSignerCommand}"
-                                IsEnabled="{Binding !IsLoading}">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <PathIcon Data="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"
-                                          Width="18" Height="18" IsVisible="{Binding !IsExternalSignerConnecting}" />
-                                <TextBlock Text="Connect to Signer" IsVisible="{Binding !IsExternalSignerConnecting}" />
-                                <TextBlock Text="Connecting..." IsVisible="{Binding IsExternalSignerConnecting}" />
-                            </StackPanel>
-                        </Button>
 
                         <!-- Help Text -->
                         <Border Background="#3D8B5CF6" CornerRadius="4" Padding="8">
@@ -247,11 +220,23 @@
                                 <TextBlock Text="How to connect:" FontWeight="SemiBold" FontSize="12"
                                            Foreground="{StaticResource NostrPurpleLightBrush}" />
                                 <TextBlock Text="1. Open your signer app (Amber, etc.)" FontSize="12" Classes="secondary" />
-                                <TextBlock Text="2. Create a new connection or bunker" FontSize="12" Classes="secondary" />
-                                <TextBlock Text="3. Copy the bunker URL and paste it above" FontSize="12" Classes="secondary" />
-                                <TextBlock Text="4. Approve the connection in your signer app" FontSize="12" Classes="secondary" />
+                                <TextBlock Text="2. Scan the QR code above" FontSize="12" Classes="secondary" />
+                                <TextBlock Text="3. Approve the connection in your signer app" FontSize="12" Classes="secondary" />
                             </StackPanel>
                         </Border>
+
+                        <!-- Or paste bunker URL manually -->
+                        <TextBlock Text="Or paste a bunker URL manually" Classes="muted" FontSize="12"
+                                   HorizontalAlignment="Center" Margin="0,8,0,0" />
+
+                        <TextBox Text="{Binding BunkerUrl}"
+                                 Watermark="bunker://pubkey?relay=wss://relay.example.com"
+                                 TextWrapping="Wrap" />
+
+                        <Button Classes="primary" HorizontalAlignment="Stretch"
+                                Command="{Binding ConnectExternalSignerCommand}">
+                            <TextBlock Text="Connect" />
+                        </Button>
                     </StackPanel>
 
                 </StackPanel>

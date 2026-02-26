@@ -1,7 +1,9 @@
 using System.Reactive;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
+using Avalonia.Media.Imaging;
 using Microsoft.Extensions.Logging;
+using QRCoder;
 using ReactiveUI;
 using ReactiveUI.Fody.Helpers;
 using OpenChat.Core.Logging;
@@ -32,6 +34,8 @@ public class LoginViewModel : ViewModelBase
     [Reactive] public bool ShowExternalSigner { get; set; }
     [Reactive] public bool IsExternalSignerConnecting { get; set; }
     [Reactive] public string ExternalSignerStatus { get; set; } = string.Empty;
+    [Reactive] public string? NostrConnectUri { get; set; }
+    [Reactive] public Bitmap? NostrConnectQrBitmap { get; set; }
 
     // Login method selection
     [Reactive] public LoginMethod SelectedLoginMethod { get; set; } = LoginMethod.PrivateKey;
@@ -87,19 +91,19 @@ public class LoginViewModel : ViewModelBase
             // TODO: Copy to clipboard using platform-specific implementation
         });
 
-        SelectLoginMethodCommand = ReactiveCommand.Create<LoginMethod>(SelectLoginMethod);
+        SelectLoginMethodCommand = ReactiveCommand.CreateFromTask<LoginMethod>(SelectLoginMethodAsync);
 
-        // Subscribe to external signer status
+        // Subscribe to external signer status and auto-login on connect
         if (_externalSigner != null)
         {
             _externalSigner.Status
                 .ObserveOn(RxApp.MainThreadScheduler)
-                .Subscribe(status =>
+                .Subscribe(async status =>
                 {
                     ExternalSignerStatus = status.State switch
                     {
-                        ExternalSignerState.Connecting => "Connecting to signer...",
-                        ExternalSignerState.WaitingForApproval => "Waiting for approval in your signer app...",
+                        ExternalSignerState.Connecting => "Connecting to relay...",
+                        ExternalSignerState.WaitingForApproval => "Scan the QR code with your signer app...",
                         ExternalSignerState.Connected => "Connected!",
                         ExternalSignerState.Error => $"Error: {status.Error}",
                         _ => ""
@@ -107,16 +111,45 @@ public class LoginViewModel : ViewModelBase
 
                     IsExternalSignerConnecting = status.State == ExternalSignerState.Connecting ||
                                                  status.State == ExternalSignerState.WaitingForApproval;
+
+                    // Auto-login when signer connects via nostrconnect
+                    if (status.State == ExternalSignerState.Connected && status.PublicKeyHex != null)
+                    {
+                        await HandleSignerConnectedAsync(status.PublicKeyHex);
+                    }
                 });
         }
     }
 
-    private void SelectLoginMethod(LoginMethod method)
+    private async Task SelectLoginMethodAsync(LoginMethod method)
     {
         SelectedLoginMethod = method;
         ShowExternalSigner = method == LoginMethod.ExternalSigner;
         ShowGeneratedKeys = false;
         ErrorMessage = null;
+
+        // Auto-generate nostrconnect URI when Extension tab is selected
+        if (method == LoginMethod.ExternalSigner && NostrConnectUri == null && _externalSigner != null)
+        {
+            await GenerateNostrConnectAsync();
+        }
+    }
+
+    private async Task GenerateNostrConnectAsync()
+    {
+        try
+        {
+            var uri = await _externalSigner!.GenerateAndListenForConnectionAsync("wss://relay.damus.io");
+            NostrConnectUri = uri;
+            NostrConnectQrBitmap?.Dispose();
+            NostrConnectQrBitmap = GenerateQrBitmap(uri);
+            _logger.LogInformation("Generated nostrconnect QR. URI: {Uri}", uri);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to generate nostrconnect URI");
+            ErrorMessage = $"Failed to connect to relay: {ex.Message}";
+        }
     }
 
     private void GenerateNewKey()
@@ -207,6 +240,45 @@ public class LoginViewModel : ViewModelBase
         await ImportKeyAsync();
     }
 
+    private async Task HandleSignerConnectedAsync(string publicKeyHex)
+    {
+        try
+        {
+            var npub = _externalSigner!.Npub;
+            var user = new User
+            {
+                Id = Guid.NewGuid().ToString(),
+                PublicKeyHex = publicKeyHex,
+                Npub = npub,
+                DisplayName = $"User {npub?[..12]}...",
+                CreatedAt = DateTime.UtcNow,
+                IsCurrentUser = true,
+                PrivateKeyHex = null,
+                Nsec = null
+            };
+
+            await _storageService.InitializeAsync();
+            await _storageService.SaveCurrentUserAsync(user);
+            LoggedInUser = user;
+            _logger.LogInformation("Auto-logged in via external signer. Npub: {Npub}", npub);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to complete login after signer connected");
+            ErrorMessage = $"Failed to complete login: {ex.Message}";
+        }
+    }
+
+    private static Bitmap GenerateQrBitmap(string text)
+    {
+        using var generator = new QRCodeGenerator();
+        using var data = generator.CreateQrCode(text, QRCodeGenerator.ECCLevel.M);
+        var pngCode = new PngByteQRCode(data);
+        var pngBytes = pngCode.GetGraphic(8);
+        using var ms = new MemoryStream(pngBytes);
+        return new Bitmap(ms);
+    }
+
     private async Task ConnectExternalSignerAsync()
     {
         if (string.IsNullOrWhiteSpace(BunkerUrl) || _externalSigner == null) return;
@@ -221,22 +293,7 @@ public class LoginViewModel : ViewModelBase
 
             if (success && _externalSigner.PublicKeyHex != null)
             {
-                var user = new User
-                {
-                    Id = Guid.NewGuid().ToString(),
-                    PublicKeyHex = _externalSigner.PublicKeyHex,
-                    Npub = _externalSigner.Npub,
-                    DisplayName = $"User {_externalSigner.Npub?[..12]}...",
-                    CreatedAt = DateTime.UtcNow,
-                    IsCurrentUser = true,
-                    // Mark that this user uses external signer (no private key stored)
-                    PrivateKeyHex = null,
-                    Nsec = null
-                };
-
-                await _storageService.InitializeAsync();
-                await _storageService.SaveCurrentUserAsync(user);
-                LoggedInUser = user;
+                await HandleSignerConnectedAsync(_externalSigner.PublicKeyHex);
             }
             else
             {

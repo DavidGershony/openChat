@@ -68,6 +68,13 @@ public interface IExternalSigner
     /// Used when initiating connection from the app side.
     /// </summary>
     string GenerateConnectionUri(string relayUrl);
+
+    /// <summary>
+    /// Generate a nostrconnect:// URI, connect to the relay, and listen for an
+    /// incoming connection from a remote signer. Returns the URI for QR display.
+    /// Status observable will fire Connected when the signer connects.
+    /// </summary>
+    Task<string> GenerateAndListenForConnectionAsync(string relayUrl);
 }
 
 public class ExternalSignerStatus

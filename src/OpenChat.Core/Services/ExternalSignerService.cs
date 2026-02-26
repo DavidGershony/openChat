@@ -198,8 +198,33 @@ public class ExternalSignerService : IExternalSigner, IDisposable
     public string GenerateConnectionUri(string relayUrl)
     {
         GenerateLocalKeyPair();
-        var secret = GenerateRandomSecret();
-        return $"nostrconnect://{_localPublicKeyHex}?relay={Uri.EscapeDataString(relayUrl)}&metadata={Uri.EscapeDataString("{\"name\":\"OpenChat\"}")}";
+        _secret = GenerateRandomSecret();
+        return $"nostrconnect://{_localPublicKeyHex}?relay={Uri.EscapeDataString(relayUrl)}&secret={_secret}&metadata={Uri.EscapeDataString("{\"name\":\"OpenChat\"}")}";
+    }
+
+    public async Task<string> GenerateAndListenForConnectionAsync(string relayUrl)
+    {
+        _logger.LogInformation("Generating nostrconnect URI and listening on relay: {Relay}", relayUrl);
+
+        var uri = GenerateConnectionUri(relayUrl);
+        _relayUrl = relayUrl;
+
+        _logger.LogInformation("Generated nostrconnect URI. Local pubkey: {PubKey}", _localPublicKeyHex);
+
+        _status.OnNext(new ExternalSignerStatus { State = ExternalSignerState.Connecting });
+
+        _cts = new CancellationTokenSource();
+        _webSocket = new ClientWebSocket();
+        await _webSocket.ConnectAsync(new Uri(relayUrl), _cts.Token);
+        _logger.LogInformation("WebSocket connected to {Relay}. State: {State}", relayUrl, _webSocket.State);
+
+        _ = Task.Run(() => ListenForMessagesAsync(_cts.Token));
+        await SubscribeToSignerAsync();
+        _logger.LogInformation("Subscribed to kind 24133 events for pubkey {PubKey}. Waiting for signer...", _localPublicKeyHex?[..16]);
+
+        _status.OnNext(new ExternalSignerStatus { State = ExternalSignerState.WaitingForApproval });
+
+        return uri;
     }
 
     private bool ParseConnectionString(string connectionString, out string? remotePubKey, out string? relayUrl, out string? secret)
@@ -277,7 +302,7 @@ public class ExternalSignerService : IExternalSigner, IDisposable
         {
             ["kinds"] = new[] { 24133 },
             ["#p"] = new[] { _localPublicKeyHex },
-            ["since"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+            ["since"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 10
         };
 
         var req = JsonSerializer.Serialize(new object[] { "REQ", subscriptionId, filter });
@@ -356,8 +381,92 @@ public class ExternalSignerService : IExternalSigner, IDisposable
         return await tcs.Task;
     }
 
+    private void HandleIncomingConnect(string senderPubKey, JsonElement root, string? reqId)
+    {
+        _remotePubKey = senderPubKey;
+        PublicKeyHex = senderPubKey;
+
+        // Try to extract the actual signer pubkey from params[0] if available
+        if (root.TryGetProperty("params", out var paramsProp) && paramsProp.ValueKind == JsonValueKind.Array && paramsProp.GetArrayLength() > 0)
+        {
+            var signerPubKey = paramsProp[0].GetString();
+            if (!string.IsNullOrEmpty(signerPubKey) && signerPubKey.Length == 64)
+                PublicKeyHex = signerPubKey;
+        }
+        // Or from result field (some signers put pubkey there)
+        else if (root.TryGetProperty("result", out var resultProp))
+        {
+            var resultVal = resultProp.GetString();
+            if (!string.IsNullOrEmpty(resultVal) && resultVal.Length == 64)
+                PublicKeyHex = resultVal;
+        }
+
+        IsConnected = true;
+
+        if (reqId != null)
+            _ = SendNip46ResponseAsync(reqId, "ack", senderPubKey);
+
+        _logger.LogInformation("NIP-46 signer connected via nostrconnect. PubKey: {PubKey}", PublicKeyHex[..16]);
+        _status.OnNext(new ExternalSignerStatus
+        {
+            State = ExternalSignerState.Connected,
+            IsConnected = true,
+            PublicKeyHex = PublicKeyHex
+        });
+    }
+
+    private async Task SendNip46ResponseAsync(string requestId, string result, string recipientPubKey)
+    {
+        if (_webSocket == null || _localPrivateKeyHex == null || _localPublicKeyHex == null) return;
+
+        try
+        {
+            var responseJson = JsonSerializer.Serialize(new { id = requestId, result });
+            var encryptedContent = EncryptNip04(responseJson, _localPrivateKeyHex, recipientPubKey);
+
+            var createdAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var tags = new[] { new[] { "p", recipientPubKey } };
+            var eventId = ComputeEventId(24133, _localPublicKeyHex, createdAt, tags, encryptedContent);
+            var signature = SignEventId(eventId, _localPrivateKeyHex);
+
+            using var ms = new MemoryStream();
+            using (var ew = new Utf8JsonWriter(ms, new JsonWriterOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }))
+            {
+                ew.WriteStartArray();
+                ew.WriteStringValue("EVENT");
+                ew.WriteStartObject();
+                ew.WriteString("id", eventId);
+                ew.WriteString("pubkey", _localPublicKeyHex);
+                ew.WriteNumber("created_at", createdAt);
+                ew.WriteNumber("kind", 24133);
+                ew.WritePropertyName("tags");
+                ew.WriteStartArray();
+                foreach (var tag in tags)
+                {
+                    ew.WriteStartArray();
+                    foreach (var v in tag) ew.WriteStringValue(v);
+                    ew.WriteEndArray();
+                }
+                ew.WriteEndArray();
+                ew.WriteString("content", encryptedContent);
+                ew.WriteString("sig", signature);
+                ew.WriteEndObject();
+                ew.WriteEndArray();
+            }
+
+            var bytes = Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(ms.ToArray()));
+            await _webSocket.SendAsync(bytes, WebSocketMessageType.Text, true, _cts?.Token ?? CancellationToken.None);
+            _logger.LogDebug("NIP-46 sent ack response for request {Id}", requestId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "NIP-46 failed to send response for request {Id}", requestId);
+        }
+    }
+
     private async Task ListenForMessagesAsync(CancellationToken ct)
     {
+        _logger.LogInformation("NIP-46 WebSocket listener started. State: {State}", _webSocket?.State);
         var buffer = new byte[8192];
         var messageBuffer = new List<byte>();
 
@@ -369,6 +478,7 @@ public class ExternalSignerService : IExternalSigner, IDisposable
 
                 if (result.MessageType == WebSocketMessageType.Close)
                 {
+                    _logger.LogWarning("NIP-46 WebSocket closed by relay");
                     break;
                 }
 
@@ -383,13 +493,18 @@ public class ExternalSignerService : IExternalSigner, IDisposable
             }
             catch (OperationCanceledException)
             {
+                _logger.LogDebug("NIP-46 WebSocket listener cancelled");
                 break;
             }
-            catch
+            catch (Exception ex)
             {
-                // Continue listening
+                _logger.LogError(ex, "NIP-46 WebSocket listener error. State: {State}", _webSocket?.State);
+                // Continue listening on transient errors
             }
         }
+
+        _logger.LogWarning("NIP-46 WebSocket listener exited. State: {State}, Cancelled: {Cancelled}",
+            _webSocket?.State, ct.IsCancellationRequested);
     }
 
     private void ProcessMessage(string message)
@@ -438,29 +553,65 @@ public class ExternalSignerService : IExternalSigner, IDisposable
 
                     if (content != null && senderPubKey != null)
                     {
-                        // Decrypt the response
-                        var decrypted = DecryptNip04(content, _localPrivateKeyHex, senderPubKey);
-                        _logger.LogDebug("NIP-46 decrypted response: {Response}", decrypted.Length > 200 ? decrypted[..200] + "..." : decrypted);
-                        var response = JsonSerializer.Deserialize<Nip46Response>(decrypted);
-
-                        if (response?.Id != null && _pendingRequests.TryGetValue(response.Id, out var tcs))
+                        string decrypted;
+                        if (content.Contains("?iv="))
                         {
-                            _pendingRequests.Remove(response.Id);
+                            // NIP-04 format
+                            decrypted = DecryptNip04(content, _localPrivateKeyHex, senderPubKey);
+                            _logger.LogDebug("NIP-46 decrypted (NIP-04): {Message}", decrypted.Length > 200 ? decrypted[..200] + "..." : decrypted);
+                        }
+                        else
+                        {
+                            // NIP-44 format
+                            decrypted = DecryptNip44(content, _localPrivateKeyHex, senderPubKey);
+                            _logger.LogDebug("NIP-46 decrypted (NIP-44): {Message}", decrypted.Length > 200 ? decrypted[..200] + "..." : decrypted);
+                        }
 
-                            if (response.Error != null)
+                        // Check if this is an incoming request (has "method") or a response
+                        using var nip46Doc = JsonDocument.Parse(decrypted);
+                        if (nip46Doc.RootElement.TryGetProperty("method", out var methodProp))
+                        {
+                            // Incoming request from signer (nostrconnect:// flow)
+                            var method = methodProp.GetString();
+                            var reqId = nip46Doc.RootElement.TryGetProperty("id", out var idProp) ? idProp.GetString() : null;
+                            _logger.LogInformation("NIP-46 incoming request: method={Method}, id={Id}", method, reqId);
+
+                            if (method == "connect")
                             {
-                                _logger.LogWarning("NIP-46 signer returned error: {Error}", response.Error);
-                                tcs.TrySetException(new Exception(response.Error));
-                            }
-                            else
-                            {
-                                _logger.LogInformation("NIP-46 signer returned result for request {Id}", response.Id[..8]);
-                                tcs.TrySetResult(response.Result ?? "");
+                                HandleIncomingConnect(senderPubKey, nip46Doc.RootElement, reqId);
                             }
                         }
                         else
                         {
-                            _logger.LogWarning("NIP-46 received response for unknown request: {Id}", response?.Id);
+                            // Response to a pending request (bunker:// flow)
+                            var response = JsonSerializer.Deserialize<Nip46Response>(decrypted);
+
+                            if (response?.Id != null && _pendingRequests.TryGetValue(response.Id, out var tcs))
+                            {
+                                _pendingRequests.Remove(response.Id);
+
+                                if (response.Error != null)
+                                {
+                                    _logger.LogWarning("NIP-46 signer returned error: {Error}", response.Error);
+                                    tcs.TrySetException(new Exception(response.Error));
+                                }
+                                else
+                                {
+                                    _logger.LogInformation("NIP-46 signer returned result for request {Id}", response.Id[..8]);
+                                    tcs.TrySetResult(response.Result ?? "");
+                                }
+                            }
+                            else if (!IsConnected)
+                            {
+                                // Unsolicited response while waiting for connection (nostrconnect:// flow)
+                                // Some signers send a response instead of a request
+                                _logger.LogInformation("NIP-46 treating unsolicited response as connect from {Sender}", senderPubKey[..16]);
+                                HandleIncomingConnect(senderPubKey, nip46Doc.RootElement, response?.Id);
+                            }
+                            else
+                            {
+                                _logger.LogWarning("NIP-46 received response for unknown request: {Id}", response?.Id);
+                            }
                         }
                     }
                 }
@@ -607,6 +758,119 @@ public class ExternalSignerService : IExternalSigner, IDisposable
         var decrypted = decryptor.TransformFinalBlock(encryptedData, 0, encryptedData.Length);
 
         return Encoding.UTF8.GetString(decrypted);
+    }
+
+    /// <summary>
+    /// NIP-44 v2 decryption: HKDF + ChaCha20 + HMAC-SHA256.
+    /// </summary>
+    private static string DecryptNip44(string base64Payload, string privateKeyHex, string pubKeyHex)
+    {
+        var payload = Convert.FromBase64String(base64Payload);
+
+        // Payload: version(1) || nonce(32) || ciphertext(variable) || hmac(32)
+        if (payload.Length < 99) // 1 + 32 + 2(min padded) + 32(mac) = 67 minimum, but padded min is 32 so 1+32+32+32=97
+            throw new FormatException("NIP-44 payload too short");
+
+        if (payload[0] != 2)
+            throw new FormatException($"Unsupported NIP-44 version: {payload[0]}");
+
+        var nonce = payload[1..33];
+        var ciphertext = payload[33..^32];
+        var mac = payload[^32..];
+
+        // Shared secret (same ECDH as NIP-04)
+        var sharedSecret = ComputeNip04SharedSecret(privateKeyHex, pubKeyHex);
+
+        // Conversation key = HKDF-Extract(salt="nip44-v2", ikm=shared_secret)
+        var salt = Encoding.UTF8.GetBytes("nip44-v2");
+        var conversationKey = HKDF.Extract(HashAlgorithmName.SHA256, sharedSecret, salt);
+
+        // Message keys = HKDF-Expand(prk=conversation_key, info=nonce, L=76)
+        var messageKeys = HKDF.Expand(HashAlgorithmName.SHA256, conversationKey, 76, nonce);
+        var chachaKey = messageKeys[..32];
+        var chachaNonce = messageKeys[32..44];
+        var hmacKey = messageKeys[44..76];
+
+        // Verify HMAC-SHA256(hmac_key, nonce || ciphertext)
+        using var hmacSha256 = new System.Security.Cryptography.HMACSHA256(hmacKey);
+        var macInput = new byte[nonce.Length + ciphertext.Length];
+        Buffer.BlockCopy(nonce, 0, macInput, 0, nonce.Length);
+        Buffer.BlockCopy(ciphertext, 0, macInput, nonce.Length, ciphertext.Length);
+        var expectedMac = hmacSha256.ComputeHash(macInput);
+        if (!CryptographicOperations.FixedTimeEquals(expectedMac, mac))
+            throw new CryptographicException("NIP-44 HMAC verification failed");
+
+        // Decrypt with ChaCha20
+        var padded = ChaCha20Transform(chachaKey, chachaNonce, ciphertext);
+
+        // Unpad: first 2 bytes are big-endian plaintext length
+        var plaintextLen = (padded[0] << 8) | padded[1];
+        if (plaintextLen < 1 || plaintextLen > padded.Length - 2)
+            throw new FormatException($"Invalid NIP-44 padding length: {plaintextLen}");
+
+        return Encoding.UTF8.GetString(padded, 2, plaintextLen);
+    }
+
+    /// <summary>
+    /// ChaCha20 stream cipher (RFC 8439). XORs input with keystream.
+    /// </summary>
+    private static byte[] ChaCha20Transform(byte[] key, byte[] nonce, byte[] input)
+    {
+        var output = new byte[input.Length];
+        var state = new uint[16];
+        var working = new uint[16];
+
+        // Initialize state: constants + key + counter + nonce
+        state[0] = 0x61707865; // "expa"
+        state[1] = 0x3320646e; // "nd 3"
+        state[2] = 0x79622d32; // "2-by"
+        state[3] = 0x6b206574; // "te k"
+        for (int i = 0; i < 8; i++)
+            state[4 + i] = BitConverter.ToUInt32(key, i * 4);
+        state[12] = 0; // counter
+        for (int i = 0; i < 3; i++)
+            state[13 + i] = BitConverter.ToUInt32(nonce, i * 4);
+
+        int offset = 0;
+        while (offset < input.Length)
+        {
+            Array.Copy(state, working, 16);
+
+            // 20 rounds (10 double rounds)
+            for (int i = 0; i < 10; i++)
+            {
+                // Column rounds
+                QR(working, 0, 4, 8, 12); QR(working, 1, 5, 9, 13);
+                QR(working, 2, 6, 10, 14); QR(working, 3, 7, 11, 15);
+                // Diagonal rounds
+                QR(working, 0, 5, 10, 15); QR(working, 1, 6, 11, 12);
+                QR(working, 2, 7, 8, 13); QR(working, 3, 4, 9, 14);
+            }
+
+            // Add initial state and XOR with input
+            for (int i = 0; i < 16; i++)
+                working[i] += state[i];
+
+            var keystream = new byte[64];
+            Buffer.BlockCopy(working, 0, keystream, 0, 64);
+
+            int blockLen = Math.Min(64, input.Length - offset);
+            for (int i = 0; i < blockLen; i++)
+                output[offset + i] = (byte)(input[offset + i] ^ keystream[i]);
+
+            offset += 64;
+            state[12]++; // increment counter
+        }
+
+        return output;
+
+        static void QR(uint[] s, int a, int b, int c, int d)
+        {
+            s[a] += s[b]; s[d] ^= s[a]; s[d] = (s[d] << 16) | (s[d] >> 16);
+            s[c] += s[d]; s[b] ^= s[c]; s[b] = (s[b] << 12) | (s[b] >> 20);
+            s[a] += s[b]; s[d] ^= s[a]; s[d] = (s[d] << 8) | (s[d] >> 24);
+            s[c] += s[d]; s[b] ^= s[c]; s[b] = (s[b] << 7) | (s[b] >> 25);
+        }
     }
 
     public void Dispose()
