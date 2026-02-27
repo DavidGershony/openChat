@@ -26,6 +26,7 @@ public class NostrService : INostrService, IDisposable
     private readonly ConcurrentDictionary<string, ClientWebSocket> _relayConnections = new();
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _relayListeners = new();
     private readonly HashSet<string> _subscribedGroupIds = new();
+    private DateTimeOffset? _groupMessagesSince;
     private string? _subscribedUserPubKey;
     private bool _disposed;
 
@@ -128,6 +129,11 @@ public class NostrService : INostrService, IDisposable
                     { "kinds", new[] { 445 } },
                     { "#h", _subscribedGroupIds.ToArray() }
                 };
+
+                if (_groupMessagesSince.HasValue)
+                {
+                    filter["since"] = _groupMessagesSince.Value.ToUnixTimeSeconds();
+                }
 
                 var reqMessage = JsonSerializer.Serialize(new object[] { "REQ", subId, filter });
                 var reqBytes = Encoding.UTF8.GetBytes(reqMessage);
@@ -608,7 +614,7 @@ public class NostrService : INostrService, IDisposable
         }
     }
 
-    public async Task SubscribeToGroupMessagesAsync(IEnumerable<string> groupIds)
+    public async Task SubscribeToGroupMessagesAsync(IEnumerable<string> groupIds, DateTimeOffset? since = null)
     {
         // Filter out invalid group IDs (max 64 hex chars = 32 bytes, typical for MLS group IDs)
         var groupList = groupIds
@@ -634,6 +640,11 @@ public class NostrService : INostrService, IDisposable
             _subscribedGroupIds.Add(groupId);
         }
 
+        if (since.HasValue)
+        {
+            _groupMessagesSince = since;
+        }
+
         // Build REQ for kind 445 events with h-tags matching our groups (MIP-03 uses 'h' tag)
         var subId = $"group_{Guid.NewGuid():N}"[..16];
 
@@ -643,6 +654,11 @@ public class NostrService : INostrService, IDisposable
             { "kinds", new[] { 445 } },
             { "#h", groupList.ToArray() }
         };
+
+        if (since.HasValue)
+        {
+            filter["since"] = since.Value.ToUnixTimeSeconds();
+        }
 
         var reqMessage = JsonSerializer.Serialize(new object[] { "REQ", subId, filter });
         var reqBytes = Encoding.UTF8.GetBytes(reqMessage);

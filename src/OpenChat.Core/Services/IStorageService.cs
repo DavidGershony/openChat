@@ -28,6 +28,7 @@ public interface IStorageService
     Task SaveMessageAsync(Message message);
     Task UpdateMessageStatusAsync(string messageId, MessageStatus status);
     Task DeleteMessageAsync(string messageId);
+    Task<bool> MessageExistsByNostrEventIdAsync(string nostrEventId);
 
     // KeyPackage operations
     Task<KeyPackage?> GetKeyPackageAsync(string id);
@@ -45,4 +46,8 @@ public interface IStorageService
     // MLS state
     Task SaveMlsStateAsync(string groupId, byte[] state);
     Task<byte[]?> GetMlsStateAsync(string groupId);
+    Task DeleteMlsStateAsync(string groupId);
+
+    // Welcome event management
+    Task UndismissWelcomeEventAsync(string nostrEventId);
 }

@@ -381,7 +381,15 @@ public class MainViewModel : ViewModelBase
 
         if (groupIds.Count > 0)
         {
-            await _nostrService.SubscribeToGroupMessagesAsync(groupIds);
+            var latestActivity = chats
+                .Where(c => c.Type == ChatType.Group && c.MlsGroupId != null)
+                .Select(c => c.LastActivityAt)
+                .DefaultIfEmpty(DateTime.MinValue)
+                .Max();
+            DateTimeOffset? since = latestActivity > DateTime.MinValue
+                ? new DateTimeOffset(latestActivity, TimeSpan.Zero).AddMinutes(-5)
+                : null;
+            await _nostrService.SubscribeToGroupMessagesAsync(groupIds, since);
         }
     }
 

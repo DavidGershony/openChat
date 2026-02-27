@@ -149,6 +149,15 @@
                     <Grid ColumnDefinitions="Auto,*,Auto" IsVisible="{Binding IsVisible}">
                         <Grid.ContextMenu>
                             <ContextMenu>
+                                <MenuItem Header="Reset Group"
+                                          IsVisible="{Binding IsGroup}"
+                                          Command="{Binding #ChatListBox.DataContext.ResetGroupCommand}"
+                                          CommandParameter="{Binding}">
+                                    <MenuItem.Icon>
+                                        <PathIcon Data="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"
+                                                  Width="16" Height="16" />
+                                    </MenuItem.Icon>
+                                </MenuItem>
                                 <MenuItem Header="Delete"
                                           Command="{Binding #ChatListBox.DataContext.DeleteChatCommand}"
                                           CommandParameter="{Binding}">
@@ -565,6 +574,58 @@
                                 Background="{StaticResource StatusErrorBrush}"
                                 Content="Delete"
                                 Command="{Binding ConfirmDeleteChatCommand}"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Border>
+
+        <!-- Reset Group Confirmation Dialog -->
+        <Border IsVisible="{Binding ShowResetGroupDialog}"
+                Background="#80000000"
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+            <Border Classes="card"
+                    Background="{StaticResource BackgroundCardBrush}"
+                    CornerRadius="12"
+                    Padding="20"
+                    Margin="16"
+                    VerticalAlignment="Center"
+                    HorizontalAlignment="Stretch"
+                    MaxWidth="350">
+                <StackPanel Spacing="16">
+                    <!-- Dialog Title -->
+                    <TextBlock Text="Reset Group"
+                               FontSize="20" FontWeight="Bold"
+                               HorizontalAlignment="Center" />
+
+                    <!-- Confirmation Message -->
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Reset encryption state for this group?"
+                                   TextWrapping="Wrap"
+                                   HorizontalAlignment="Center" />
+                        <TextBlock Text="{Binding GroupToReset.Name}"
+                                   FontWeight="SemiBold"
+                                   HorizontalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="This will clear encryption state and remove this chat. You'll need to re-accept the group invite."
+                                   Classes="secondary" FontSize="12"
+                                   TextWrapping="Wrap"
+                                   HorizontalAlignment="Center" />
+                    </StackPanel>
+
+                    <!-- Buttons -->
+                    <Grid ColumnDefinitions="*,12,*" Margin="0,8,0,0">
+                        <Button Grid.Column="0"
+                                Classes="secondary"
+                                Content="Cancel"
+                                Command="{Binding CancelResetGroupCommand}"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center" />
+                        <Button Grid.Column="2"
+                                Background="#E6A817"
+                                Content="Reset"
+                                Command="{Binding ConfirmResetGroupCommand}"
                                 HorizontalAlignment="Stretch"
                                 HorizontalContentAlignment="Center" />
                     </Grid>

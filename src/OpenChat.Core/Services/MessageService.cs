@@ -17,6 +17,7 @@ public class MessageService : IMessageService, IDisposable
     private readonly Subject<(string MessageId, MessageStatus Status)> _messageStatusUpdates = new();
     private readonly Subject<Chat> _chatUpdates = new();
     private readonly Subject<PendingInvite> _newInvites = new();
+    private readonly Subject<MlsDecryptionError> _decryptionErrors = new();
 
     private User? _currentUser;
     private IDisposable? _eventSubscription;
@@ -26,6 +27,7 @@ public class MessageService : IMessageService, IDisposable
     public IObservable<(string MessageId, MessageStatus Status)> MessageStatusUpdates => _messageStatusUpdates.AsObservable();
     public IObservable<Chat> ChatUpdates => _chatUpdates.AsObservable();
     public IObservable<PendingInvite> NewInvites => _newInvites.AsObservable();
+    public IObservable<MlsDecryptionError> DecryptionErrors => _decryptionErrors.AsObservable();
 
     public MessageService(IStorageService storageService, INostrService nostrService, IMlsService mlsService)
     {
@@ -121,6 +123,7 @@ public class MessageService : IMessageService, IDisposable
                     groupIdHex[..Math.Min(16, groupIdHex.Length)], content.Length);
 
                 var encryptedData = await _mlsService.EncryptMessageAsync(chat.MlsGroupId, content);
+                await PersistMlsGroupStateAsync(chat.MlsGroupId);
                 _logger.LogDebug("SendMessage: encrypted to {Len} bytes, publishing kind 445", encryptedData.Length);
 
                 message.NostrEventId = await _nostrService.PublishGroupMessageAsync(
@@ -272,6 +275,7 @@ public class MessageService : IMessageService, IDisposable
 
         // Add to MLS group and get Welcome
         var welcome = await _mlsService.AddMemberAsync(chat.MlsGroupId, keyPackage);
+        await PersistMlsGroupStateAsync(chat.MlsGroupId);
         _logger.LogInformation("AddMember: MLS add succeeded, welcome={WelcomeLen} bytes, commit={CommitLen} bytes",
             welcome.WelcomeData.Length, welcome.CommitData?.Length ?? 0);
 
@@ -305,6 +309,7 @@ public class MessageService : IMessageService, IDisposable
 
         // Remove from MLS group
         var commitData = await _mlsService.RemoveMemberAsync(chat.MlsGroupId, memberPublicKey);
+        await PersistMlsGroupStateAsync(chat.MlsGroupId);
 
         // Publish commit
         if (_currentUser?.PrivateKeyHex != null)
@@ -400,6 +405,20 @@ public class MessageService : IMessageService, IDisposable
             chat.IsMuted = muted;
             await _storageService.SaveChatAsync(chat);
             _chatUpdates.OnNext(chat);
+        }
+    }
+
+    private async Task PersistMlsGroupStateAsync(byte[] groupId)
+    {
+        try
+        {
+            var hex = Convert.ToHexString(groupId).ToLowerInvariant();
+            var state = await _mlsService.ExportGroupStateAsync(groupId);
+            await _storageService.SaveMlsStateAsync(hex, state);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to persist MLS state for group");
         }
     }
 
@@ -535,10 +554,41 @@ public class MessageService : IMessageService, IDisposable
             return;
         }
 
+        // Deduplicate: skip events already processed and saved to DB
+        if (!string.IsNullOrEmpty(nostrEvent.EventId) &&
+            await _storageService.MessageExistsByNostrEventIdAsync(nostrEvent.EventId))
+        {
+            _logger.LogDebug("HandleGroupMessage: skipping duplicate event {EventId}",
+                nostrEvent.EventId[..Math.Min(16, nostrEvent.EventId.Length)]);
+            return;
+        }
+
         // Decrypt message
         var encryptedData = Convert.FromBase64String(nostrEvent.Content);
         _logger.LogDebug("HandleGroupMessage: decrypting {Len} bytes for chat {ChatId}", encryptedData.Length, chat.Id);
-        var decrypted = await _mlsService.DecryptMessageAsync(groupId, encryptedData);
+
+        MlsDecryptedMessage decrypted;
+        try
+        {
+            decrypted = await _mlsService.DecryptMessageAsync(groupId, encryptedData);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "HandleGroupMessage: MLS decrypt failed for event {EventId} in group {GroupId}",
+                nostrEvent.EventId[..Math.Min(16, nostrEvent.EventId.Length)],
+                groupIdHex[..Math.Min(16, groupIdHex.Length)]);
+            _decryptionErrors.OnNext(new MlsDecryptionError
+            {
+                ChatId = chat.Id,
+                ChatName = chat.Name,
+                EventId = nostrEvent.EventId,
+                ErrorMessage = ex.Message,
+                Timestamp = DateTime.UtcNow
+            });
+            return;
+        }
+
+        await PersistMlsGroupStateAsync(groupId);
         _logger.LogInformation("HandleGroupMessage: decrypted message from {Sender}, epoch={Epoch}, content length={Len}",
             decrypted.SenderPublicKey[..Math.Min(16, decrypted.SenderPublicKey.Length)], decrypted.Epoch, decrypted.Plaintext.Length);
 
@@ -590,6 +640,7 @@ public class MessageService : IMessageService, IDisposable
         _logger.LogInformation("AcceptInvite: processing welcome with wrapperEventId={EventId}",
             invite.NostrEventId[..Math.Min(16, invite.NostrEventId.Length)]);
         var groupInfo = await _mlsService.ProcessWelcomeAsync(invite.WelcomeData, invite.NostrEventId);
+        await PersistMlsGroupStateAsync(groupInfo.GroupId);
 
         // Create chat for the group — fall back to sender name if the MLS Welcome
         // didn't carry a group name (e.g., Rust-originated or older welcomes)
@@ -607,6 +658,7 @@ public class MessageService : IMessageService, IDisposable
             MlsGroupId = groupInfo.GroupId,
             MlsEpoch = groupInfo.Epoch,
             ParticipantPublicKeys = groupInfo.MemberPublicKeys,
+            WelcomeNostrEventId = invite.NostrEventId,
             CreatedAt = DateTime.UtcNow,
             LastActivityAt = DateTime.UtcNow
         };
@@ -692,6 +744,32 @@ public class MessageService : IMessageService, IDisposable
             welcomeEvents.Count(), newCount);
     }
 
+    public async Task ResetGroupAsync(string chatId)
+    {
+        var chat = await _storageService.GetChatAsync(chatId)
+            ?? throw new ArgumentException("Chat not found", nameof(chatId));
+
+        if (chat.MlsGroupId == null)
+            throw new InvalidOperationException("Cannot reset a non-MLS chat");
+
+        var groupIdHex = Convert.ToHexString(chat.MlsGroupId).ToLowerInvariant();
+        _logger.LogInformation("ResetGroup: resetting MLS state for chat {ChatId}, group {GroupId}",
+            chatId, groupIdHex[..Math.Min(16, groupIdHex.Length)]);
+
+        // 1. Delete corrupted MLS state
+        await _storageService.DeleteMlsStateAsync(groupIdHex);
+
+        // 2. Un-dismiss the welcome so rescan can find it
+        if (!string.IsNullOrEmpty(chat.WelcomeNostrEventId))
+            await _storageService.UndismissWelcomeEventAsync(chat.WelcomeNostrEventId);
+
+        // 3. Delete the chat and messages
+        await _storageService.DeleteChatAsync(chatId);
+        _chatUpdates.OnNext(chat);
+
+        _logger.LogInformation("ResetGroup: chat {ChatId} deleted, welcome un-dismissed", chatId);
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -701,6 +779,7 @@ public class MessageService : IMessageService, IDisposable
         _messageStatusUpdates.Dispose();
         _chatUpdates.Dispose();
         _newInvites.Dispose();
+        _decryptionErrors.Dispose();
 
         _disposed = true;
     }

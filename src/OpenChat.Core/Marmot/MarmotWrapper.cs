@@ -55,9 +55,10 @@ public class MarmotWrapper : IDisposable
         }
         catch (DllNotFoundException ex)
         {
-            // Native library not available - use mock implementation for development
-            _logger.LogWarning(ex, "Native Marmot library not found. Using mock implementation for development.");
-            _initialized = true;
+            _logger.LogError(ex, "Native Marmot library (openchat_native.dll) not found. MLS operations will not work.");
+            throw new MarmotException(
+                "Native Marmot library (openchat_native.dll) not found. " +
+                "Ensure the library is built and placed alongside the application.", ex);
         }
 
         await Task.CompletedTask;

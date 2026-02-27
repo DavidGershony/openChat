@@ -115,7 +115,7 @@ public interface INostrService
     /// <summary>
     /// Subscribe to group messages (kind 445) for specific groups.
     /// </summary>
-    Task SubscribeToGroupMessagesAsync(IEnumerable<string> groupIds);
+    Task SubscribeToGroupMessagesAsync(IEnumerable<string> groupIds, DateTimeOffset? since = null);
 
     /// <summary>
     /// Observable stream of Welcome messages (kind 444).

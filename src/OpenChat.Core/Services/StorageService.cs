@@ -79,7 +79,8 @@ public class StorageService : IStorageService
                 LastActivityAt TEXT NOT NULL,
                 IsMuted INTEGER NOT NULL DEFAULT 0,
                 IsPinned INTEGER NOT NULL DEFAULT 0,
-                IsArchived INTEGER NOT NULL DEFAULT 0
+                IsArchived INTEGER NOT NULL DEFAULT 0,
+                WelcomeNostrEventId TEXT
             );
 
             CREATE TABLE IF NOT EXISTS ChatParticipants (
@@ -166,11 +167,25 @@ public class StorageService : IStorageService
 
             CREATE INDEX IF NOT EXISTS IX_Messages_ChatId ON Messages(ChatId);
             CREATE INDEX IF NOT EXISTS IX_Messages_Timestamp ON Messages(Timestamp);
+            CREATE INDEX IF NOT EXISTS IX_Messages_NostrEventId ON Messages(NostrEventId);
             CREATE INDEX IF NOT EXISTS IX_Chats_LastActivityAt ON Chats(LastActivityAt);
             CREATE INDEX IF NOT EXISTS IX_KeyPackages_OwnerPublicKey ON KeyPackages(OwnerPublicKey);
         ";
 
             await command.ExecuteNonQueryAsync();
+
+            // Migration: add WelcomeNostrEventId column for existing databases
+            try
+            {
+                var migrate = connection.CreateCommand();
+                migrate.CommandText = "ALTER TABLE Chats ADD COLUMN WelcomeNostrEventId TEXT";
+                await migrate.ExecuteNonQueryAsync();
+            }
+            catch (SqliteException)
+            {
+                // Column already exists — ignore
+            }
+
             _initialized = true;
             _logger.LogInformation("Database schema initialized successfully");
         }
@@ -335,9 +350,9 @@ public class StorageService : IStorageService
         var command = connection.CreateCommand();
         command.CommandText = @"
             INSERT OR REPLACE INTO Chats
-            (Id, Name, Type, MlsGroupId, MlsEpoch, AvatarUrl, Description, UnreadCount, CreatedAt, LastActivityAt, IsMuted, IsPinned, IsArchived)
+            (Id, Name, Type, MlsGroupId, MlsEpoch, AvatarUrl, Description, UnreadCount, CreatedAt, LastActivityAt, IsMuted, IsPinned, IsArchived, WelcomeNostrEventId)
             VALUES
-            (@Id, @Name, @Type, @MlsGroupId, @MlsEpoch, @AvatarUrl, @Description, @UnreadCount, @CreatedAt, @LastActivityAt, @IsMuted, @IsPinned, @IsArchived)";
+            (@Id, @Name, @Type, @MlsGroupId, @MlsEpoch, @AvatarUrl, @Description, @UnreadCount, @CreatedAt, @LastActivityAt, @IsMuted, @IsPinned, @IsArchived, @WelcomeNostrEventId)";
 
         command.Parameters.AddWithValue("@Id", chat.Id);
         command.Parameters.AddWithValue("@Name", chat.Name);
@@ -352,6 +367,7 @@ public class StorageService : IStorageService
         command.Parameters.AddWithValue("@IsMuted", chat.IsMuted ? 1 : 0);
         command.Parameters.AddWithValue("@IsPinned", chat.IsPinned ? 1 : 0);
         command.Parameters.AddWithValue("@IsArchived", chat.IsArchived ? 1 : 0);
+        command.Parameters.AddWithValue("@WelcomeNostrEventId", chat.WelcomeNostrEventId ?? (object)DBNull.Value);
 
         await command.ExecuteNonQueryAsync();
 
@@ -527,6 +543,17 @@ public class StorageService : IStorageService
         await command.ExecuteNonQueryAsync();
     }
 
+    public async Task<bool> MessageExistsByNostrEventIdAsync(string nostrEventId)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM Messages WHERE NostrEventId = @NostrEventId";
+        command.Parameters.AddWithValue("@NostrEventId", nostrEventId);
+        var count = (long)(await command.ExecuteScalarAsync())!;
+        return count > 0;
+    }
+
     public async Task<KeyPackage?> GetKeyPackageAsync(string id)
     {
         await using var connection = new SqliteConnection(_connectionString);
@@ -645,6 +672,30 @@ public class StorageService : IStorageService
 
         var result = await command.ExecuteScalarAsync();
         return result as byte[];
+    }
+
+    public async Task DeleteMlsStateAsync(string groupId)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM MlsStates WHERE GroupId = @GroupId";
+        command.Parameters.AddWithValue("@GroupId", groupId);
+
+        await command.ExecuteNonQueryAsync();
+    }
+
+    public async Task UndismissWelcomeEventAsync(string nostrEventId)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM DismissedWelcomeEvents WHERE NostrEventId = @NostrEventId";
+        command.Parameters.AddWithValue("@NostrEventId", nostrEventId);
+
+        await command.ExecuteNonQueryAsync();
     }
 
     public async Task<IEnumerable<PendingInvite>> GetPendingInvitesAsync()
@@ -767,6 +818,7 @@ public class StorageService : IStorageService
 
     private static Chat ReadChat(SqliteDataReader reader)
     {
+        var welcomeOrdinal = reader.GetOrdinal("WelcomeNostrEventId");
         return new Chat
         {
             Id = reader.GetString(reader.GetOrdinal("Id")),
@@ -781,7 +833,8 @@ public class StorageService : IStorageService
             LastActivityAt = DateTime.Parse(reader.GetString(reader.GetOrdinal("LastActivityAt"))),
             IsMuted = reader.GetInt32(reader.GetOrdinal("IsMuted")) == 1,
             IsPinned = reader.GetInt32(reader.GetOrdinal("IsPinned")) == 1,
-            IsArchived = reader.GetInt32(reader.GetOrdinal("IsArchived")) == 1
+            IsArchived = reader.GetInt32(reader.GetOrdinal("IsArchived")) == 1,
+            WelcomeNostrEventId = reader.IsDBNull(welcomeOrdinal) ? null : reader.GetString(welcomeOrdinal)
         };
     }
 

@@ -81,6 +81,12 @@ public class Chat
     /// Nostr relay URLs associated with this chat.
     /// </summary>
     public List<string> RelayUrls { get; set; } = new();
+
+    /// <summary>
+    /// The Nostr event ID of the Welcome (kind 444) that created this chat.
+    /// Used by group reset to un-dismiss the welcome and allow re-joining.
+    /// </summary>
+    public string? WelcomeNostrEventId { get; set; }
 }
 
 public enum ChatType

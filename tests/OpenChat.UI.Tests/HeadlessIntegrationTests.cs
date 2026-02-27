@@ -404,6 +404,157 @@ public class HeadlessIntegrationTests
     }
 
     // ═══════════════════════════════════════════════════════════════════
+    // Test 10: Reset Group removes chat from list and triggers rescan
+    // ═══════════════════════════════════════════════════════════════════
+
+    [AvaloniaFact]
+    public async Task ResetGroup_RemovesChatFromList_AndTriggersRescan()
+    {
+        var chatUpdateSubject = new Subject<Chat>();
+        var (mockMessage, mockNostr, mockStorage, mockMls) = CreateMocks();
+
+        mockMessage.Setup(m => m.ChatUpdates).Returns(chatUpdateSubject.AsObservable());
+
+        // Pre-existing group chat
+        var groupId = new byte[] { 0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C };
+        var existingChat = new Chat
+        {
+            Id = "group-reset-test",
+            Name = "Corrupted Group",
+            Type = ChatType.Group,
+            MlsGroupId = groupId,
+            MlsEpoch = 5,
+            WelcomeNostrEventId = "welcome-event-abc123",
+            ParticipantPublicKeys = new List<string> { "bb".PadLeft(64, 'b') },
+            CreatedAt = DateTime.UtcNow.AddHours(-1),
+            LastActivityAt = DateTime.UtcNow
+        };
+        mockMessage.Setup(m => m.GetChatsAsync()).ReturnsAsync(new[] { existingChat });
+        mockMessage.Setup(m => m.GetPendingInvitesAsync()).ReturnsAsync(Enumerable.Empty<PendingInvite>());
+        mockMessage.Setup(m => m.ResetGroupAsync("group-reset-test")).Returns(Task.CompletedTask);
+        mockMessage.Setup(m => m.RescanInvitesAsync()).Returns(Task.CompletedTask);
+
+        var chatListVm = new ChatListViewModel(mockMessage.Object, mockStorage.Object, mockMls.Object, mockNostr.Object);
+        await chatListVm.LoadChatsAsync();
+        Dispatcher.UIThread.RunJobs();
+
+        // Chat should be present
+        Assert.Single(chatListVm.Chats);
+        Assert.Equal("Corrupted Group", chatListVm.Chats[0].Name);
+
+        // Step 1: Right-click → Reset Group (fires ResetGroupCommand)
+        var chatItem = chatListVm.Chats[0];
+        await chatListVm.ResetGroupCommand.Execute(chatItem);
+        Dispatcher.UIThread.RunJobs();
+
+        // Dialog should appear
+        Assert.True(chatListVm.ShowResetGroupDialog);
+        Assert.Equal("Corrupted Group", chatListVm.GroupToReset?.Name);
+
+        // Step 2: Confirm the reset
+        await chatListVm.ConfirmResetGroupCommand.Execute();
+        Dispatcher.UIThread.RunJobs();
+
+        // Chat should be removed from the list
+        Assert.Empty(chatListVm.Chats);
+
+        // Dialog should be closed
+        Assert.False(chatListVm.ShowResetGroupDialog);
+        Assert.Null(chatListVm.GroupToReset);
+
+        // ResetGroupAsync was called on MessageService
+        mockMessage.Verify(m => m.ResetGroupAsync("group-reset-test"), Times.Once);
+
+        // RescanInvitesAsync was called to find the original welcome
+        mockMessage.Verify(m => m.RescanInvitesAsync(), Times.Once);
+
+        // Status message was cleared by rescan's 3-second delay, but the important
+        // assertions are above: chat removed, dialog closed, correct service calls made.
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Test 11: Cancel Reset Group keeps chat in list
+    // ═══════════════════════════════════════════════════════════════════
+
+    [AvaloniaFact]
+    public async Task CancelResetGroup_KeepsChatInList()
+    {
+        var (mockMessage, mockNostr, mockStorage, mockMls) = CreateMocks();
+
+        var existingChat = new Chat
+        {
+            Id = "group-cancel-test",
+            Name = "Keep This Group",
+            Type = ChatType.Group,
+            MlsGroupId = new byte[16],
+            CreatedAt = DateTime.UtcNow,
+            LastActivityAt = DateTime.UtcNow
+        };
+        mockMessage.Setup(m => m.GetChatsAsync()).ReturnsAsync(new[] { existingChat });
+        mockMessage.Setup(m => m.GetPendingInvitesAsync()).ReturnsAsync(Enumerable.Empty<PendingInvite>());
+
+        var chatListVm = new ChatListViewModel(mockMessage.Object, mockStorage.Object, mockMls.Object, mockNostr.Object);
+        await chatListVm.LoadChatsAsync();
+        Dispatcher.UIThread.RunJobs();
+
+        // Trigger reset dialog
+        var chatItem = chatListVm.Chats[0];
+        await chatListVm.ResetGroupCommand.Execute(chatItem);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(chatListVm.ShowResetGroupDialog);
+
+        // Cancel the reset
+        await chatListVm.CancelResetGroupCommand.Execute();
+        Dispatcher.UIThread.RunJobs();
+
+        // Chat should still be there
+        Assert.Single(chatListVm.Chats);
+        Assert.Equal("Keep This Group", chatListVm.Chats[0].Name);
+
+        // Dialog should be closed
+        Assert.False(chatListVm.ShowResetGroupDialog);
+        Assert.Null(chatListVm.GroupToReset);
+
+        // ResetGroupAsync should NOT have been called
+        mockMessage.Verify(m => m.ResetGroupAsync(It.IsAny<string>()), Times.Never);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Test 12: Decryption error surfaces status message
+    // ═══════════════════════════════════════════════════════════════════
+
+    [AvaloniaFact]
+    public void DecryptionError_SurfacesStatusMessage()
+    {
+        var errorSubject = new Subject<MlsDecryptionError>();
+        var (mockMessage, mockNostr, mockStorage, mockMls) = CreateMocks();
+
+        mockMessage.Setup(m => m.DecryptionErrors).Returns(errorSubject.AsObservable());
+        mockMessage.Setup(m => m.GetChatsAsync()).ReturnsAsync(Enumerable.Empty<Chat>());
+        mockMessage.Setup(m => m.GetPendingInvitesAsync()).ReturnsAsync(Enumerable.Empty<PendingInvite>());
+
+        var chatListVm = new ChatListViewModel(mockMessage.Object, mockStorage.Object, mockMls.Object, mockNostr.Object);
+        Dispatcher.UIThread.RunJobs();
+
+        // Fire a decryption error
+        errorSubject.OnNext(new MlsDecryptionError
+        {
+            ChatId = "broken-group",
+            ChatName = "Broken Group",
+            EventId = "event789",
+            ErrorMessage = "MLS state corrupted",
+            Timestamp = DateTime.UtcNow
+        });
+        Dispatcher.UIThread.RunJobs();
+
+        // Status message should mention the group name and reset
+        Assert.NotNull(chatListVm.StatusMessage);
+        Assert.Contains("Broken Group", chatListVm.StatusMessage);
+        Assert.Contains("reset", chatListVm.StatusMessage.ToLower());
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
     // Helpers
     // ═══════════════════════════════════════════════════════════════════
 
@@ -419,6 +570,7 @@ public class HeadlessIntegrationTests
         mockMessage.Setup(m => m.MessageStatusUpdates).Returns(Observable.Empty<(string, MessageStatus)>());
         mockMessage.Setup(m => m.ChatUpdates).Returns(Observable.Empty<Chat>());
         mockMessage.Setup(m => m.NewInvites).Returns(Observable.Empty<PendingInvite>());
+        mockMessage.Setup(m => m.DecryptionErrors).Returns(Observable.Empty<MlsDecryptionError>());
         mockMessage.Setup(m => m.InitializeAsync()).Returns(Task.CompletedTask);
         mockMessage.Setup(m => m.GetChatsAsync()).ReturnsAsync(Enumerable.Empty<Chat>());
         mockMessage.Setup(m => m.GetPendingInvitesAsync()).ReturnsAsync(Enumerable.Empty<PendingInvite>());
@@ -431,7 +583,7 @@ public class HeadlessIntegrationTests
         mockNostr.Setup(n => n.ConnectAsync(It.IsAny<string>())).Returns(Task.CompletedTask);
         mockNostr.Setup(n => n.DisconnectAsync()).Returns(Task.CompletedTask);
         mockNostr.Setup(n => n.SubscribeToWelcomesAsync(It.IsAny<string>())).Returns(Task.CompletedTask);
-        mockNostr.Setup(n => n.SubscribeToGroupMessagesAsync(It.IsAny<IEnumerable<string>>())).Returns(Task.CompletedTask);
+        mockNostr.Setup(n => n.SubscribeToGroupMessagesAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<DateTimeOffset?>())).Returns(Task.CompletedTask);
         mockNostr.Setup(n => n.FetchUserMetadataAsync(It.IsAny<string>())).ReturnsAsync((UserMetadata?)null);
         mockNostr.Setup(n => n.PublishKeyPackageAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<List<List<string>>?>()))
             .ReturnsAsync("fake-kp-event");
