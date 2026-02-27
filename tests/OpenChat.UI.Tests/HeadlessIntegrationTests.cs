@@ -412,7 +412,7 @@ public class HeadlessIntegrationTests
     public async Task ResetGroup_RemovesChatFromList_AndTriggersRescan()
     {
         var chatUpdateSubject = new Subject<Chat>();
-        var (mockMessage, mockNostr, mockStorage, mockMls) = CreateMocks();
+        var (mockMessage, mockNostr, mockStorage, mockMls, mockClipboard, mockQrGenerator, mockLauncher) = CreateMocks();
 
         mockMessage.Setup(m => m.ChatUpdates).Returns(chatUpdateSubject.AsObservable());
 
@@ -480,7 +480,7 @@ public class HeadlessIntegrationTests
     [AvaloniaFact]
     public async Task CancelResetGroup_KeepsChatInList()
     {
-        var (mockMessage, mockNostr, mockStorage, mockMls) = CreateMocks();
+        var (mockMessage, mockNostr, mockStorage, mockMls, mockClipboard, mockQrGenerator, mockLauncher) = CreateMocks();
 
         var existingChat = new Chat
         {
@@ -529,7 +529,7 @@ public class HeadlessIntegrationTests
     public void DecryptionError_SurfacesStatusMessage()
     {
         var errorSubject = new Subject<MlsDecryptionError>();
-        var (mockMessage, mockNostr, mockStorage, mockMls) = CreateMocks();
+        var (mockMessage, mockNostr, mockStorage, mockMls, mockClipboard, mockQrGenerator, mockLauncher) = CreateMocks();
 
         mockMessage.Setup(m => m.DecryptionErrors).Returns(errorSubject.AsObservable());
         mockMessage.Setup(m => m.GetChatsAsync()).ReturnsAsync(Enumerable.Empty<Chat>());
