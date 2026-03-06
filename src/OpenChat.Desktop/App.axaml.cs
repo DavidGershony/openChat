@@ -48,12 +48,10 @@ public partial class App : Application
                 _logger?.LogDebug("Creating services...");
                 var storageService = new StorageService(ProfileConfiguration.DatabasePath);
                 var nostrService = new NostrService();
-                // ManagedMlsService disabled until marmut-mdk NuGet packages are published
-                // IMlsService mlsService = ProfileConfiguration.ActiveMdkBackend == MdkBackend.Managed
-                //     ? new ManagedMlsService(storageService)
-                //     : new MlsService();
-                IMlsService mlsService = new MlsService();
-                _logger?.LogInformation("Using Rust MLS backend (managed backend temporarily disabled)");
+                IMlsService mlsService = ProfileConfiguration.ActiveMdkBackend == MdkBackend.Managed
+                    ? new ManagedMlsService(storageService)
+                    : new MlsService(storageService);
+                _logger?.LogInformation("Using {Backend} MLS backend", ProfileConfiguration.ActiveMdkBackend);
                 var messageService = new MessageService(storageService, nostrService, mlsService);
 
                 _logger?.LogDebug("Creating platform services...");

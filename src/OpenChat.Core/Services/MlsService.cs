@@ -8,13 +8,15 @@ namespace OpenChat.Core.Services;
 public class MlsService : IMlsService
 {
     private readonly ILogger<MlsService> _logger;
+    private readonly IStorageService? _storageService;
     private MarmotWrapper? _marmotClient;
     private string? _privateKeyHex;
     private string? _publicKeyHex;
 
-    public MlsService()
+    public MlsService(IStorageService? storageService = null)
     {
         _logger = LoggingConfiguration.CreateLogger<MlsService>();
+        _storageService = storageService;
         _logger.LogDebug("MlsService instance created");
     }
 
@@ -60,6 +62,7 @@ public class MlsService : IMlsService
 
         _logger.LogInformation("CreateGroup: creating MLS group '{GroupName}'", groupName);
         var (groupId, epoch) = await _marmotClient!.CreateGroupAsync(groupName);
+        await PersistGroupStateAsync(groupId);
         var groupIdHex = Convert.ToHexString(groupId).ToLowerInvariant();
         _logger.LogInformation("CreateGroup: created group {GroupId}, epoch={Epoch}",
             groupIdHex[..Math.Min(16, groupIdHex.Length)], epoch);
@@ -148,6 +151,7 @@ public class MlsService : IMlsService
 
         var eventJsonBytes = System.Text.Encoding.UTF8.GetBytes(keyPackage.EventJson);
         var result = await _marmotClient!.AddMemberAsync(groupId, eventJsonBytes);
+        await PersistGroupStateAsync(groupId);
 
         return new MlsWelcome
         {
@@ -166,6 +170,7 @@ public class MlsService : IMlsService
             wrapperEventId[..Math.Min(16, wrapperEventId.Length)], welcomeData.Length);
 
         var (groupId, groupName, epoch, members) = await _marmotClient!.ProcessWelcomeAsync(welcomeData, wrapperEventId);
+        await PersistGroupStateAsync(groupId);
 
         return new MlsGroupInfo
         {
@@ -184,6 +189,7 @@ public class MlsService : IMlsService
         _logger.LogDebug("EncryptMessage: group={GroupId}, plaintext length={Len}",
             groupIdHex[..Math.Min(16, groupIdHex.Length)], plaintext.Length);
         var result = await _marmotClient!.EncryptMessageAsync(groupId, plaintext);
+        await PersistGroupStateAsync(groupId);
         _logger.LogDebug("EncryptMessage: produced {Len} bytes ciphertext", result.Length);
         return result;
     }
@@ -197,6 +203,7 @@ public class MlsService : IMlsService
             groupIdHex[..Math.Min(16, groupIdHex.Length)], ciphertext.Length);
 
         var (senderPublicKey, plaintext, epoch) = await _marmotClient!.DecryptMessageAsync(groupId, ciphertext);
+        await PersistGroupStateAsync(groupId);
         _logger.LogDebug("DecryptMessage: sender={Sender}, epoch={Epoch}, plaintext length={Len}",
             senderPublicKey[..Math.Min(16, senderPublicKey.Length)], epoch, plaintext.Length);
 
@@ -216,6 +223,7 @@ public class MlsService : IMlsService
         _logger.LogInformation("ProcessCommit: group={GroupId}, commit={Len} bytes",
             groupIdHex[..Math.Min(16, groupIdHex.Length)], commitData.Length);
         await _marmotClient!.ProcessCommitAsync(groupId, commitData);
+        await PersistGroupStateAsync(groupId);
         _logger.LogInformation("ProcessCommit: success for group {GroupId}", groupIdHex[..Math.Min(16, groupIdHex.Length)]);
     }
 
@@ -223,14 +231,18 @@ public class MlsService : IMlsService
     {
         EnsureInitialized();
 
-        return await _marmotClient!.UpdateKeysAsync(groupId);
+        var result = await _marmotClient!.UpdateKeysAsync(groupId);
+        await PersistGroupStateAsync(groupId);
+        return result;
     }
 
     public async Task<byte[]> RemoveMemberAsync(byte[] groupId, string memberPublicKey)
     {
         EnsureInitialized();
 
-        return await _marmotClient!.RemoveMemberAsync(groupId, memberPublicKey);
+        var result = await _marmotClient!.RemoveMemberAsync(groupId, memberPublicKey);
+        await PersistGroupStateAsync(groupId);
+        return result;
     }
 
     public async Task<MlsGroupInfo?> GetGroupInfoAsync(byte[] groupId)
@@ -266,6 +278,22 @@ public class MlsService : IMlsService
     public Task<byte[]?> ExportServiceStateAsync() => Task.FromResult<byte[]?>(null);
 
     public Task ImportServiceStateAsync(byte[] state) => Task.CompletedTask;
+
+    private async Task PersistGroupStateAsync(byte[] groupId)
+    {
+        if (_storageService == null) return;
+
+        try
+        {
+            var hex = Convert.ToHexString(groupId).ToLowerInvariant();
+            var state = await _marmotClient!.ExportGroupStateAsync(groupId);
+            await _storageService.SaveMlsStateAsync(hex, state);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to persist MLS state for group");
+        }
+    }
 
     private void EnsureInitialized()
     {

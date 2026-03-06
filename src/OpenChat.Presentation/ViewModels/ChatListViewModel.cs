@@ -486,7 +486,6 @@ public class ChatListViewModel : ViewModelBase
             _logger.LogDebug("Creating MLS group for chat...");
             var groupInfo = await _mlsService.CreateGroupAsync(chatName);
             var groupIdHex = Convert.ToHexString(groupInfo.GroupId).ToLowerInvariant();
-            await PersistMlsGroupStateAsync(groupInfo.GroupId);
 
             var chat = new Chat
             {
@@ -516,7 +515,6 @@ public class ChatListViewModel : ViewModelBase
             // Add member to MLS group
             _logger.LogDebug("Adding member to MLS group");
             var welcome = await _mlsService.AddMemberAsync(chat.MlsGroupId, keyPackage);
-            await PersistMlsGroupStateAsync(chat.MlsGroupId);
 
             // Publish Commit (kind 445) before Welcome (kind 444) per MIP-02
             if (welcome.CommitData != null && welcome.CommitData.Length > 0)
@@ -605,7 +603,6 @@ public class ChatListViewModel : ViewModelBase
             {
                 _logger.LogDebug("Creating MLS group...");
                 var groupInfo = await _mlsService.CreateGroupAsync(NewGroupName.Trim());
-                await PersistMlsGroupStateAsync(groupInfo.GroupId);
 
                 chat = new Chat
                 {
@@ -659,7 +656,6 @@ public class ChatListViewModel : ViewModelBase
 
                             // Add them to the MLS group
                             var welcome = await _mlsService.AddMemberAsync(chat.MlsGroupId, keyPackage);
-                            await PersistMlsGroupStateAsync(chat.MlsGroupId);
 
                             // MIP-02: Publish Commit (kind 445) BEFORE sending Welcome (kind 444)
                             // This ensures all existing members receive the commit first
@@ -883,21 +879,6 @@ public class ChatListViewModel : ViewModelBase
         }
     }
 
-    private async Task PersistMlsGroupStateAsync(byte[] groupId)
-    {
-        if (_mlsService == null) return;
-        try
-        {
-            var hex = Convert.ToHexString(groupId).ToLowerInvariant();
-            var state = await _mlsService.ExportGroupStateAsync(groupId);
-            await _storageService.SaveMlsStateAsync(hex, state);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to persist MLS state for group");
-        }
-    }
-
     private async Task ResetGroupAsync()
     {
         if (GroupToReset == null) return;
@@ -1011,10 +992,6 @@ public class ChatListViewModel : ViewModelBase
         try
         {
             var chat = await _messageService.AcceptInviteAsync(inviteVm.Id);
-
-            // Persist MLS state after welcome processing
-            if (chat.MlsGroupId != null && _mlsService != null)
-                await PersistMlsGroupStateAsync(chat.MlsGroupId);
 
             // Subscribe to group messages for the newly accepted group
             if (chat.MlsGroupId != null && chat.MlsGroupId.Length > 0 && _nostrService != null)
