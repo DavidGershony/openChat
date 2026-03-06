@@ -1,28 +1,20 @@
-// =============================================================================
-// ManagedMlsService — TEMPORARILY DISABLED
-// Depends on marmut-mdk NuGet packages (not yet published).
-// Uncomment when MarmutMdk.* packages are available on NuGet.
-// =============================================================================
-
-#if false
-
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using OpenChat.Core.Logging;
 using OpenChat.Core.Models;
-using MarmutMdk.Core;
-using MarmutMdk.Core.Results;
-using MarmutMdk.Mls.Codec;
-using MarmutMdk.Mls.Crypto;
-using MarmutMdk.Mls.Group;
-using MarmutMdk.Protocol.Mip00;
-using MarmutMdk.Storage.Memory;
+using MarmotMdk.Core;
+using MarmotMdk.Core.Results;
+using DotnetMls.Codec;
+using DotnetMls.Crypto;
+using DotnetMls.Group;
+using MarmotMdk.Protocol.Mip00;
+using MarmotMdk.Storage.Memory;
 
 namespace OpenChat.Core.Services;
 
 /// <summary>
-/// IMlsService implementation backed by the pure C# marmut-mdk library.
+/// IMlsService implementation backed by the pure C# marmot-cs library.
 /// Uses Mdk&lt;MemoryStorageProvider&gt; for MLS group management.
 /// Optionally persists MLS state via IStorageService for cross-restart survival.
 /// </summary>
@@ -601,5 +593,3 @@ public class ManagedMlsService : IMlsService
             throw new InvalidOperationException("MLS service not initialized. Call InitializeAsync first.");
     }
 }
-
-#endif

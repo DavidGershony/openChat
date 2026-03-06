@@ -12,7 +12,7 @@ namespace OpenChat.Core.Tests;
 
 /// <summary>
 /// Integration tests exercising the full group chat lifecycle through real services
-/// (StorageService, MlsService with mock MarmotWrapper, MessageService) and a
+/// (StorageService, ManagedMlsService, MessageService) and a
 /// mocked INostrService that simulates relay event delivery via Subject&lt;NostrEventReceived&gt;.
 /// </summary>
 public class EndToEndChatIntegrationTests : IAsyncLifetime
@@ -21,7 +21,7 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
         string PubKey, string PrivKey,
         StorageService Storage, string DbPath,
         Subject<NostrEventReceived> Events, Mock<INostrService> MockNostr,
-        MlsService MlsService, MessageService MessageService);
+        IMlsService MlsService, MessageService MessageService);
 
     private UserContext _userA = null!;
     private UserContext _userB = null!;
@@ -33,7 +33,7 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
     private string _dbPathA => _userA.DbPath;
     private Subject<NostrEventReceived> _eventsA => _userA.Events;
     private Mock<INostrService> _mockNostrA => _userA.MockNostr;
-    private MlsService _mlsServiceA => _userA.MlsService;
+    private IMlsService _mlsServiceA => _userA.MlsService;
     private MessageService _messageServiceA => _userA.MessageService;
 
     private string _pubKeyB => _userB.PubKey;
@@ -42,7 +42,7 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
     private string _dbPathB => _userB.DbPath;
     private Subject<NostrEventReceived> _eventsB => _userB.Events;
     private Mock<INostrService> _mockNostrB => _userB.MockNostr;
-    private MlsService _mlsServiceB => _userB.MlsService;
+    private IMlsService _mlsServiceB => _userB.MlsService;
     private MessageService _messageServiceB => _userB.MessageService;
 
     public async Task InitializeAsync()
@@ -484,7 +484,8 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
         var mockNostrB2 = CreateMockNostr(eventsB2);
 
         // Wrap the real MLS services so InitializeAsync is a no-op
-        // (the native MarmotWrapper creates a brand new client on re-init, wiping state)
+        // (ManagedMlsService guards against double-initialization, but wrapping avoids
+        // resetting the service state in tests that simulate a restart)
         var wrappedMlsA = new Mock<IMlsService>();
         wrappedMlsA.Setup(m => m.InitializeAsync(It.IsAny<string>(), It.IsAny<string>())).Returns(Task.CompletedTask);
         wrappedMlsA.Setup(m => m.EncryptMessageAsync(It.IsAny<byte[]>(), It.IsAny<string>()))
@@ -656,8 +657,8 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
         mockNostr.Setup(n => n.SubscribeAsync(It.IsAny<string>(), It.IsAny<NostrFilter>())).Returns(Task.CompletedTask);
         mockNostr.Setup(n => n.UnsubscribeAsync(It.IsAny<string>())).Returns(Task.CompletedTask);
 
-        // 5. Real MlsService (uses native MarmotWrapper when DLL is present)
-        var mlsService = new MlsService();
+        // 5. ManagedMlsService (pure C# marmot-cs backend)
+        var mlsService = new ManagedMlsService(storageService);
 
         // 6. MessageService
         var messageService = new MessageService(storage, mockNostr.Object, mlsService);

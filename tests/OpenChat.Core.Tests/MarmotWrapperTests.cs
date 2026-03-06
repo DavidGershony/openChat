@@ -7,15 +7,26 @@ namespace OpenChat.Core.Tests;
 /// <summary>
 /// Integration tests for MarmotWrapper using real secp256k1 keys.
 /// When the native DLL is present these exercise the real native MLS library.
+/// These are skipped when the DLL is not present.
 /// </summary>
+[Trait("Category", "Native")]
 public class MarmotWrapperTests : IAsyncLifetime
 {
     private MarmotWrapper _wrapper = null!;
     private string _privateKey = null!;
     private string _publicKey = null!;
 
+    private static bool NativeDllAvailable()
+    {
+        var dllPath = Path.Combine(AppContext.BaseDirectory, "openchat_native.dll");
+        return File.Exists(dllPath);
+    }
+
     public async Task InitializeAsync()
     {
+        if (!NativeDllAvailable())
+            return;
+
         var nostrService = new NostrService();
         (_privateKey, _publicKey, _, _) = nostrService.GenerateKeyPair();
 
@@ -25,13 +36,15 @@ public class MarmotWrapperTests : IAsyncLifetime
 
     public Task DisposeAsync()
     {
-        _wrapper.Dispose();
+        _wrapper?.Dispose();
         return Task.CompletedTask;
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GenerateKeyPackage_ShouldReturnDataAndTags()
     {
+        Skip.IfNot(NativeDllAvailable(), "Native DLL not available");
+
         var result = await _wrapper.GenerateKeyPackageAsync();
 
         Assert.NotNull(result);
@@ -44,18 +57,22 @@ public class MarmotWrapperTests : IAsyncLifetime
         Assert.Equal(result.Data, decoded);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task CreateGroup_ShouldReturnGroupIdAndEpoch()
     {
+        Skip.IfNot(NativeDllAvailable(), "Native DLL not available");
+
         var (groupId, epoch) = await _wrapper.CreateGroupAsync("Test Group");
 
         Assert.NotNull(groupId);
         Assert.NotEmpty(groupId);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task EncryptDecryptMessage_ShouldRoundTrip()
     {
+        Skip.IfNot(NativeDllAvailable(), "Native DLL not available");
+
         var (groupId, _) = await _wrapper.CreateGroupAsync("Encryption Test Group");
         var plaintext = "Hello, MLS!";
 
@@ -65,9 +82,11 @@ public class MarmotWrapperTests : IAsyncLifetime
         Assert.Equal(plaintext, decrypted);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetGroupInfo_ShouldReturnCorrectInfo()
     {
+        Skip.IfNot(NativeDllAvailable(), "Native DLL not available");
+
         var groupName = "Info Test Group";
         var (groupId, _) = await _wrapper.CreateGroupAsync(groupName);
 
@@ -77,9 +96,11 @@ public class MarmotWrapperTests : IAsyncLifetime
         Assert.Equal(groupName, info.Value.groupName);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ExportGroupState_ShouldReturnData()
     {
+        Skip.IfNot(NativeDllAvailable(), "Native DLL not available");
+
         var groupName = "State Test Group";
         var (groupId, _) = await _wrapper.CreateGroupAsync(groupName);
 
@@ -89,9 +110,11 @@ public class MarmotWrapperTests : IAsyncLifetime
         Assert.NotEmpty(state);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task UpdateKeys_ShouldReturnCommitData()
     {
+        Skip.IfNot(NativeDllAvailable(), "Native DLL not available");
+
         var (groupId, _) = await _wrapper.CreateGroupAsync("Update Keys Test");
 
         var commitData = await _wrapper.UpdateKeysAsync(groupId);
