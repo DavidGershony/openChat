@@ -12,7 +12,7 @@ namespace OpenChat.Core.Tests;
 
 /// <summary>
 /// Full-stack integration tests using a real Docker relay (ws://localhost:7777),
-/// real NostrService, real StorageService, real MlsService, and real MessageService.
+/// real NostrService, real StorageService, real ManagedMlsService, and real MessageService.
 /// These tests prove the complete invite delivery pipeline works end-to-end.
 ///
 /// Requires: docker compose -f docker-compose.test.yml up -d
@@ -27,7 +27,7 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
     // User A (sender/inviter)
     private NostrService _nostrServiceA = null!;
     private StorageService _storageA = null!;
-    private MlsService _mlsServiceA = null!;
+    private IMlsService _mlsServiceA = null!;
     private MessageService _messageServiceA = null!;
     private string _pubKeyA = null!;
     private string _privKeyA = null!;
@@ -36,7 +36,7 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
     // User B (receiver/invitee)
     private NostrService _nostrServiceB = null!;
     private StorageService _storageB = null!;
-    private MlsService _mlsServiceB = null!;
+    private IMlsService _mlsServiceB = null!;
     private MessageService _messageServiceB = null!;
     private string _pubKeyB = null!;
     private string _privKeyB = null!;
@@ -70,7 +70,7 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
             CreatedAt = DateTime.UtcNow
         });
 
-        _mlsServiceA = new MlsService();
+        _mlsServiceA = new ManagedMlsService(_storageA);
         _messageServiceA = new MessageService(_storageA, _nostrServiceA, _mlsServiceA);
 
         // ── User B setup ──
@@ -94,7 +94,7 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
             CreatedAt = DateTime.UtcNow
         });
 
-        _mlsServiceB = new MlsService();
+        _mlsServiceB = new ManagedMlsService(_storageB);
         _messageServiceB = new MessageService(_storageB, _nostrServiceB, _mlsServiceB);
 
         // Initialize MessageService for both users (subscribes to Events, inits MLS)

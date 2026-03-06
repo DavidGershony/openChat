@@ -18,21 +18,13 @@ jobs:
 
     env:
       Solution_Name: OpenChat.sln
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
     - name: Checkout
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
-
-    - name: Setup Rust
-      uses: dtolnay/rust-toolchain@stable
-
-    - name: Build Rust native DLL
-      run: cargo build --release --manifest-path src/OpenChat.Native/Cargo.toml
-
-    - name: Copy DLL to Desktop project
-      run: cp src/OpenChat.Native/target/release/openchat_native.dll src/OpenChat.Desktop/
 
     - name: Install .NET Core
       uses: actions/setup-dotnet@v4

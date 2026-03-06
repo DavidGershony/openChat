@@ -20,11 +20,4 @@
     <ProjectReference Include="..\OpenChat.UI\OpenChat.UI.csproj" />
   </ItemGroup>
 
-  <!-- Native Marmot MLS library -->
-  <ItemGroup>
-    <None Include="openchat_native.dll">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
-
 </Project>
