@@ -175,7 +175,7 @@ public class SettingsViewModel : ViewModelBase
 
     private async Task PublishKeyPackageAsync()
     {
-        if (string.IsNullOrEmpty(PrivateKeyHex) || string.IsNullOrEmpty(PublicKeyHex))
+        if (string.IsNullOrEmpty(PublicKeyHex))
         {
             KeyPackageStatus = "Error: No keys loaded. Please log in first.";
             KeyPackageSuccess = false;
@@ -191,7 +191,7 @@ public class SettingsViewModel : ViewModelBase
             _logger.LogInformation("Starting key package generation and publishing");
 
             // Initialize MLS service if needed
-            await _mlsService.InitializeAsync(PrivateKeyHex, PublicKeyHex);
+            await _mlsService.InitializeAsync(PrivateKeyHex ?? new string('0', 64), PublicKeyHex);
 
             // Generate key package
             KeyPackageStatus = "Generating MLS key package...";

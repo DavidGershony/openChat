@@ -393,23 +393,16 @@ public class ChatViewModel : ViewModelBase
                         var welcome = await _mlsService.AddMemberAsync(_currentChat.MlsGroupId, keyPackage);
 
                         // Step 3: Publish Welcome to relays (kind 444)
-                        if (!string.IsNullOrEmpty(_currentUserPrivateKeyHex))
-                        {
-                            _logger.LogDebug("Publishing Welcome message to relays");
-                            InviteSuccess = "Publishing invite to Nostr...";
+                        _logger.LogDebug("Publishing Welcome message to relays");
+                        InviteSuccess = "Publishing invite to Nostr...";
 
-                            var eventId = await _nostrService.PublishWelcomeAsync(
-                                welcome.WelcomeData,
-                                pubKeyHex,
-                                _currentUserPrivateKeyHex);
+                        var eventId = await _nostrService.PublishWelcomeAsync(
+                            welcome.WelcomeData,
+                            pubKeyHex,
+                            _currentUserPrivateKeyHex);
 
-                            _logger.LogInformation("Published Welcome message {EventId} for {PubKey}",
-                                eventId, pubKeyHex[..16] + "...");
-                        }
-                        else
-                        {
-                            _logger.LogWarning("No private key set - Welcome not published to relays");
-                        }
+                        _logger.LogInformation("Published Welcome message {EventId} for {PubKey}",
+                            eventId, pubKeyHex[..16] + "...");
                     }
                     catch (Exception mlsEx)
                     {

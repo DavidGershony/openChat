@@ -221,6 +221,14 @@ public class MainViewModel : ViewModelBase
                     });
                 }
                 IsConnected = RelayStatuses.Any(r => r.IsConnected);
+
+                // Sync to SettingsViewModel relays
+                var settingsRelay = SettingsViewModel.Relays.FirstOrDefault(r => r.Url == status.RelayUrl);
+                if (settingsRelay != null)
+                {
+                    settingsRelay.IsConnected = status.IsConnected;
+                    settingsRelay.Error = status.Error;
+                }
             });
 
         // Check for existing user on startup
@@ -244,10 +252,15 @@ public class MainViewModel : ViewModelBase
     {
         if (CurrentUser == null) return;
 
+        _logger.LogInformation("InitializeAfterLoginAsync starting for {Npub}", CurrentUser.Npub);
+
+        try
+        {
         // Show spinners immediately while everything initializes
         ChatListViewModel.IsLoading = true;
         IsHeaderLoading = true;
 
+        _logger.LogDebug("Initializing message service");
         await _messageService.InitializeAsync();
 
         // Set user context on ChatViewModel for signing events
@@ -256,55 +269,72 @@ public class MainViewModel : ViewModelBase
             ChatViewModel.SetUserContext(CurrentUser.PrivateKeyHex, CurrentUser.PublicKeyHex);
         }
 
-        // Initialize MLS service with user's keys
-        if (!string.IsNullOrEmpty(CurrentUser.PrivateKeyHex) && !string.IsNullOrEmpty(CurrentUser.PublicKeyHex))
+        // If using external signer (no private key), wire it into NostrService
+        if (string.IsNullOrEmpty(CurrentUser.PrivateKeyHex))
         {
-            await _mlsService.InitializeAsync(CurrentUser.PrivateKeyHex, CurrentUser.PublicKeyHex);
+            _nostrService.SetExternalSigner(LoginViewModel.ExternalSigner);
+        }
 
-            // Restore MLS service state (signing keys, stored KeyPackage) from persistence
+        // Initialize MLS service with user's keys (non-fatal if native library unavailable)
+        // ManagedMlsService only needs the public key — pass empty private key for signer users
+        if (!string.IsNullOrEmpty(CurrentUser.PublicKeyHex))
+        {
+            var mlsPrivateKey = CurrentUser.PrivateKeyHex ?? new string('0', 64);
             try
             {
-                var serviceState = await _storageService.GetMlsStateAsync("__service__");
-                if (serviceState != null)
-                {
-                    await _mlsService.ImportServiceStateAsync(serviceState);
-                    _logger.LogInformation("Restored MLS service state from persistence");
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to restore MLS service state");
-            }
+                _logger.LogDebug("Initializing MLS service");
+                await _mlsService.InitializeAsync(mlsPrivateKey, CurrentUser.PublicKeyHex);
 
-            // Restore each group's MLS state from persistence
-            try
-            {
-                var allChats = await _storageService.GetAllChatsAsync();
-                foreach (var chat in allChats.Where(c => c.Type == ChatType.Group && c.MlsGroupId != null))
+                // Restore MLS service state (signing keys, stored KeyPackage) from persistence
+                try
                 {
-                    try
+                    var serviceState = await _storageService.GetMlsStateAsync("__service__");
+                    if (serviceState != null)
                     {
-                        var hex = Convert.ToHexString(chat.MlsGroupId!).ToLowerInvariant();
-                        var state = await _storageService.GetMlsStateAsync(hex);
-                        if (state != null)
+                        await _mlsService.ImportServiceStateAsync(serviceState);
+                        _logger.LogInformation("Restored MLS service state from persistence");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to restore MLS service state");
+                }
+
+                // Restore each group's MLS state from persistence
+                try
+                {
+                    var allChats = await _storageService.GetAllChatsAsync();
+                    foreach (var chat in allChats.Where(c => c.Type == ChatType.Group && c.MlsGroupId != null))
+                    {
+                        try
                         {
-                            await _mlsService.ImportGroupStateAsync(chat.MlsGroupId!, state);
-                            _logger.LogInformation("Restored MLS state for group {GroupId}", hex[..Math.Min(16, hex.Length)]);
+                            var hex = Convert.ToHexString(chat.MlsGroupId!).ToLowerInvariant();
+                            var state = await _storageService.GetMlsStateAsync(hex);
+                            if (state != null)
+                            {
+                                await _mlsService.ImportGroupStateAsync(chat.MlsGroupId!, state);
+                                _logger.LogInformation("Restored MLS state for group {GroupId}", hex[..Math.Min(16, hex.Length)]);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to restore MLS state for group chat {ChatId}", chat.Id);
                         }
                     }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Failed to restore MLS state for group chat {ChatId}", chat.Id);
-                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to enumerate chats for MLS state restoration");
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to enumerate chats for MLS state restoration");
+                _logger.LogWarning(ex, "MLS initialization failed (native library may be unavailable). Continuing without MLS support.");
             }
         }
 
         // Connect to default relays
+        _logger.LogInformation("Connecting to default relays");
         var defaultRelays = new[]
         {
             "wss://relay.damus.io",
@@ -313,26 +343,13 @@ public class MainViewModel : ViewModelBase
         };
 
         await _nostrService.ConnectAsync(defaultRelays);
+        _logger.LogInformation("Relay connection initiated");
 
         // Subscribe to Welcome messages (incoming group invites)
         if (!string.IsNullOrEmpty(CurrentUser.PublicKeyHex))
         {
+            _logger.LogDebug("Subscribing to welcome messages");
             await _nostrService.SubscribeToWelcomesAsync(CurrentUser.PublicKeyHex);
-        }
-
-        // Publish our KeyPackage so others can invite us
-        if (!string.IsNullOrEmpty(CurrentUser.PrivateKeyHex))
-        {
-            try
-            {
-                var keyPackage = await _mlsService.GenerateKeyPackageAsync();
-                await _nostrService.PublishKeyPackageAsync(keyPackage.Data, CurrentUser.PrivateKeyHex, keyPackage.NostrTags);
-            }
-            catch (Exception ex)
-            {
-                // KeyPackage publishing is optional - log and continue
-                _logger.LogError(ex, "Failed to publish KeyPackage");
-            }
         }
 
         // Fetch own profile metadata for avatar
@@ -340,6 +357,7 @@ public class MainViewModel : ViewModelBase
         {
             try
             {
+                _logger.LogDebug("Fetching own profile metadata");
                 var metadata = await _nostrService.FetchUserMetadataAsync(CurrentUser.PublicKeyHex);
                 if (metadata != null)
                 {
@@ -364,7 +382,17 @@ public class MainViewModel : ViewModelBase
             IsHeaderLoading = false;
         }
 
+        // Update SettingsViewModel with user data (LoadSettingsAsync ran before login)
+        SettingsViewModel.PublicKeyHex = CurrentUser.PublicKeyHex;
+        SettingsViewModel.PrivateKeyHex = CurrentUser.PrivateKeyHex;
+        SettingsViewModel.Npub = CurrentUser.Npub;
+        SettingsViewModel.DisplayName = CurrentUser.DisplayName;
+        SettingsViewModel.Username = CurrentUser.Username;
+        SettingsViewModel.About = CurrentUser.About;
+        SettingsViewModel.AvatarUrl = CurrentUser.AvatarUrl;
+
         // Load chats
+        _logger.LogDebug("Loading chats");
         await ChatListViewModel.LoadChatsAsync();
 
         // Subscribe to group messages for existing groups
@@ -376,6 +404,7 @@ public class MainViewModel : ViewModelBase
 
         if (groupIds.Count > 0)
         {
+            _logger.LogDebug("Subscribing to {Count} group message channels", groupIds.Count);
             var latestActivity = chats
                 .Where(c => c.Type == ChatType.Group && c.MlsGroupId != null)
                 .Select(c => c.LastActivityAt)
@@ -385,6 +414,13 @@ public class MainViewModel : ViewModelBase
                 ? new DateTimeOffset(latestActivity, TimeSpan.Zero).AddMinutes(-5)
                 : null;
             await _nostrService.SubscribeToGroupMessagesAsync(groupIds, since);
+        }
+
+        _logger.LogInformation("InitializeAfterLoginAsync completed successfully");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "InitializeAfterLoginAsync failed");
         }
     }
 

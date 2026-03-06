@@ -43,11 +43,12 @@ public class MessageService : IMessageService, IDisposable
 
         _currentUser = await _storageService.GetCurrentUserAsync();
 
-        if (_currentUser != null && !string.IsNullOrEmpty(_currentUser.PrivateKeyHex))
+        if (_currentUser != null && !string.IsNullOrEmpty(_currentUser.PublicKeyHex))
         {
             try
             {
-                await _mlsService.InitializeAsync(_currentUser.PrivateKeyHex, _currentUser.PublicKeyHex);
+                var mlsPrivateKey = _currentUser.PrivateKeyHex ?? new string('0', 64);
+                await _mlsService.InitializeAsync(mlsPrivateKey, _currentUser.PublicKeyHex);
             }
             catch (Exception ex)
             {
@@ -133,7 +134,7 @@ public class MessageService : IMessageService, IDisposable
                 _logger.LogDebug("SendMessage: encrypted to {Len} bytes, publishing kind 445", encryptedData.Length);
 
                 message.NostrEventId = await _nostrService.PublishGroupMessageAsync(
-                    encryptedData, groupIdHex, _currentUser.PrivateKeyHex!);
+                    encryptedData, groupIdHex, _currentUser.PrivateKeyHex);
                 _logger.LogInformation("SendMessage: published kind 445 event {EventId}", message.NostrEventId);
             }
             else
@@ -285,7 +286,7 @@ public class MessageService : IMessageService, IDisposable
             welcome.WelcomeData.Length, welcome.CommitData?.Length ?? 0);
 
         // Publish Welcome message
-        if (_currentUser?.PrivateKeyHex != null)
+        if (_currentUser != null)
         {
             var welcomeEventId = await _nostrService.PublishWelcomeAsync(
                 welcome.WelcomeData, welcome.RecipientPublicKey, _currentUser.PrivateKeyHex);
@@ -316,7 +317,7 @@ public class MessageService : IMessageService, IDisposable
         var commitData = await _mlsService.RemoveMemberAsync(chat.MlsGroupId, memberPublicKey);
 
         // Publish commit
-        if (_currentUser?.PrivateKeyHex != null)
+        if (_currentUser != null)
         {
             var groupIdHex = Convert.ToHexString(chat.MlsGroupId).ToLowerInvariant();
             await _nostrService.PublishGroupMessageAsync(commitData, groupIdHex, _currentUser.PrivateKeyHex);

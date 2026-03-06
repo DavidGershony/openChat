@@ -16,8 +16,12 @@ public class LoginViewModel : ViewModelBase
     private readonly ILogger<LoginViewModel> _logger;
     private readonly INostrService _nostrService;
     private readonly IStorageService _storageService;
-    private readonly IExternalSigner? _externalSigner;
     private readonly IQrCodeGenerator _qrCodeGenerator;
+
+    /// <summary>
+    /// The external signer instance, available for wiring into NostrService after login.
+    /// </summary>
+    public IExternalSigner? ExternalSigner { get; }
 
     [Reactive] public string PrivateKeyInput { get; set; } = string.Empty;
     [Reactive] public string BunkerUrl { get; set; } = string.Empty;
@@ -57,7 +61,7 @@ public class LoginViewModel : ViewModelBase
         _nostrService = nostrService;
         _storageService = storageService;
         _qrCodeGenerator = qrCodeGenerator;
-        _externalSigner = externalSigner ?? new ExternalSignerService();
+        ExternalSigner = externalSigner ?? new ExternalSignerService();
 
         GenerateNewKeyCommand = ReactiveCommand.Create(GenerateNewKey);
 
@@ -96,9 +100,9 @@ public class LoginViewModel : ViewModelBase
         SelectLoginMethodCommand = ReactiveCommand.CreateFromTask<LoginMethod>(SelectLoginMethodAsync);
 
         // Subscribe to external signer status and auto-login on connect
-        if (_externalSigner != null)
+        if (ExternalSigner != null)
         {
-            _externalSigner.Status
+            ExternalSigner.Status
                 .ObserveOn(RxApp.MainThreadScheduler)
                 .Subscribe(async status =>
                 {
@@ -131,7 +135,7 @@ public class LoginViewModel : ViewModelBase
         ErrorMessage = null;
 
         // Auto-generate nostrconnect URI when Extension tab is selected
-        if (method == LoginMethod.ExternalSigner && NostrConnectUri == null && _externalSigner != null)
+        if (method == LoginMethod.ExternalSigner && NostrConnectUri == null && ExternalSigner != null)
         {
             await GenerateNostrConnectAsync();
         }
@@ -141,7 +145,7 @@ public class LoginViewModel : ViewModelBase
     {
         try
         {
-            var uri = await _externalSigner!.GenerateAndListenForConnectionAsync("wss://relay.damus.io");
+            var uri = await ExternalSigner!.GenerateAndListenForConnectionAsync("wss://relay.damus.io");
             NostrConnectUri = uri;
             NostrConnectQrPngBytes = _qrCodeGenerator.GeneratePng(uri);
             _logger.LogInformation("Generated nostrconnect QR. URI: {Uri}", uri);
@@ -245,7 +249,7 @@ public class LoginViewModel : ViewModelBase
     {
         try
         {
-            var npub = _externalSigner!.Npub;
+            var npub = ExternalSigner!.Npub;
             var user = new User
             {
                 Id = Guid.NewGuid().ToString(),
@@ -272,7 +276,7 @@ public class LoginViewModel : ViewModelBase
 
     private async Task ConnectExternalSignerAsync()
     {
-        if (string.IsNullOrWhiteSpace(BunkerUrl) || _externalSigner == null) return;
+        if (string.IsNullOrWhiteSpace(BunkerUrl) || ExternalSigner == null) return;
 
         IsLoading = true;
         IsExternalSignerConnecting = true;
@@ -280,11 +284,11 @@ public class LoginViewModel : ViewModelBase
 
         try
         {
-            var success = await _externalSigner.ConnectWithStringAsync(BunkerUrl.Trim());
+            var success = await ExternalSigner.ConnectWithStringAsync(BunkerUrl.Trim());
 
-            if (success && _externalSigner.PublicKeyHex != null)
+            if (success && ExternalSigner.PublicKeyHex != null)
             {
-                await HandleSignerConnectedAsync(_externalSigner.PublicKeyHex);
+                await HandleSignerConnectedAsync(ExternalSigner.PublicKeyHex);
             }
             else
             {

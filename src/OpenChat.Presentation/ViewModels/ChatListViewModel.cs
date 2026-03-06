@@ -476,7 +476,7 @@ public class ChatListViewModel : ViewModelBase
 
             // Get current user for signing
             var currentUser = await _storageService.GetCurrentUserAsync();
-            if (currentUser == null || string.IsNullOrEmpty(currentUser.PrivateKeyHex))
+            if (currentUser == null || string.IsNullOrEmpty(currentUser.PublicKeyHex))
             {
                 NewChatError = "Not logged in";
                 return;
@@ -619,8 +619,8 @@ public class ChatListViewModel : ViewModelBase
 
                 _logger.LogInformation("Created MLS group with ID: {GroupId}", chat.Id);
 
-                // Invite members if we have MLS, Nostr, and a private key
-                if (_nostrService != null && !string.IsNullOrEmpty(currentUser?.PrivateKeyHex) && memberKeys.Count > 0)
+                // Invite members if we have MLS and Nostr
+                if (_nostrService != null && currentUser != null && memberKeys.Count > 0)
                 {
                     _logger.LogInformation("Inviting {Count} members to group", memberKeys.Count);
 

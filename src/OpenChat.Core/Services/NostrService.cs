@@ -28,6 +28,7 @@ public class NostrService : INostrService, IDisposable
     private readonly HashSet<string> _subscribedGroupIds = new();
     private DateTimeOffset? _groupMessagesSince;
     private string? _subscribedUserPubKey;
+    private IExternalSigner? _externalSigner;
     private bool _disposed;
 
     public NostrService()
@@ -40,6 +41,12 @@ public class NostrService : INostrService, IDisposable
     public IObservable<NostrEventReceived> Events => _events.AsObservable();
     public IObservable<MarmotWelcomeEvent> WelcomeMessages => _welcomeMessages.AsObservable();
     public IObservable<MarmotGroupMessageEvent> GroupMessages => _groupMessages.AsObservable();
+
+    public void SetExternalSigner(IExternalSigner? signer)
+    {
+        _externalSigner = signer;
+        _logger.LogInformation("External signer {Status}", signer?.IsConnected == true ? "set and connected" : "cleared");
+    }
 
     public async Task ConnectAsync(string relayUrl)
     {
@@ -683,7 +690,7 @@ public class NostrService : INostrService, IDisposable
         }
     }
 
-    public async Task<string> PublishKeyPackageAsync(byte[] keyPackageData, string privateKeyHex, List<List<string>>? mdkTags = null)
+    public async Task<string> PublishKeyPackageAsync(byte[] keyPackageData, string? privateKeyHex, List<List<string>>? mdkTags = null)
     {
         // Create kind 443 event (MIP-00)
         var relayUrls = _connectedRelays.Count > 0
@@ -694,10 +701,59 @@ public class NostrService : INostrService, IDisposable
 
         if (mdkTags != null && mdkTags.Count > 0)
         {
-            // Use MDK-provided tags (these come from the Rust library and are MIP-00 compliant)
-            // Filter out the "-" tag (NIP-70 protected event marker) which causes relays
-            // to reject the event when NIP-42 authentication is not used
-            tags = mdkTags.Where(t => !(t.Count == 1 && t[0] == "-")).ToList();
+            // Use MDK-provided tags, applying necessary normalization:
+            // 1. Filter out the "-" tag (NIP-70 protected event marker) — relays reject without NIP-42 auth
+            // 2. Normalize tag names: the C# MDK uses short names (protocol_version, ciphersuite)
+            //    but the Rust MDK / MIP-00 spec requires mls_-prefixed names (mls_protocol_version, mls_ciphersuite)
+            //    Also normalize encoding: "mls-base64" → "base64" for cross-MDK compatibility
+            tags = mdkTags
+                .Where(t => !(t.Count == 1 && t[0] == "-"))
+                .Select(t =>
+                {
+                    if (t.Count < 1) return t;
+                    var normalized = new List<string>(t);
+                    switch (normalized[0])
+                    {
+                        case "protocol_version":
+                            normalized[0] = "mls_protocol_version";
+                            // Normalize value: "0" → "1.0"
+                            if (normalized.Count > 1 && normalized[1] == "0")
+                                normalized[1] = "1.0";
+                            break;
+                        case "ciphersuite":
+                            normalized[0] = "mls_ciphersuite";
+                            // Normalize value: "1" → "0x0001"
+                            if (normalized.Count > 1 && ushort.TryParse(normalized[1], out var cs))
+                                normalized[1] = $"0x{cs:x4}";
+                            break;
+                        case "extensions":
+                            normalized[0] = "mls_extensions";
+                            // Remove empty extension values — Rust MDK requires 0xXXXX format
+                            for (int i = normalized.Count - 1; i >= 1; i--)
+                            {
+                                if (string.IsNullOrEmpty(normalized[i]))
+                                    normalized.RemoveAt(i);
+                            }
+                            // If no actual values remain, add standard Marmot extensions:
+                            // 0xf2ee = NostrGroupData, 0x000a = last_resort
+                            if (normalized.Count <= 1)
+                            {
+                                normalized.Add("0xf2ee");
+                                normalized.Add("0x000a");
+                            }
+                            break;
+                        case "encoding" when normalized.Count > 1 && normalized[1] == "mls-base64":
+                            normalized[1] = "base64";
+                            break;
+                        case "relays" when normalized.Count <= 1:
+                            // Add connected relay URLs if the C# MDK provided an empty relays tag
+                            normalized.AddRange(relayUrls);
+                            break;
+                    }
+                    return normalized;
+                })
+                .Where(t => t != null)
+                .ToList();
             _logger.LogInformation("Using {Count} MDK-provided tags for KeyPackage (filtered from {Original})",
                 tags.Count, mdkTags.Count);
 
@@ -729,7 +785,7 @@ public class NostrService : INostrService, IDisposable
         return eventId;
     }
 
-    public async Task<string> PublishWelcomeAsync(byte[] welcomeData, string recipientPublicKey, string privateKeyHex, string? keyPackageEventId = null)
+    public async Task<string> PublishWelcomeAsync(byte[] welcomeData, string recipientPublicKey, string? privateKeyHex, string? keyPackageEventId = null)
     {
         // Create kind 444 event (MIP-02) with required tags
         var relayUrls = _connectedRelays.Count > 0
@@ -757,7 +813,7 @@ public class NostrService : INostrService, IDisposable
         return eventId;
     }
 
-    public async Task<string> PublishCommitAsync(byte[] commitData, string groupId, string privateKeyHex)
+    public async Task<string> PublishCommitAsync(byte[] commitData, string groupId, string? privateKeyHex)
     {
         // Create kind 445 event for commit/evolution messages (MIP-03)
         var tags = new List<List<string>>
@@ -769,7 +825,7 @@ public class NostrService : INostrService, IDisposable
         return eventId;
     }
 
-    public async Task<string> PublishGroupMessageAsync(byte[] encryptedData, string groupId, string privateKeyHex)
+    public async Task<string> PublishGroupMessageAsync(byte[] encryptedData, string groupId, string? privateKeyHex)
     {
         // Create kind 445 event (MIP-03) - uses 'h' tag per protocol spec
         var tags = new List<List<string>>
@@ -1355,37 +1411,64 @@ public class NostrService : INostrService, IDisposable
         return Encoding.UTF8.GetString(ciphertext); // Placeholder - NOT SECURE
     }
 
-    private async Task<string> PublishEventAsync(int kind, string content, List<List<string>> tags, string privateKeyHex)
+    private async Task<string> PublishEventAsync(int kind, string content, List<List<string>> tags, string? privateKeyHex)
     {
         _logger.LogInformation("Publishing event kind {Kind} to {Count} relays", kind, _relayConnections.Count);
 
-        // Derive public key from private key
-        var privateKeyBytes = Convert.FromHexString(privateKeyHex);
-        var publicKeyBytes = DerivePublicKey(privateKeyBytes);
-        var publicKeyHex = Convert.ToHexString(publicKeyBytes).ToLowerInvariant();
+        string eventMessage;
+        string eventId;
 
-        // Create event
-        var createdAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        if (!string.IsNullOrEmpty(privateKeyHex))
+        {
+            // Sign locally with private key
+            var privateKeyBytes = Convert.FromHexString(privateKeyHex);
+            var publicKeyBytes = DerivePublicKey(privateKeyBytes);
+            var publicKeyHex = Convert.ToHexString(publicKeyBytes).ToLowerInvariant();
 
-        // Build the event for signing (NIP-01 format)
-        // [0, pubkey, created_at, kind, tags, content]
-        // Use Utf8JsonWriter for deterministic JSON output — boxing List<List<string>>
-        // as object in object[] causes System.Text.Json to serialize tags incorrectly.
-        var serializedForId = SerializeForEventId(publicKeyHex, createdAt, kind, tags, content);
-        _logger.LogDebug("Event serialization for ID: {Serialized}", serializedForId);
+            var createdAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var serializedForId = SerializeForEventId(publicKeyHex, createdAt, kind, tags, content);
+            _logger.LogDebug("Event serialization for ID: {Serialized}", serializedForId);
 
-        // Calculate event ID (SHA256 of serialized event)
-        var eventIdBytes = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(serializedForId));
-        var eventId = Convert.ToHexString(eventIdBytes).ToLowerInvariant();
+            var eventIdBytes = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(serializedForId));
+            eventId = Convert.ToHexString(eventIdBytes).ToLowerInvariant();
 
-        // Sign the event ID with Schnorr signature (BIP-340)
-        var signature = SignSchnorr(eventIdBytes, privateKeyBytes);
-        var signatureHex = Convert.ToHexString(signature).ToLowerInvariant();
+            var signature = SignSchnorr(eventIdBytes, privateKeyBytes);
+            var signatureHex = Convert.ToHexString(signature).ToLowerInvariant();
 
-        // Build the full event JSON using Utf8JsonWriter for consistency
-        var eventMessage = SerializeEventMessage(eventId, publicKeyHex, createdAt, kind, tags, content, signatureHex);
+            eventMessage = SerializeEventMessage(eventId, publicKeyHex, createdAt, kind, tags, content, signatureHex);
+        }
+        else if (_externalSigner?.IsConnected == true)
+        {
+            // Sign via external signer (NIP-46)
+            _logger.LogInformation("Using external signer to sign kind {Kind} event", kind);
+
+            var unsignedEvent = new UnsignedNostrEvent
+            {
+                Kind = kind,
+                Content = content,
+                Tags = tags,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            var signedEventJson = await _externalSigner.SignEventAsync(unsignedEvent);
+
+            // The signer returns the full signed event JSON with id, pubkey, sig
+            using var doc = JsonDocument.Parse(signedEventJson);
+            var root = doc.RootElement;
+            eventId = root.GetProperty("id").GetString()
+                ?? throw new InvalidOperationException("Signer returned event without id");
+
+            // Wrap in ["EVENT", {...}] relay message format
+            eventMessage = $"[\"EVENT\",{signedEventJson}]";
+        }
+        else
+        {
+            throw new InvalidOperationException(
+                "Cannot publish event: no private key and no external signer connected. " +
+                "Please log in with a private key or connect an external signer like Amber.");
+        }
+
         var eventBytes = Encoding.UTF8.GetBytes(eventMessage);
-
         _logger.LogDebug("Publishing event {EventId} to relays", eventId);
 
         // Send to all connected relays

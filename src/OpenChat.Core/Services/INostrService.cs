@@ -63,32 +63,38 @@ public interface INostrService
     Task UnsubscribeAsync(string subscriptionId);
 
     /// <summary>
+    /// Set an external signer for event signing (NIP-46).
+    /// When set, publish methods can sign events without a private key.
+    /// </summary>
+    void SetExternalSigner(IExternalSigner? signer);
+
+    /// <summary>
     /// Publish a KeyPackage (kind 443).
     /// </summary>
     /// <param name="keyPackageData">Base64-encoded KeyPackage content bytes.</param>
-    /// <param name="privateKeyHex">Sender's private key.</param>
+    /// <param name="privateKeyHex">Sender's private key (null when using external signer).</param>
     /// <param name="mdkTags">Optional MDK-provided tags for MIP-00 compliance.</param>
-    Task<string> PublishKeyPackageAsync(byte[] keyPackageData, string privateKeyHex, List<List<string>>? mdkTags = null);
+    Task<string> PublishKeyPackageAsync(byte[] keyPackageData, string? privateKeyHex, List<List<string>>? mdkTags = null);
 
     /// <summary>
     /// Publish a Welcome message (kind 444).
     /// </summary>
     /// <param name="welcomeData">MLS Welcome message data.</param>
     /// <param name="recipientPublicKey">Recipient's public key.</param>
-    /// <param name="privateKeyHex">Sender's private key.</param>
+    /// <param name="privateKeyHex">Sender's private key (null when using external signer).</param>
     /// <param name="keyPackageEventId">Optional KeyPackage event ID (required per MIP-02).</param>
-    Task<string> PublishWelcomeAsync(byte[] welcomeData, string recipientPublicKey, string privateKeyHex, string? keyPackageEventId = null);
+    Task<string> PublishWelcomeAsync(byte[] welcomeData, string recipientPublicKey, string? privateKeyHex, string? keyPackageEventId = null);
 
     /// <summary>
     /// Publish a commit/evolution message (kind 445).
     /// Should be published before sending Welcome messages.
     /// </summary>
-    Task<string> PublishCommitAsync(byte[] commitData, string groupId, string privateKeyHex);
+    Task<string> PublishCommitAsync(byte[] commitData, string groupId, string? privateKeyHex);
 
     /// <summary>
     /// Publish a group message (kind 445).
     /// </summary>
-    Task<string> PublishGroupMessageAsync(byte[] encryptedData, string groupId, string privateKeyHex);
+    Task<string> PublishGroupMessageAsync(byte[] encryptedData, string groupId, string? privateKeyHex);
 
     /// <summary>
     /// Fetch KeyPackages for a user.
