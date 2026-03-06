@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
+using OpenChat.Core.Marmot;
 using OpenChat.Core.Models;
 using OpenChat.Core.Services;
 using Xunit;
@@ -132,7 +133,7 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
     /// This tests the FULL pipeline: publish → relay → WebSocket → Events observable →
     /// MessageService.OnNostrEventReceived → HandleWelcomeEventAsync → PendingInvite.
     /// </summary>
-    [Fact(Skip = "Requires local relay on ws://localhost:7777")]
+    [Fact]
     public async Task FullStack_WelcomePublished_ArriveAsPendingInvite()
     {
         _output.WriteLine($"User A pubkey: {_pubKeyA}");
@@ -216,7 +217,7 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
     /// Test that RescanInvitesAsync (used by the Rescan button in UI) can find
     /// Welcome events that were published BEFORE the subscription was set up.
     /// </summary>
-    [Fact(Skip = "Requires local relay on ws://localhost:7777")]
+    [Fact]
     public async Task FullStack_RescanInvites_FindsHistoricalWelcomes()
     {
         _output.WriteLine($"User A pubkey: {_pubKeyA}");
@@ -253,10 +254,12 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Test the complete invite acceptance flow after receiving via real relay.
+    /// Test that accepting an invite with random (non-MLS) welcome data throws
+    /// "invalid welcome message" from the Rust/native MLS backend.
+    /// The relay transport works fine — it's the MLS parsing that correctly rejects garbage.
     /// </summary>
-    [Fact(Skip = "Requires local relay on ws://localhost:7777")]
-    public async Task FullStack_AcceptInvite_CreatesGroupChat()
+    [Fact]
+    public async Task FullStack_AcceptInvite_RandomBytes_RustMls_ThrowsInvalidWelcome()
     {
         _output.WriteLine($"User A pubkey: {_pubKeyA}");
         _output.WriteLine($"User B pubkey: {_pubKeyB}");
@@ -272,37 +275,131 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
             .Take(1)
             .Subscribe(invite => inviteTcs.TrySetResult(invite));
 
-        // Step 3: User A publishes Welcome
+        // Step 3: User A publishes random bytes as Welcome (not real MLS data)
         var welcomeData = new byte[256];
         RandomNumberGenerator.Fill(welcomeData);
         var eventId = await _nostrServiceA.PublishWelcomeAsync(
             welcomeData, _pubKeyB, _privKeyA);
         _output.WriteLine($"Welcome published: {eventId}");
 
-        // Step 4: Wait for invite
+        // Step 4: Wait for invite — relay transport should work
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         cts.Token.Register(() => inviteTcs.TrySetCanceled());
         var invite = await inviteTcs.Task;
         _output.WriteLine($"Invite received: {invite.Id}");
 
-        // Step 5: Accept the invite
-        var chat = await _messageServiceB.AcceptInviteAsync(invite.Id);
-        _output.WriteLine($"Chat created: id={chat.Id}, name={chat.Name}, type={chat.Type}");
+        // Step 5: AcceptInvite should fail because random bytes aren't valid MLS Welcome data
+        var ex = await Assert.ThrowsAsync<MarmotException>(
+            () => _messageServiceB.AcceptInviteAsync(invite.Id));
+        Assert.Contains("invalid welcome message", ex.Message);
+        _output.WriteLine($"Correctly rejected random welcome: {ex.Message}");
+    }
 
-        Assert.NotNull(chat);
-        Assert.Equal(ChatType.Group, chat.Type);
-        Assert.NotNull(chat.MlsGroupId);
+    /// <summary>
+    /// Full end-to-end test: User A creates a real MLS group, adds User B using
+    /// a real KeyPackage, publishes the Welcome through the relay, User B receives
+    /// and accepts the invite, creating a real group chat.
+    /// Both users use the Rust/native MLS backend.
+    /// </summary>
+    [Fact]
+    public async Task FullStack_AcceptInvite_RealMlsData_CreatesGroupChat()
+    {
+        _output.WriteLine($"User A pubkey: {_pubKeyA}");
+        _output.WriteLine($"User B pubkey: {_pubKeyB}");
 
-        // Step 6: Verify invite was cleaned up
+        // Step 1: User B generates a real KeyPackage and publishes it to the relay
+        var keyPackageB = await _mlsServiceB.GenerateKeyPackageAsync();
+        Assert.True(keyPackageB.Data.Length >= 64);
+        _output.WriteLine($"User B generated KeyPackage: {keyPackageB.Data.Length} bytes");
+
+        var kpEventId = await _nostrServiceB.PublishKeyPackageAsync(
+            keyPackageB.Data, _privKeyB, keyPackageB.NostrTags);
+        Assert.Equal(64, kpEventId.Length);
+        _output.WriteLine($"User B published KeyPackage: {kpEventId}");
+
+        await Task.Delay(1000); // Let relay store it
+
+        // Step 2: User A creates a group
+        var groupInfo = await _mlsServiceA.CreateGroupAsync("Full Stack Test Group");
+        Assert.NotNull(groupInfo.GroupId);
+        _output.WriteLine($"User A created group: {Convert.ToHexString(groupInfo.GroupId).ToLowerInvariant()[..16]}...");
+
+        // Save chat record for User A
+        var chatA = new Chat
+        {
+            Id = Guid.NewGuid().ToString(),
+            Name = "Full Stack Test Group",
+            Type = ChatType.Group,
+            MlsGroupId = groupInfo.GroupId,
+            MlsEpoch = groupInfo.Epoch,
+            ParticipantPublicKeys = new List<string> { _pubKeyA },
+            CreatedAt = DateTime.UtcNow,
+            LastActivityAt = DateTime.UtcNow
+        };
+        await _storageA.SaveChatAsync(chatA);
+
+        // Step 3: User A fetches User B's KeyPackage from the relay
+        var fetchedKPs = (await _nostrServiceA.FetchKeyPackagesAsync(_pubKeyB)).ToList();
+        Assert.NotEmpty(fetchedKPs);
+        _output.WriteLine($"User A fetched KeyPackage from relay: {fetchedKPs[0].NostrEventId}");
+
+        // Step 4: User A adds User B to the group (real MLS operation)
+        var welcome = await _mlsServiceA.AddMemberAsync(groupInfo.GroupId, fetchedKPs[0]);
+        Assert.NotNull(welcome.WelcomeData);
+        Assert.True(welcome.WelcomeData.Length > 0);
+        _output.WriteLine($"User A added User B: welcome={welcome.WelcomeData.Length} bytes");
+
+        // Step 5: User B subscribes to welcomes
+        await _nostrServiceB.SubscribeToWelcomesAsync(_pubKeyB);
+        await Task.Delay(500);
+
+        var inviteTcs = new TaskCompletionSource<PendingInvite>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var inviteSub = _messageServiceB.NewInvites
+            .Take(1)
+            .Subscribe(invite => inviteTcs.TrySetResult(invite));
+
+        // Step 6: User A publishes the real Welcome through the relay
+        var welcomeEventId = await _nostrServiceA.PublishWelcomeAsync(
+            welcome.WelcomeData, _pubKeyB, _privKeyA, kpEventId);
+        Assert.Equal(64, welcomeEventId.Length);
+        _output.WriteLine($"Welcome published: {welcomeEventId}");
+
+        // Step 7: Wait for invite
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        cts.Token.Register(() => inviteTcs.TrySetCanceled());
+        var invite = await inviteTcs.Task;
+        _output.WriteLine($"Invite received: {invite.Id}");
+
+        // Step 8: Accept the invite (real MLS ProcessWelcome)
+        var chatB = await _messageServiceB.AcceptInviteAsync(invite.Id);
+        _output.WriteLine($"Chat created: id={chatB.Id}, name={chatB.Name}, type={chatB.Type}");
+
+        Assert.NotNull(chatB);
+        Assert.Equal(ChatType.Group, chatB.Type);
+        Assert.NotNull(chatB.MlsGroupId);
+
+        // Step 9: Verify invite was cleaned up
         var remaining = (await _storageB.GetPendingInvitesAsync()).ToList();
         Assert.DoesNotContain(remaining, i => i.Id == invite.Id);
 
-        // Step 7: Verify chat was persisted
-        var savedChat = await _storageB.GetChatAsync(chat.Id);
+        // Step 10: Verify chat was persisted
+        var savedChat = await _storageB.GetChatAsync(chatB.Id);
         Assert.NotNull(savedChat);
         Assert.Equal(ChatType.Group, savedChat!.Type);
 
-        _output.WriteLine("ACCEPT INVITE TEST PASSED: Welcome → PendingInvite → AcceptInvite → Chat");
+        // Step 11: Verify bidirectional message exchange
+        var ciphertextA = await _mlsServiceA.EncryptMessageAsync(groupInfo.GroupId, "Hello from A!");
+        var decryptedByB = await _mlsServiceB.DecryptMessageAsync(chatB.MlsGroupId!, ciphertextA);
+        Assert.Equal("Hello from A!", decryptedByB.Plaintext);
+        _output.WriteLine($"A→B message verified: \"{decryptedByB.Plaintext}\"");
+
+        var ciphertextB = await _mlsServiceB.EncryptMessageAsync(chatB.MlsGroupId!, "Hello from B!");
+        var decryptedByA = await _mlsServiceA.DecryptMessageAsync(groupInfo.GroupId, ciphertextB);
+        Assert.Equal("Hello from B!", decryptedByA.Plaintext);
+        _output.WriteLine($"B→A message verified: \"{decryptedByA.Plaintext}\"");
+
+        _output.WriteLine("FULL STACK TEST PASSED: KeyPackage → Relay → AddMember → Welcome → Relay → AcceptInvite → Chat → Messages");
     }
 
     private static void TryDeleteFile(string path)

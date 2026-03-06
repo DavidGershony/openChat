@@ -2,7 +2,7 @@ using Android.App;
 using Android.OS;
 using Android.Views;
 using AndroidX.AppCompat.App;
-using AndroidX.Fragment.App;
+using Fragment = AndroidX.Fragment.App.Fragment;
 using Google.Android.Material.BottomNavigation;
 using OpenChat.Android.Fragments;
 using OpenChat.Android.Services;
@@ -44,7 +44,7 @@ public class MainActivity : AppCompatActivity, IActivatableView
 
         var storageService = new StorageService(dbPath);
         var nostrService = new NostrService();
-        IMlsService mlsService = new MlsService();
+        IMlsService mlsService = new ManagedMlsService(storageService);
         var messageService = new MessageService(storageService, nostrService, mlsService);
 
         // Create platform services

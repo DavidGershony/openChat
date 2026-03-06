@@ -25,15 +25,12 @@
     <PackageReference Include="System.Reactive" Version="6.1.0" />
   </ItemGroup>
 
-  <!-- marmut-mdk references disabled until NuGet package is published
+  <!-- Temporarily using ProjectReferences for dev iteration -->
   <ItemGroup>
-    <ProjectReference Include="..\..\..\marmut-mdk\src\MarmutMdk.Core\MarmutMdk.Core.csproj" />
-    <ProjectReference Include="..\..\..\marmut-mdk\src\MarmutMdk.Mls\MarmutMdk.Mls.csproj" />
-    <ProjectReference Include="..\..\..\marmut-mdk\src\MarmutMdk.Mls.Crypto\MarmutMdk.Mls.Crypto.csproj" />
-    <ProjectReference Include="..\..\..\marmut-mdk\src\MarmutMdk.Protocol\MarmutMdk.Protocol.csproj" />
-    <ProjectReference Include="..\..\..\marmut-mdk\src\MarmutMdk.Storage.Abstractions\MarmutMdk.Storage.Abstractions.csproj" />
-    <ProjectReference Include="..\..\..\marmut-mdk\src\MarmutMdk.Storage.Memory\MarmutMdk.Storage.Memory.csproj" />
+    <ProjectReference Include="..\..\..\dotnet-mls\src\DotnetMls.Crypto\DotnetMls.Crypto.csproj" />
+    <ProjectReference Include="..\..\..\dotnet-mls\src\DotnetMls\DotnetMls.csproj" />
+    <ProjectReference Include="..\..\..\marmut-mdk\src\MarmotMdk.Core\MarmotMdk.Core.csproj" />
+    <ProjectReference Include="..\..\..\marmut-mdk\src\MarmotMdk.Storage.Memory\MarmotMdk.Storage.Memory.csproj" />
   </ItemGroup>
-  -->
 
 </Project>

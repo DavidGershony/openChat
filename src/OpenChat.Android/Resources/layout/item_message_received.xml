@@ -35,7 +35,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textSize="14sp"
-                android:textColor="@color/text_primary"
+                android:textColor="@color/bubble_received_text"
                 android:layout_marginTop="2dp" />
 
             <TextView

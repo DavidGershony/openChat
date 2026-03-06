@@ -9,6 +9,7 @@ public class ChatListAdapter : RecyclerView.Adapter
     private List<ChatItemViewModel> _items = new();
 
     public event EventHandler<ChatItemViewModel>? ItemClick;
+    public event EventHandler<ChatItemViewModel>? ItemLongClick;
 
     public override int ItemCount => _items.Count;
 
@@ -32,6 +33,7 @@ public class ChatListAdapter : RecyclerView.Adapter
             var item = _items[position];
             chatHolder.Bind(item);
             chatHolder.ItemView.Click += (s, e) => ItemClick?.Invoke(this, item);
+            chatHolder.ItemView.LongClick += (s, e) => ItemLongClick?.Invoke(this, item);
         }
     }
 
@@ -53,12 +55,23 @@ public class ChatListAdapter : RecyclerView.Adapter
         public void Bind(ChatItemViewModel item)
         {
             _name.Text = item.Name;
-            _lastMessage.Text = item.LastMessage ?? "";
-            _timestamp.Text = item.LastActivityText ?? "";
+            _lastMessage.Text = item.LastMessagePreview ?? "";
+            _timestamp.Text = FormatRelativeTime(item.LastActivityAt);
 
             // Avatar: first letter of name
             var initial = string.IsNullOrEmpty(item.Name) ? "?" : item.Name[..1].ToUpper();
             _avatar.Text = initial;
+        }
+
+        private static string FormatRelativeTime(DateTime dateTime)
+        {
+            if (dateTime == default) return "";
+            var elapsed = DateTime.Now - dateTime;
+            if (elapsed.TotalMinutes < 1) return "now";
+            if (elapsed.TotalMinutes < 60) return $"{(int)elapsed.TotalMinutes}m";
+            if (elapsed.TotalHours < 24) return $"{(int)elapsed.TotalHours}h";
+            if (elapsed.TotalDays < 7) return $"{(int)elapsed.TotalDays}d";
+            return dateTime.ToString("MMM d");
         }
     }
 }

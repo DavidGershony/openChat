@@ -1,6 +1,8 @@
+using Android.Content;
+using Android.Graphics;
 using Android.OS;
 using Android.Views;
-using AndroidX.Fragment.App;
+using Android.Widget;
 using Google.Android.Material.Button;
 using Google.Android.Material.Tabs;
 using Google.Android.Material.TextField;
@@ -8,6 +10,7 @@ using OpenChat.Presentation.ViewModels;
 using ReactiveUI;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
+using Fragment = AndroidX.Fragment.App.Fragment;
 
 namespace OpenChat.Android.Fragments;
 
@@ -35,6 +38,7 @@ public class LoginFragment : Fragment
         var errorMessage = view.FindViewById<TextView>(Resource.Id.error_message)!;
         var importKeySection = view.FindViewById<LinearLayout>(Resource.Id.import_key_section)!;
         var generateKeySection = view.FindViewById<LinearLayout>(Resource.Id.generate_key_section)!;
+        var externalSignerSection = view.FindViewById<LinearLayout>(Resource.Id.external_signer_section)!;
         var privateKeyInput = view.FindViewById<TextInputEditText>(Resource.Id.private_key_input)!;
         var importKeyButton = view.FindViewById<MaterialButton>(Resource.Id.import_key_button)!;
         var generateKeyButton = view.FindViewById<MaterialButton>(Resource.Id.generate_key_button)!;
@@ -42,6 +46,16 @@ public class LoginFragment : Fragment
         var generatedNpub = view.FindViewById<TextView>(Resource.Id.generated_npub)!;
         var generatedNsec = view.FindViewById<TextView>(Resource.Id.generated_nsec)!;
         var useGeneratedKeyButton = view.FindViewById<MaterialButton>(Resource.Id.use_generated_key_button)!;
+        var copyNpubButton = view.FindViewById<ImageButton>(Resource.Id.copy_npub_button)!;
+        var copyNsecButton = view.FindViewById<ImageButton>(Resource.Id.copy_nsec_button)!;
+
+        // External signer views
+        var qrImageView = view.FindViewById<ImageView>(Resource.Id.nostr_connect_qr)!;
+        var connectUriText = view.FindViewById<TextView>(Resource.Id.nostr_connect_uri)!;
+        var bunkerUrlInput = view.FindViewById<TextInputEditText>(Resource.Id.bunker_url_input)!;
+        var connectButton = view.FindViewById<MaterialButton>(Resource.Id.connect_signer_button)!;
+        var signerStatus = view.FindViewById<TextView>(Resource.Id.signer_status_text)!;
+        var signerProgress = view.FindViewById<ProgressBar>(Resource.Id.signer_progress)!;
 
         // Tab selection
         tabs.TabSelected += (s, e) =>
@@ -73,6 +87,24 @@ public class LoginFragment : Fragment
             ViewModel.UseGeneratedKeyCommand.Execute().Subscribe().DisposeWith(_disposables);
         };
 
+        // Copy buttons
+        copyNpubButton.Click += (s, e) =>
+        {
+            CopyToClipboard("npub", ViewModel.GeneratedNpub);
+        };
+
+        copyNsecButton.Click += (s, e) =>
+        {
+            CopyToClipboard("nsec", ViewModel.GeneratedNsec);
+        };
+
+        // External signer
+        connectButton.Click += (s, e) =>
+        {
+            ViewModel.BunkerUrl = bunkerUrlInput.Text ?? string.Empty;
+            ViewModel.ConnectExternalSignerCommand.Execute().Subscribe().DisposeWith(_disposables);
+        };
+
         // Bind ViewModel to views
         ViewModel.WhenAnyValue(x => x.SelectedLoginMethod)
             .ObserveOn(RxApp.MainThreadScheduler)
@@ -80,6 +112,7 @@ public class LoginFragment : Fragment
             {
                 importKeySection.Visibility = method == LoginMethod.PrivateKey ? ViewStates.Visible : ViewStates.Gone;
                 generateKeySection.Visibility = method == LoginMethod.GenerateNew ? ViewStates.Visible : ViewStates.Gone;
+                externalSignerSection.Visibility = method == LoginMethod.ExternalSigner ? ViewStates.Visible : ViewStates.Gone;
             })
             .DisposeWith(_disposables);
 
@@ -117,8 +150,68 @@ public class LoginFragment : Fragment
                 importKeyButton.Enabled = !loading;
                 generateKeyButton.Enabled = !loading;
                 useGeneratedKeyButton.Enabled = !loading;
+                connectButton.Enabled = !loading;
             })
             .DisposeWith(_disposables);
+
+        // External signer bindings
+        ViewModel.WhenAnyValue(x => x.NostrConnectQrPngBytes)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(bytes =>
+            {
+                if (bytes != null && bytes.Length > 0)
+                {
+                    var bitmap = BitmapFactory.DecodeByteArray(bytes, 0, bytes.Length);
+                    qrImageView.SetImageBitmap(bitmap);
+                    qrImageView.Visibility = ViewStates.Visible;
+                }
+                else
+                {
+                    qrImageView.Visibility = ViewStates.Gone;
+                }
+            })
+            .DisposeWith(_disposables);
+
+        ViewModel.WhenAnyValue(x => x.NostrConnectUri)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(uri =>
+            {
+                connectUriText.Text = uri ?? "";
+                connectUriText.Visibility = string.IsNullOrEmpty(uri) ? ViewStates.Gone : ViewStates.Visible;
+            })
+            .DisposeWith(_disposables);
+
+        ViewModel.WhenAnyValue(x => x.IsExternalSignerConnecting)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(connecting =>
+            {
+                signerProgress.Visibility = connecting ? ViewStates.Visible : ViewStates.Gone;
+                connectButton.Enabled = !connecting;
+                connectButton.Text = connecting ? "Connecting..." : "Connect";
+            })
+            .DisposeWith(_disposables);
+
+        ViewModel.WhenAnyValue(x => x.ExternalSignerStatus)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(status =>
+            {
+                signerStatus.Text = status ?? "";
+                signerStatus.Visibility = string.IsNullOrEmpty(status) ? ViewStates.Gone : ViewStates.Visible;
+            })
+            .DisposeWith(_disposables);
+    }
+
+    private void CopyToClipboard(string label, string? text)
+    {
+        if (string.IsNullOrEmpty(text) || Activity == null) return;
+
+        var clipboard = (ClipboardManager?)Activity.GetSystemService(global::Android.Content.Context.ClipboardService);
+        if (clipboard != null)
+        {
+            var clip = ClipData.NewPlainText(label, text);
+            clipboard.PrimaryClip = clip;
+            Toast.MakeText(Activity, "Copied!", ToastLength.Short)?.Show();
+        }
     }
 
     public override void OnDestroyView()

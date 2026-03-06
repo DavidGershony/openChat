@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <!-- Loading -->
+    <ProgressBar
+        android:id="@+id/contact_loading"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:visibility="gone" />
+
+    <!-- Display name -->
+    <TextView
+        android:id="@+id/contact_display_name"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:textColor="@color/text_primary" />
+
+    <!-- Username -->
+    <TextView
+        android:id="@+id/contact_username"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="14sp"
+        android:textColor="@color/text_secondary"
+        android:layout_marginTop="4dp"
+        android:visibility="gone" />
+
+    <!-- About -->
+    <TextView
+        android:id="@+id/contact_about"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="14sp"
+        android:textColor="@color/text_secondary"
+        android:layout_marginTop="12dp"
+        android:visibility="gone" />
+
+    <!-- npub -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Public Key"
+        android:textSize="12sp"
+        android:textColor="@color/text_muted"
+        android:layout_marginTop="16dp" />
+
+    <TextView
+        android:id="@+id/contact_npub"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:fontFamily="monospace"
+        android:textSize="11sp"
+        android:textIsSelectable="true"
+        android:layout_marginTop="4dp" />
+
+    <!-- NIP-05 -->
+    <TextView
+        android:id="@+id/contact_nip05_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="NIP-05"
+        android:textSize="12sp"
+        android:textColor="@color/text_muted"
+        android:layout_marginTop="12dp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/contact_nip05"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="14sp"
+        android:textColor="@color/text_secondary"
+        android:layout_marginTop="4dp"
+        android:visibility="gone" />
+
+    <!-- Lightning -->
+    <TextView
+        android:id="@+id/contact_lud16_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Lightning"
+        android:textSize="12sp"
+        android:textColor="@color/text_muted"
+        android:layout_marginTop="12dp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/contact_lud16"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="14sp"
+        android:textColor="@color/text_secondary"
+        android:layout_marginTop="4dp"
+        android:visibility="gone" />
+</LinearLayout>

@@ -135,14 +135,31 @@
                     android:textColor="@color/text_muted"
                     android:textSize="12sp" />
 
-                <TextView
-                    android:id="@+id/generated_npub"
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:fontFamily="monospace"
-                    android:textSize="11sp"
-                    android:textIsSelectable="true"
-                    android:layout_marginTop="4dp" />
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:id="@+id/generated_npub"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:fontFamily="monospace"
+                        android:textSize="11sp"
+                        android:textIsSelectable="true"
+                        android:layout_marginTop="4dp" />
+
+                    <ImageButton
+                        android:id="@+id/copy_npub_button"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:src="@android:drawable/ic_menu_edit"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="Copy npub"
+                        android:scaleType="centerInside" />
+                </LinearLayout>
 
                 <TextView
                     android:layout_width="wrap_content"
@@ -152,13 +169,30 @@
                     android:textSize="12sp"
                     android:layout_marginTop="12dp" />
 
-                <TextView
-                    android:id="@+id/generated_nsec"
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:fontFamily="monospace"
-                    android:textSize="11sp"
-                    android:layout_marginTop="4dp" />
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:id="@+id/generated_nsec"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:fontFamily="monospace"
+                        android:textSize="11sp"
+                        android:layout_marginTop="4dp" />
+
+                    <ImageButton
+                        android:id="@+id/copy_nsec_button"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:src="@android:drawable/ic_menu_edit"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="Copy nsec"
+                        android:scaleType="centerInside" />
+                </LinearLayout>
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/use_generated_key_button"
@@ -167,6 +201,81 @@
                     android:text="Continue with this identity"
                     android:layout_marginTop="16dp" />
             </LinearLayout>
+        </LinearLayout>
+
+        <!-- External Signer Section -->
+        <LinearLayout
+            android:id="@+id/external_signer_section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone"
+            android:layout_marginTop="16dp">
+
+            <!-- QR Code -->
+            <ImageView
+                android:id="@+id/nostr_connect_qr"
+                android:layout_width="200dp"
+                android:layout_height="200dp"
+                android:layout_gravity="center"
+                android:contentDescription="NostrConnect QR code"
+                android:visibility="gone" />
+
+            <!-- nostrconnect URI -->
+            <TextView
+                android:id="@+id/nostr_connect_uri"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:textSize="10sp"
+                android:textIsSelectable="true"
+                android:textColor="@color/text_secondary"
+                android:layout_marginTop="8dp"
+                android:visibility="gone" />
+
+            <!-- Bunker URL input -->
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:hint="Bunker URL (bunker://...)">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/bunker_url_input"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="text"
+                    android:maxLines="1"
+                    android:fontFamily="monospace"
+                    android:textSize="12sp" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <!-- Connect button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/connect_signer_button"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Connect"
+                android:layout_marginTop="12dp" />
+
+            <!-- Status -->
+            <TextView
+                android:id="@+id/signer_status_text"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="13sp"
+                android:textColor="@color/text_secondary"
+                android:layout_marginTop="8dp"
+                android:visibility="gone" />
+
+            <!-- Progress -->
+            <ProgressBar
+                android:id="@+id/signer_progress"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:layout_marginTop="8dp"
+                android:visibility="gone" />
         </LinearLayout>
 
     </LinearLayout>

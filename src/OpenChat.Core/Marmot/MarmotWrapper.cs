@@ -16,13 +16,10 @@ public class MarmotWrapper : IDisposable
     private bool _disposed;
     private bool _initialized;
 
-    // For development/testing before native library is ready
-    private readonly Dictionary<string, MockGroup> _mockGroups = new();
-    private string? _privateKeyHex;
-    private string? _publicKeyHex;
+    private string? _initializationError;
 
     /// <summary>
-    /// Whether the native MLS client is loaded (true) or using mock fallback (false).
+    /// Whether the native MLS client is loaded and ready.
     /// </summary>
     public bool IsUsingNativeClient => _client != IntPtr.Zero;
 
@@ -36,9 +33,6 @@ public class MarmotWrapper : IDisposable
     {
         _logger.LogInformation("Initializing MarmotWrapper");
         _logger.LogDebug("Public key: {PubKey}...", publicKeyHex[..16]);
-
-        _privateKeyHex = privateKeyHex;
-        _publicKeyHex = publicKeyHex;
 
         try
         {
@@ -55,10 +49,9 @@ public class MarmotWrapper : IDisposable
         }
         catch (DllNotFoundException ex)
         {
-            _logger.LogError(ex, "Native Marmot library (openchat_native.dll) not found. MLS operations will not work.");
-            throw new MarmotException(
-                "Native Marmot library (openchat_native.dll) not found. " +
-                "Ensure the library is built and placed alongside the application.", ex);
+            _initializationError = "Native MLS library not available on this platform. Group encryption is disabled.";
+            _logger.LogError(ex, "{Error}", _initializationError);
+            throw new MarmotException(_initializationError, ex);
         }
 
         await Task.CompletedTask;
@@ -88,24 +81,6 @@ public class MarmotWrapper : IDisposable
     public async Task<KeyPackageResult> GenerateKeyPackageAsync()
     {
         EnsureInitialized();
-
-        if (_client == IntPtr.Zero)
-        {
-            // Mock implementation
-            var mockKeyPackage = new byte[256];
-            new Random().NextBytes(mockKeyPackage);
-            return new KeyPackageResult
-            {
-                Content = Convert.ToBase64String(mockKeyPackage),
-                Data = mockKeyPackage,
-                Tags = new List<List<string>>
-                {
-                    new() { "encoding", "base64" },
-                    new() { "mls_protocol_version", "1.0" },
-                    new() { "mls_ciphersuite", "0x0001" }
-                }
-            };
-        }
 
         return await Task.Run(() =>
         {
@@ -174,19 +149,6 @@ public class MarmotWrapper : IDisposable
     {
         EnsureInitialized();
 
-        if (_client == IntPtr.Zero)
-        {
-            // Mock implementation
-            var mockGroupId = Guid.NewGuid().ToByteArray();
-            _mockGroups[Convert.ToHexString(mockGroupId)] = new MockGroup
-            {
-                Name = groupName,
-                Epoch = 0,
-                Members = new List<string> { _publicKeyHex! }
-            };
-            return (mockGroupId, 0);
-        }
-
         return await Task.Run(() =>
         {
             var ptr = MarmotInterop.CreateGroup(_client, groupName, out int groupIdLength, out ulong epoch);
@@ -227,16 +189,6 @@ public class MarmotWrapper : IDisposable
     public async Task<AddMemberResult> AddMemberAsync(byte[] groupId, byte[] keyPackageData)
     {
         EnsureInitialized();
-
-        if (_client == IntPtr.Zero)
-        {
-            // Mock implementation
-            var mockWelcome = new byte[512];
-            new Random().NextBytes(mockWelcome);
-            var mockCommit = new byte[256];
-            new Random().NextBytes(mockCommit);
-            return new AddMemberResult { WelcomeData = mockWelcome, CommitData = mockCommit };
-        }
 
         return await Task.Run(() =>
         {
@@ -308,34 +260,45 @@ public class MarmotWrapper : IDisposable
     {
         EnsureInitialized();
 
-        if (_client == IntPtr.Zero)
-        {
-            // Mock implementation
-            var mockGroupId = new byte[16];
-            new Random().NextBytes(mockGroupId);
-            return (mockGroupId, "Mock Group", 1, new List<string> { _publicKeyHex! });
-        }
-
         return await Task.Run(() =>
         {
             // The native process_welcome expects JSON: {"wrapper_event_id": "...", "rumor_event": {...}}
             // where rumor_event is a single UnsignedEvent JSON object.
-            // welcomeData from add_member's "welcome" field may be an array of rumor events
-            // (e.g. [{...}]) — extract the first element if so.
-            var rumorJson = System.Text.Encoding.UTF8.GetString(welcomeData);
+            //
+            // Welcome data comes in two formats:
+            // 1. Rust MDK: JSON rumor event (or array) where content is base64-encoded MLS Welcome
+            // 2. C# MDK: raw MLS Welcome TLS bytes (binary, starts with 0x00-0x0F)
+            //
+            // Detect format and normalize to what the native DLL expects.
+            string rumorJson;
+            byte firstByte = welcomeData[0];
 
-            try
+            if (firstByte != (byte)'{' && firstByte != (byte)'[')
             {
-                using var doc = JsonDocument.Parse(rumorJson);
-                if (doc.RootElement.ValueKind == JsonValueKind.Array && doc.RootElement.GetArrayLength() > 0)
-                {
-                    rumorJson = doc.RootElement[0].GetRawText();
-                    _logger.LogDebug("ProcessWelcome: extracted first rumor from array of {Count}", doc.RootElement.GetArrayLength());
-                }
+                // Raw MLS TLS bytes from C# MDK — wrap in a synthetic rumor event
+                var base64Content = Convert.ToBase64String(welcomeData);
+                var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                rumorJson = $"{{\"id\":\"{wrapperEventId}\",\"pubkey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"created_at\":{now},\"kind\":444,\"tags\":[],\"content\":\"{base64Content}\"}}";
+                _logger.LogInformation("ProcessWelcome: wrapped {Len} bytes of raw MLS TLS data in synthetic rumor event", welcomeData.Length);
             }
-            catch (JsonException ex)
+            else
             {
-                _logger.LogWarning(ex, "ProcessWelcome: could not parse welcome data as JSON, using raw bytes");
+                // JSON from Rust MDK — may be an array of rumor events, extract first
+                rumorJson = System.Text.Encoding.UTF8.GetString(welcomeData);
+                try
+                {
+                    using var doc = JsonDocument.Parse(rumorJson);
+                    if (doc.RootElement.ValueKind == JsonValueKind.Array && doc.RootElement.GetArrayLength() > 0)
+                    {
+                        rumorJson = doc.RootElement[0].GetRawText();
+                        _logger.LogDebug("ProcessWelcome: extracted first rumor from array of {Count}", doc.RootElement.GetArrayLength());
+                    }
+                }
+                catch (JsonException ex)
+                {
+                    _logger.LogWarning(ex, "ProcessWelcome: could not parse welcome data as JSON");
+                    throw new MarmotException("Welcome data is not valid JSON or MLS TLS data", ex);
+                }
             }
 
             var inputJson = $"{{\"wrapper_event_id\":\"{wrapperEventId}\",\"rumor_event\":{rumorJson}}}";
@@ -390,13 +353,6 @@ public class MarmotWrapper : IDisposable
     {
         EnsureInitialized();
 
-        if (_client == IntPtr.Zero)
-        {
-            // Mock implementation - just encode the plaintext
-            var mockCiphertext = System.Text.Encoding.UTF8.GetBytes(plaintext);
-            return mockCiphertext;
-        }
-
         return await Task.Run(() =>
         {
             var groupIdHandle = GCHandle.Alloc(groupId, GCHandleType.Pinned);
@@ -436,13 +392,6 @@ public class MarmotWrapper : IDisposable
     public async Task<(string senderPublicKey, string plaintext, ulong epoch)> DecryptMessageAsync(byte[] groupId, byte[] ciphertext)
     {
         EnsureInitialized();
-
-        if (_client == IntPtr.Zero)
-        {
-            // Mock implementation - just decode the ciphertext
-            var plaintext = System.Text.Encoding.UTF8.GetString(ciphertext);
-            return (_publicKeyHex!, plaintext, 0);
-        }
 
         return await Task.Run(() =>
         {
@@ -490,12 +439,6 @@ public class MarmotWrapper : IDisposable
     {
         EnsureInitialized();
 
-        if (_client == IntPtr.Zero)
-        {
-            // Mock implementation - no-op
-            return;
-        }
-
         await Task.Run(() =>
         {
             var groupIdHandle = GCHandle.Alloc(groupId, GCHandleType.Pinned);
@@ -526,19 +469,6 @@ public class MarmotWrapper : IDisposable
     public async Task<byte[]> UpdateKeysAsync(byte[] groupId)
     {
         EnsureInitialized();
-
-        if (_client == IntPtr.Zero)
-        {
-            // Mock implementation - increment epoch
-            var key = Convert.ToHexString(groupId);
-            if (_mockGroups.TryGetValue(key, out var group))
-            {
-                group.Epoch++;
-            }
-            var mockCommit = new byte[128];
-            new Random().NextBytes(mockCommit);
-            return mockCommit;
-        }
 
         return await Task.Run(() =>
         {
@@ -579,14 +509,6 @@ public class MarmotWrapper : IDisposable
     {
         EnsureInitialized();
 
-        if (_client == IntPtr.Zero)
-        {
-            // Mock implementation
-            var mockCommit = new byte[128];
-            new Random().NextBytes(mockCommit);
-            return mockCommit;
-        }
-
         return await Task.Run(() =>
         {
             var groupIdHandle = GCHandle.Alloc(groupId, GCHandleType.Pinned);
@@ -626,17 +548,6 @@ public class MarmotWrapper : IDisposable
     public async Task<(byte[] groupId, string groupName, ulong epoch, List<string> members)?> GetGroupInfoAsync(byte[] groupId)
     {
         EnsureInitialized();
-
-        if (_client == IntPtr.Zero)
-        {
-            // Mock implementation
-            var key = Convert.ToHexString(groupId);
-            if (_mockGroups.TryGetValue(key, out var group))
-            {
-                return (groupId, group.Name, group.Epoch, group.Members);
-            }
-            return null;
-        }
 
         return await Task.Run<(byte[] groupId, string groupName, ulong epoch, List<string> members)?>(() =>
         {
@@ -682,17 +593,6 @@ public class MarmotWrapper : IDisposable
     {
         EnsureInitialized();
 
-        if (_client == IntPtr.Zero)
-        {
-            // Mock implementation
-            var key = Convert.ToHexString(groupId);
-            if (_mockGroups.TryGetValue(key, out var group))
-            {
-                return JsonSerializer.SerializeToUtf8Bytes(group);
-            }
-            return Array.Empty<byte>();
-        }
-
         return await Task.Run(() =>
         {
             var groupIdHandle = GCHandle.Alloc(groupId, GCHandleType.Pinned);
@@ -732,18 +632,6 @@ public class MarmotWrapper : IDisposable
     {
         EnsureInitialized();
 
-        if (_client == IntPtr.Zero)
-        {
-            // Mock implementation
-            var key = Convert.ToHexString(groupId);
-            var group = JsonSerializer.Deserialize<MockGroup>(state);
-            if (group != null)
-            {
-                _mockGroups[key] = group;
-            }
-            return;
-        }
-
         await Task.Run(() =>
         {
             var groupIdHandle = GCHandle.Alloc(groupId, GCHandleType.Pinned);
@@ -775,7 +663,9 @@ public class MarmotWrapper : IDisposable
     {
         if (!_initialized)
         {
-            throw new InvalidOperationException("MarmotWrapper not initialized. Call InitializeAsync first.");
+            var message = _initializationError
+                ?? "MLS service not initialized. Call InitializeAsync first.";
+            throw new MarmotException(message);
         }
     }
 
@@ -814,13 +704,6 @@ public class MarmotWrapper : IDisposable
         }
 
         _disposed = true;
-    }
-
-    private class MockGroup
-    {
-        public string Name { get; set; } = "";
-        public ulong Epoch { get; set; }
-        public List<string> Members { get; set; } = new();
     }
 }
 

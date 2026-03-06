@@ -44,6 +44,65 @@
                 android:maxLines="1" />
         </com.google.android.material.textfield.TextInputLayout>
 
+        <!-- Pending Invites Section -->
+        <LinearLayout
+            android:id="@+id/pending_invites_section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <!-- Header row -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingHorizontal="16dp"
+                android:paddingVertical="8dp">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Pending Invites"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/text_primary" />
+
+                <!-- Badge -->
+                <TextView
+                    android:id="@+id/invite_badge"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:gravity="center"
+                    android:textSize="12sp"
+                    android:textColor="@color/on_primary"
+                    android:background="@color/primary"
+                    android:layout_marginEnd="8dp" />
+
+                <!-- Rescan button -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/rescan_invites_button"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:text="Scan"
+                    android:textSize="12sp"
+                    android:minWidth="0dp"
+                    android:paddingHorizontal="12dp"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    app:icon="@android:drawable/ic_popup_sync"
+                    app:iconSize="16dp" />
+            </LinearLayout>
+
+            <!-- Invites RecyclerView -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/pending_invites_recycler"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:nestedScrollingEnabled="false" />
+        </LinearLayout>
+
         <!-- Chat List -->
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/chat_list_recycler"

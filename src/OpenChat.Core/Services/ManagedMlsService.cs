@@ -1,23 +1,15 @@
-// =============================================================================
-// ManagedMlsService — TEMPORARILY DISABLED
-// Depends on marmut-mdk NuGet packages (not yet published).
-// Uncomment when MarmutMdk.* packages are available on NuGet.
-// =============================================================================
-
-#if false
-
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using OpenChat.Core.Logging;
 using OpenChat.Core.Models;
-using MarmutMdk.Core;
-using MarmutMdk.Core.Results;
-using MarmutMdk.Mls.Codec;
-using MarmutMdk.Mls.Crypto;
-using MarmutMdk.Mls.Group;
-using MarmutMdk.Protocol.Mip00;
-using MarmutMdk.Storage.Memory;
+using MarmotMdk.Core;
+using MarmotMdk.Core.Results;
+using DotnetMls.Codec;
+using DotnetMls.Crypto;
+using DotnetMls.Group;
+using MarmotMdk.Protocol.Mip00;
+using MarmotMdk.Storage.Memory;
 
 namespace OpenChat.Core.Services;
 
@@ -119,10 +111,12 @@ public class ManagedMlsService : IMlsService
     {
         EnsureInitialized();
 
-        // Call MlsGroup.CreateKeyPackage directly to capture initPriv/hpkePriv
+        // Call MlsGroup.CreateKeyPackage directly to capture initPriv/hpkePriv.
+        // Advertise support for NostrGroupData extension (0xF2EE) so Rust MLS groups accept this KeyPackage.
         var mlsKp = MlsGroup.CreateKeyPackage(
             _cipherSuite, _identity!, _signingPrivateKey!, _signingPublicKey!,
-            out var initPrivateKey, out var hpkePrivateKey);
+            out var initPrivateKey, out var hpkePrivateKey,
+            supportedExtensionTypes: new ushort[] { 0xF2EE });
 
         // Store for later ProcessWelcomeAsync
         byte[] kpBytes = TlsCodec.Serialize(writer => mlsKp.WriteTo(writer));
@@ -212,9 +206,15 @@ public class ManagedMlsService : IMlsService
 
         await SaveGroupStateAsync(groupId);
 
+        // MIP-02 requires the Welcome to be wrapped in an MLSMessage container:
+        //   MLSMessage { version=mls10(0x0001), wire_format=mls_welcome(0x0003), Welcome }
+        // The C# MDK produces raw Welcome TLS bytes, so we prepend the 4-byte header.
+        var rawWelcome = result.WelcomeBytes ?? Array.Empty<byte>();
+        var mlsMessage = WrapWelcomeInMlsMessage(rawWelcome);
+
         return new MlsWelcome
         {
-            WelcomeData = result.WelcomeBytes ?? Array.Empty<byte>(),
+            WelcomeData = mlsMessage,
             CommitData = result.CommitMessageBytes,
             RecipientPublicKey = keyPackage.OwnerPublicKey,
             KeyPackageEventId = keyPackage.NostrEventId
@@ -236,6 +236,9 @@ public class ManagedMlsService : IMlsService
         // 2. UTF-8 JSON (from Rust/native MDK sender) — a Nostr rumor event (or array)
         //    where the actual MLS Welcome binary is base64-encoded in the "content" field
         var mlsWelcomeBytes = ExtractMlsWelcomeBytes(welcomeData);
+        _logger.LogInformation("ProcessWelcome: extracted MLS bytes ({Len} bytes), first 16: {Hex}",
+            mlsWelcomeBytes.Length,
+            Convert.ToHexString(mlsWelcomeBytes[..Math.Min(16, mlsWelcomeBytes.Length)]));
 
         var preview = await _mdk!.PreviewWelcomeAsync(
             mlsWelcomeBytes,
@@ -529,27 +532,44 @@ public class ManagedMlsService : IMlsService
     }
 
     /// <summary>
-    /// Detects whether welcome data is JSON (from Rust/native MDK) or raw TLS bytes (from managed MDK),
-    /// and extracts the raw MLS Welcome TLS bytes in either case.
+    /// Extracts raw MLS Welcome TLS bytes from whatever format the welcome data arrives in.
+    /// Welcome data can be:
+    /// 1. MLSMessage-wrapped TLS bytes (from any MIP-02 compliant sender) — strip 4-byte header
+    /// 2. Raw Welcome TLS bytes (legacy C# MDK) — use directly
+    /// 3. UTF-8 JSON rumor event (from Rust/native MDK via MarmotWrapper) — extract base64 content
+    /// The C# MDK's internal parser expects raw Welcome bytes (without MLSMessage header).
     /// </summary>
     private byte[] ExtractMlsWelcomeBytes(byte[] welcomeData)
     {
         if (welcomeData.Length == 0)
             throw new InvalidOperationException("Welcome data is empty.");
 
-        // Raw TLS MLS Welcome starts with 0x00..0x0F (version/cipher_suite fields).
-        // JSON starts with '{' (0x7B) or '[' (0x5B).
         byte first = welcomeData[0];
-        if (first != (byte)'{' && first != (byte)'[')
+
+        // JSON starts with '{' (0x7B) or '[' (0x5B) — Rust/native MDK rumor event format
+        if (first == (byte)'{' || first == (byte)'[')
         {
-            _logger.LogDebug("ProcessWelcome: welcome data appears to be raw TLS ({Len} bytes)", welcomeData.Length);
-            return welcomeData;
+            _logger.LogInformation("ProcessWelcome: detected JSON welcome data from Rust/native MDK, extracting MLS Welcome bytes");
+            return ExtractFromJsonRumor(welcomeData);
         }
 
-        // Rust/native MDK welcome: JSON rumor event (or array of rumor events)
-        // The rumor event's "content" field contains the MLS Welcome as base64.
-        _logger.LogInformation("ProcessWelcome: detected JSON welcome data from Rust/native MDK, extracting MLS Welcome bytes");
+        // Binary TLS data — check if it's MLSMessage-wrapped (MIP-02 compliant)
+        // MLSMessage header: version=0x0001 (2 bytes) + wire_format=0x0003 (2 bytes)
+        if (welcomeData.Length >= 4 &&
+            welcomeData[0] == 0x00 && welcomeData[1] == 0x01 &&  // version = mls10
+            welcomeData[2] == 0x00 && welcomeData[3] == 0x03)    // wire_format = mls_welcome
+        {
+            _logger.LogDebug("ProcessWelcome: stripping MLSMessage header from {Len} bytes", welcomeData.Length);
+            return welcomeData[4..]; // Strip the 4-byte MLSMessage header
+        }
 
+        // Raw Welcome TLS bytes (legacy format without MLSMessage wrapper)
+        _logger.LogDebug("ProcessWelcome: welcome data appears to be raw TLS ({Len} bytes)", welcomeData.Length);
+        return welcomeData;
+    }
+
+    private byte[] ExtractFromJsonRumor(byte[] welcomeData)
+    {
         try
         {
             var json = Encoding.UTF8.GetString(welcomeData);
@@ -570,7 +590,7 @@ public class ManagedMlsService : IMlsService
                 rumorEvent = root;
             }
 
-            // Extract the "content" field which contains base64-encoded MLS Welcome
+            // Extract the "content" field which contains base64-encoded MLSMessage(Welcome)
             var content = rumorEvent.GetProperty("content").GetString()
                 ?? throw new InvalidOperationException("Rumor event has null content field.");
 
@@ -579,8 +599,17 @@ public class ManagedMlsService : IMlsService
                 throw new InvalidOperationException("Rumor event content decoded to empty bytes.");
 
             _logger.LogInformation(
-                "ProcessWelcome: extracted {Len} bytes of raw MLS Welcome from JSON rumor event",
+                "ProcessWelcome: extracted {Len} bytes from JSON rumor event content",
                 mlsBytes.Length);
+
+            // The content may be MLSMessage-wrapped — strip the header if present
+            if (mlsBytes.Length >= 4 &&
+                mlsBytes[0] == 0x00 && mlsBytes[1] == 0x01 &&
+                mlsBytes[2] == 0x00 && mlsBytes[3] == 0x03)
+            {
+                _logger.LogDebug("ProcessWelcome: stripping MLSMessage header from extracted bytes");
+                return mlsBytes[4..];
+            }
 
             return mlsBytes;
         }
@@ -591,8 +620,31 @@ public class ManagedMlsService : IMlsService
         catch (Exception ex)
         {
             throw new InvalidOperationException(
-                "Failed to extract MLS Welcome bytes from Rust/native MDK JSON welcome data", ex);
+                "Failed to extract MLS Welcome bytes from JSON welcome data", ex);
         }
+    }
+
+    /// <summary>
+    /// Wraps raw Welcome TLS bytes in an MLSMessage container per MIP-02:
+    /// MLSMessage { version=mls10(0x0001), wire_format=mls_welcome(0x0003), Welcome }
+    /// </summary>
+    private static byte[] WrapWelcomeInMlsMessage(byte[] rawWelcome)
+    {
+        if (rawWelcome.Length == 0) return rawWelcome;
+
+        // Don't double-wrap if already has MLSMessage header
+        if (rawWelcome.Length >= 4 &&
+            rawWelcome[0] == 0x00 && rawWelcome[1] == 0x01 &&
+            rawWelcome[2] == 0x00 && rawWelcome[3] == 0x03)
+        {
+            return rawWelcome;
+        }
+
+        var result = new byte[4 + rawWelcome.Length];
+        result[0] = 0x00; result[1] = 0x01; // ProtocolVersion = mls10 (1)
+        result[2] = 0x00; result[3] = 0x03; // WireFormat = mls_welcome (3)
+        Buffer.BlockCopy(rawWelcome, 0, result, 4, rawWelcome.Length);
+        return result;
     }
 
     private void EnsureInitialized()
@@ -601,5 +653,3 @@ public class ManagedMlsService : IMlsService
             throw new InvalidOperationException("MLS service not initialized. Call InitializeAsync first.");
     }
 }
-
-#endif

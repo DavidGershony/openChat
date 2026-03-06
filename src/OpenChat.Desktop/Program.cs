@@ -23,20 +23,15 @@ class Program
 
         ProfileConfiguration.SetProfile(profileName);
 
-        // --mdk backend selection disabled until marmut-mdk NuGet packages are published
-        // if (mdkBackendArg != null)
-        // {
-        //     var backend = mdkBackendArg.ToLowerInvariant() switch
-        //     {
-        //         "managed" => MdkBackend.Managed,
-        //         "rust" => MdkBackend.Rust,
-        //         _ => throw new ArgumentException($"Unknown --mdk value '{mdkBackendArg}'. Use 'rust' or 'managed'.")
-        //     };
-        //     ProfileConfiguration.SetMdkBackend(backend);
-        // }
         if (mdkBackendArg != null)
         {
-            Console.WriteLine("Warning: --mdk argument ignored, managed backend temporarily disabled");
+            var backend = mdkBackendArg.ToLowerInvariant() switch
+            {
+                "managed" => MdkBackend.Managed,
+                "rust" => MdkBackend.Rust,
+                _ => throw new ArgumentException($"Unknown --mdk value '{mdkBackendArg}'. Use 'rust' or 'managed'.")
+            };
+            ProfileConfiguration.SetMdkBackend(backend);
         }
 
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
