@@ -25,12 +25,11 @@
     <PackageReference Include="System.Reactive" Version="6.1.0" />
   </ItemGroup>
 
-  <!-- Temporarily using ProjectReferences for dev iteration -->
   <ItemGroup>
-    <ProjectReference Include="..\..\..\dotnet-mls\src\DotnetMls.Crypto\DotnetMls.Crypto.csproj" />
-    <ProjectReference Include="..\..\..\dotnet-mls\src\DotnetMls\DotnetMls.csproj" />
-    <ProjectReference Include="..\..\..\marmut-mdk\src\MarmotMdk.Core\MarmotMdk.Core.csproj" />
-    <ProjectReference Include="..\..\..\marmut-mdk\src\MarmotMdk.Storage.Memory\MarmotMdk.Storage.Memory.csproj" />
+    <PackageReference Include="DotnetMls" Version="0.1.*-*" />
+    <PackageReference Include="DotnetMls.Crypto" Version="0.1.*-*" />
+    <PackageReference Include="MarmotMdk.Core" Version="0.1.*-*" />
+    <PackageReference Include="MarmotMdk.Storage.Memory" Version="0.1.*-*" />
   </ItemGroup>
 
 </Project>
