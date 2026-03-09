@@ -71,32 +71,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android
-
-      - name: Cache Rust build (Android)
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            src/OpenChat.Native/target
-          key: rust-android-arm64-${{ hashFiles('src/OpenChat.Native/Cargo.lock') }}
-          restore-keys: rust-android-arm64-
-
-      - name: Setup Android NDK
-        uses: nttld/setup-ndk@v1
-        id: ndk
-        with:
-          ndk-version: r27
-
-      - name: Build Rust native library for Android (arm64)
-        env:
-          CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang
-        run: cargo build --release --manifest-path src/OpenChat.Native/Cargo.toml --target aarch64-linux-android
-
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
