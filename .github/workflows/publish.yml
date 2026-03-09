@@ -1,0 +1,127 @@
+name: Publish Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  build-desktop:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            native_lib: openchat_native.dll
+            artifact_name: OpenChat-win-x64.exe
+          - os: ubuntu-latest
+            rid: linux-x64
+            native_lib: libopenchat_native.so
+            artifact_name: OpenChat-linux-x64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Rust native library
+        run: cargo build --release --manifest-path src/OpenChat.Native/Cargo.toml
+
+      - name: Copy native library to Desktop project
+        run: cp src/OpenChat.Native/target/release/${{ matrix.native_lib }} src/OpenChat.Desktop/
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Publish Desktop (single file)
+        run: dotnet publish src/OpenChat.Desktop/OpenChat.Desktop.csproj --configuration Release --runtime ${{ matrix.rid }} --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true --output ./publish
+
+      - name: Rename artifact
+        run: |
+          if [ "${{ matrix.rid }}" = "win-x64" ]; then
+            mv ./publish/OpenChat.Desktop.exe ./publish/${{ matrix.artifact_name }}
+          else
+            mv ./publish/OpenChat.Desktop ./publish/${{ matrix.artifact_name }}
+          fi
+        shell: bash
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ./publish/${{ matrix.artifact_name }}
+
+  build-android:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r27
+
+      - name: Build Rust native library for Android (arm64)
+        env:
+          CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang
+        run: cargo build --release --manifest-path src/OpenChat.Native/Cargo.toml --target aarch64-linux-android
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Install Android workload
+        run: dotnet workload install android
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build Android APK
+        run: dotnet publish src/OpenChat.Android/OpenChat.Android.csproj --configuration Release --framework net9.0-android -p:ApplicationDisplayVersion=${{ steps.version.outputs.VERSION }} --output ./publish/android
+
+      - name: Find and rename APK
+        id: apk
+        run: |
+          APK=$(find ./publish/android -name '*.apk' | head -1)
+          mv "$APK" ./publish/android/OpenChat.apk
+          echo "APK_PATH=./publish/android/OpenChat.apk" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenChat.apk
+          path: ${{ steps.apk.outputs.APK_PATH }}
+
+  release:
+    needs: [build-desktop, build-android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            ./artifacts/OpenChat-win-x64.exe/OpenChat-win-x64.exe
+            ./artifacts/OpenChat-linux-x64/OpenChat-linux-x64
+            ./artifacts/OpenChat-android.apk/OpenChat.apk
