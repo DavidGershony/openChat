@@ -3,13 +3,13 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using OpenChat.Core.Logging;
 using OpenChat.Core.Models;
-using MarmotMdk.Core;
-using MarmotMdk.Core.Results;
+using MarmotCs.Core;
+using MarmotCs.Core.Results;
 using DotnetMls.Codec;
 using DotnetMls.Crypto;
 using DotnetMls.Group;
-using MarmotMdk.Protocol.Mip00;
-using MarmotMdk.Storage.Memory;
+using MarmotCs.Protocol.Mip00;
+using MarmotCs.Storage.Memory;
 
 namespace OpenChat.Core.Services;
 

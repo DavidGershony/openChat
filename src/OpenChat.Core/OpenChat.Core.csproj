@@ -28,8 +28,8 @@
   <ItemGroup>
     <PackageReference Include="DotnetMls" Version="0.1.*-*" />
     <PackageReference Include="DotnetMls.Crypto" Version="0.1.*-*" />
-    <PackageReference Include="MarmotMdk.Core" Version="0.1.*-*" />
-    <PackageReference Include="MarmotMdk.Storage.Memory" Version="0.1.*-*" />
+    <PackageReference Include="MarmotCs.Core" Version="0.1.*-*" />
+    <PackageReference Include="MarmotCs.Storage.Memory" Version="0.1.*-*" />
   </ItemGroup>
 
 </Project>
