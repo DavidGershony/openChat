@@ -26,6 +26,16 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src/OpenChat.Native/target
+          key: rust-${{ matrix.rid }}-${{ hashFiles('src/OpenChat.Native/Cargo.lock') }}
+          restore-keys: rust-${{ matrix.rid }}-
+
       - name: Build Rust native library
         run: cargo build --release --manifest-path src/OpenChat.Native/Cargo.toml
 
@@ -65,6 +75,16 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android
+
+      - name: Cache Rust build (Android)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src/OpenChat.Native/target
+          key: rust-android-arm64-${{ hashFiles('src/OpenChat.Native/Cargo.lock') }}
+          restore-keys: rust-android-arm64-
 
       - name: Setup Android NDK
         uses: nttld/setup-ndk@v1

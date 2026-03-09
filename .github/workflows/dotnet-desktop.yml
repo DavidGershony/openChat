@@ -28,6 +28,16 @@ jobs:
     - name: Setup Rust
       uses: dtolnay/rust-toolchain@stable
 
+    - name: Cache Rust build
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          src/OpenChat.Native/target
+        key: rust-windows-${{ hashFiles('src/OpenChat.Native/Cargo.lock') }}
+        restore-keys: rust-windows-
+
     - name: Build Rust native DLL
       run: cargo build --release --manifest-path src/OpenChat.Native/Cargo.toml
 
