@@ -16,9 +16,6 @@ jobs:
 
     runs-on: windows-latest
 
-    env:
-      Solution_Name: OpenChat.sln
-
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -50,13 +47,13 @@ jobs:
         dotnet-version: 9.0.x
 
     - name: Restore dependencies
-      run: dotnet restore
+      run: dotnet restore OpenChat.Desktop.slnf
 
     - name: Build
-      run: dotnet build --no-restore --configuration ${{ matrix.configuration }}
+      run: dotnet build OpenChat.Desktop.slnf --no-restore --configuration ${{ matrix.configuration }}
 
     - name: Execute unit tests
-      run: dotnet test --no-build --configuration ${{ matrix.configuration }}
+      run: dotnet test OpenChat.Desktop.slnf --no-build --configuration ${{ matrix.configuration }}
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4

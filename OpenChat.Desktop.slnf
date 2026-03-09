@@ -1,0 +1,13 @@
+{
+  "solution": {
+    "path": "OpenChat.sln",
+    "projects": [
+      "src\\OpenChat.Core\\OpenChat.Core.csproj",
+      "src\\OpenChat.Desktop\\OpenChat.Desktop.csproj",
+      "src\\OpenChat.Presentation\\OpenChat.Presentation.csproj",
+      "src\\OpenChat.UI\\OpenChat.UI.csproj",
+      "tests\\OpenChat.Core.Tests\\OpenChat.Core.Tests.csproj",
+      "tests\\OpenChat.UI.Tests\\OpenChat.UI.Tests.csproj"
+    ]
+  }
+}
