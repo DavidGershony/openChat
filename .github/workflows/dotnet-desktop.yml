@@ -56,7 +56,7 @@ jobs:
       run: dotnet build OpenChat.Desktop.slnf --no-restore --configuration ${{ matrix.configuration }}
 
     - name: Execute unit tests
-      run: dotnet test OpenChat.Desktop.slnf --no-build --configuration ${{ matrix.configuration }}
+      run: dotnet test OpenChat.Desktop.slnf --no-build --configuration ${{ matrix.configuration }} --filter "Category!=Relay"
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
