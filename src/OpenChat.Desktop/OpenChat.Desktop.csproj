@@ -22,8 +22,13 @@
   </ItemGroup>
 
   <!-- Native Marmot MLS library -->
-  <ItemGroup>
+  <ItemGroup Condition="Exists('openchat_native.dll')">
     <None Include="openchat_native.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+  <ItemGroup Condition="Exists('libopenchat_native.so')">
+    <None Include="libopenchat_native.so">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
