@@ -113,4 +113,4 @@ jobs:
           files: |
             ./artifacts/OpenChat-win-x64.exe/OpenChat-win-x64.exe
             ./artifacts/OpenChat-linux-x64/OpenChat-linux-x64
-            ./artifacts/OpenChat-android.apk/OpenChat.apk
+            ./artifacts/OpenChat.apk/OpenChat.apk
