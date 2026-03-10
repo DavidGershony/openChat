@@ -47,11 +47,8 @@ jobs:
         with:
           dotnet-version: '9.0.x'
 
-      - name: Install Android workload
-        run: dotnet workload install android
-
       - name: Publish Desktop (single file)
-        run: dotnet publish src/OpenChat.Desktop/OpenChat.Desktop.csproj --configuration Release --runtime ${{ matrix.rid }} --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true --output ./publish
+        run: dotnet publish src/OpenChat.Desktop/OpenChat.Desktop.csproj --configuration Release --runtime ${{ matrix.rid }} --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:TargetFramework=net9.0 --output ./publish
 
       - name: Rename artifact
         run: |
