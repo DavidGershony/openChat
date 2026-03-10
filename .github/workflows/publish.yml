@@ -27,14 +27,9 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust build
-        uses: actions/cache@v4
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            src/OpenChat.Native/target
-          key: rust-${{ matrix.rid }}-${{ hashFiles('src/OpenChat.Native/Cargo.lock') }}
-          restore-keys: rust-${{ matrix.rid }}-
+          workspaces: src/OpenChat.Native
 
       - name: Build Rust native library
         run: cargo build --release --manifest-path src/OpenChat.Native/Cargo.toml
