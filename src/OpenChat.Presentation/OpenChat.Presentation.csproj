@@ -1,7 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net9.0;net9.0-android</TargetFrameworks>
+    <TargetFrameworks Condition="'$(DesktopOnly)' != 'true'">net9.0;net9.0-android</TargetFrameworks>
+    <TargetFrameworks Condition="'$(DesktopOnly)' == 'true'">net9.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">24.0</SupportedOSPlatformVersion>

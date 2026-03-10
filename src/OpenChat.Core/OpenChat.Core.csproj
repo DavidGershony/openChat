@@ -1,7 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net9.0;net9.0-android</TargetFrameworks>
+    <TargetFrameworks Condition="'$(DesktopOnly)' != 'true'">net9.0;net9.0-android</TargetFrameworks>
+    <TargetFrameworks Condition="'$(DesktopOnly)' == 'true'">net9.0</TargetFrameworks>
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">24.0</SupportedOSPlatformVersion>
     <!-- iOS target will be added in Phase 4 when ios workload is installed -->
     <!-- <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">15.0</SupportedOSPlatformVersion> -->
