@@ -793,6 +793,31 @@ public class NostrService : INostrService, IDisposable
             ? _connectedRelays.ToList()
             : NostrConstants.DefaultRelays.ToList();
 
+        // Discover recipient's read relays via NIP-65 and publish there too
+        try
+        {
+            var recipientRelays = await FetchRelayListAsync(recipientPublicKey);
+            var readRelays = recipientRelays
+                .Where(r => r.Usage == RelayUsage.Read || r.Usage == RelayUsage.Both)
+                .Select(r => r.Url)
+                .ToList();
+            if (readRelays.Count > 0)
+            {
+                _logger.LogInformation("Adding {Count} NIP-65 read relays for Welcome delivery", readRelays.Count);
+                // Connect to recipient's read relays so PublishEventAsync can reach them
+                foreach (var readRelay in readRelays.Where(r => !_connectedRelays.Contains(r)))
+                {
+                    try { await ConnectAsync(readRelay); }
+                    catch { /* best-effort */ }
+                }
+                relayUrls = relayUrls.Union(readRelays).Distinct().ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to discover recipient relays for Welcome delivery");
+        }
+
         var tags = new List<List<string>>
         {
             new() { "p", recipientPublicKey },
@@ -843,10 +868,35 @@ public class NostrService : INostrService, IDisposable
 
         var keyPackages = new List<KeyPackage>();
 
-        // Try each connected relay
-        var relaysToTry = _connectedRelays.Count > 0
-            ? _connectedRelays.ToList()
-            : NostrConstants.DefaultRelays.ToList();
+        // Discover target user's relays via NIP-65, then fall back to connected/default relays
+        var relaysToTry = new List<string>();
+        try
+        {
+            var userRelays = await FetchRelayListAsync(publicKeyHex);
+            // User's write relays are where they publish KeyPackages
+            var writeRelays = userRelays
+                .Where(r => r.Usage == RelayUsage.Write || r.Usage == RelayUsage.Both)
+                .Select(r => r.Url)
+                .ToList();
+            if (writeRelays.Count > 0)
+            {
+                _logger.LogInformation("Using {Count} NIP-65 write relays for KeyPackage fetch", writeRelays.Count);
+                relaysToTry.AddRange(writeRelays);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to discover relays for {PubKey}, using defaults", publicKeyHex[..Math.Min(16, publicKeyHex.Length)]);
+        }
+
+        // Also try connected/default relays (dedup later)
+        if (_connectedRelays.Count > 0)
+            relaysToTry.AddRange(_connectedRelays);
+        else
+            relaysToTry.AddRange(NostrConstants.DefaultRelays);
+
+        // Deduplicate relay URLs
+        relaysToTry = relaysToTry.Distinct().ToList();
 
         var seenEventIds = new HashSet<string>();
 

@@ -199,10 +199,10 @@ public class HeadlessSettingsTests : HeadlessTestBase
         await Task.Delay(500);
         Dispatcher.UIThread.RunJobs();
 
-        // Verify NIP-65 publish was called
+        // Verify NIP-65 publish was called (at least once from settings, may also be called during login)
         ctx.MockNostr.Verify(n => n.PublishRelayListAsync(
             It.Is<List<RelayPreference>>(list => list.Count == NostrConstants.DefaultRelays.Length),
-            It.IsAny<string?>()), Times.Once);
+            It.IsAny<string?>()), Times.AtLeastOnce);
 
         // Verify also saved to storage
         var savedRelays = await ctx.Storage.GetUserRelayListAsync(ctx.User.PublicKeyHex);

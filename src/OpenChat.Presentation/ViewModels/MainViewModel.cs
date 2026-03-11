@@ -360,7 +360,21 @@ public class MainViewModel : ViewModelBase
                 }
                 else
                 {
-                    _logger.LogInformation("No NIP-65 relay list found, using defaults");
+                    _logger.LogInformation("No NIP-65 relay list found, publishing defaults");
+                    // New user or no relay list — publish defaults so others can discover us
+                    var defaultPrefs = NostrConstants.DefaultRelays
+                        .Select(url => new RelayPreference { Url = url, Usage = RelayUsage.Both })
+                        .ToList();
+                    try
+                    {
+                        await _nostrService.PublishRelayListAsync(defaultPrefs, CurrentUser.PrivateKeyHex);
+                        await _storageService.SaveUserRelayListAsync(CurrentUser.PublicKeyHex, defaultPrefs);
+                        _logger.LogInformation("Published default NIP-65 relay list");
+                    }
+                    catch (Exception pubEx)
+                    {
+                        _logger.LogWarning(pubEx, "Failed to publish default relay list");
+                    }
                 }
             }
         }
