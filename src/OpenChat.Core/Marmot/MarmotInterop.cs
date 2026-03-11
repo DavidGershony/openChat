@@ -19,7 +19,8 @@ internal static partial class MarmotInterop
     [LibraryImport(LibraryName, EntryPoint = "marmot_create_client")]
     internal static partial IntPtr CreateClient(
         [MarshalAs(UnmanagedType.LPUTF8Str)] string privateKeyHex,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string publicKeyHex);
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string publicKeyHex,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string? dbPath);
 
     [LibraryImport(LibraryName, EntryPoint = "marmot_destroy_client")]
     internal static partial void DestroyClient(IntPtr client);

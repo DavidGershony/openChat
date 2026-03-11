@@ -10,7 +10,7 @@ public enum MdkBackend { Rust, Managed }
 /// </summary>
 public static class ProfileConfiguration
 {
-    public static MdkBackend ActiveMdkBackend { get; private set; } = MdkBackend.Rust;
+    public static MdkBackend ActiveMdkBackend { get; private set; } = MdkBackend.Managed;
 
     public static void SetMdkBackend(MdkBackend backend) => ActiveMdkBackend = backend;
 

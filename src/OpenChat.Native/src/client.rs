@@ -1,4 +1,6 @@
 //! Marmot client implementation using the real MDK library.
+//! Uses in-memory storage (ephemeral). Persistent storage requires mdk-sqlite-storage
+//! which needs OpenSSL/SQLCipher — not yet available on the Windows build toolchain.
 
 use std::sync::Arc;
 
@@ -13,7 +15,7 @@ use crate::error::MarmotError;
 pub struct MarmotClient {
     /// Nostr keys for this client
     keys: Keys,
-    /// The MDK instance
+    /// The MDK instance with in-memory storage
     mdk: Arc<RwLock<MDK<MdkMemoryStorage>>>,
     /// Default relays for group operations
     default_relays: Vec<RelayUrl>,
@@ -21,15 +23,18 @@ pub struct MarmotClient {
 
 impl MarmotClient {
     /// Create a new Marmot client with the given Nostr identity.
-    pub fn new(private_key_hex: &str, _public_key_hex: &str) -> Result<Self, MarmotError> {
+    /// The `_db_path` parameter is accepted for API compatibility but currently unused
+    /// (memory storage only until SQLCipher build is resolved).
+    pub fn new(private_key_hex: &str, _public_key_hex: &str, _db_path: Option<&str>) -> Result<Self, MarmotError> {
         // Parse the private key to get Keys
         let secret_key = nostr::SecretKey::from_hex(private_key_hex)
             .map_err(|e| MarmotError::InvalidKey(format!("Invalid private key: {}", e)))?;
         let keys = Keys::new(secret_key);
 
-        // Create MDK with in-memory storage
-        let storage = MdkMemoryStorage::new();
         let config = MdkConfig::default();
+
+        tracing::info!("Creating MarmotClient with in-memory storage");
+        let storage = MdkMemoryStorage::new();
         let mdk = MDK::builder(storage)
             .with_config(config)
             .build();
@@ -50,12 +55,11 @@ impl MarmotClient {
     /// Generate a new KeyPackage for group invitations.
     /// Returns JSON with { "content": "<base64>", "tags": [[...], ...] }
     pub fn generate_key_package(&self) -> Result<Vec<u8>, MarmotError> {
-        let mdk = self.mdk.read();
         let public_key = self.keys.public_key();
+        let relays = self.default_relays.clone();
 
-        // Create key package for a Nostr event - MDK returns both content and required tags
-        let (key_package_base64, mdk_tags) = mdk
-            .create_key_package_for_event(&public_key, self.default_relays.clone())
+        let mdk = self.mdk.read();
+        let (key_package_base64, mdk_tags) = mdk.create_key_package_for_event(&public_key, relays)
             .map_err(|e| MarmotError::Internal(format!("Failed to create key package: {}", e)))?;
 
         // Convert nostr::Tag array to Vec<Vec<String>> for JSON serialization
@@ -83,7 +87,6 @@ impl MarmotClient {
     /// Create a new MLS group.
     /// Returns (group_id, epoch).
     pub fn create_group(&self, name: &str) -> Result<(Vec<u8>, u64), MarmotError> {
-        let mdk = self.mdk.write();
         let public_key = self.keys.public_key();
 
         // Create group config
@@ -97,9 +100,8 @@ impl MarmotClient {
             admins: vec![public_key.clone()],
         };
 
-        // Create the group (no initial members besides creator)
-        let result = mdk
-            .create_group(&public_key, vec![], config)
+        let mdk = self.mdk.write();
+        let result = mdk.create_group(&public_key, vec![], config)
             .map_err(|e| MarmotError::Internal(format!("Failed to create group: {}", e)))?;
 
         // Get the group ID as bytes
@@ -113,8 +115,6 @@ impl MarmotClient {
     /// key_package_event_json: JSON-serialized Nostr event containing the key package
     /// Returns JSON object with { "welcome": [...], "commit": {...} }
     pub fn add_member(&self, group_id: &[u8], key_package_event_json: &[u8]) -> Result<Vec<u8>, MarmotError> {
-        let mdk = self.mdk.write();
-
         // Parse the group ID
         let mls_group_id = mdk_core::GroupId::from_slice(group_id);
 
@@ -124,9 +124,11 @@ impl MarmotClient {
         let event: Event = serde_json::from_str(event_json)
             .map_err(|e| MarmotError::Internal(format!("Invalid event JSON: {}", e)))?;
 
+        let mdk = self.mdk.write();
+
         // Add the member
         let result = mdk
-            .add_members(&mls_group_id, &[event])
+            .add_members(&mls_group_id, &[event.clone()])
             .map_err(|e| MarmotError::Internal(format!("Failed to add member: {}", e)))?;
 
         // Merge the pending commit
@@ -153,8 +155,6 @@ impl MarmotClient {
     /// welcome_event_json: JSON containing wrapper_event_id and rumor_event
     /// Returns (group_id, group_name, epoch, members_json).
     pub fn process_welcome(&self, welcome_data: &[u8]) -> Result<(Vec<u8>, String, u64, Vec<String>), MarmotError> {
-        let mdk = self.mdk.write();
-
         // Parse the welcome data (expecting a JSON object with event_id and rumor)
         #[derive(serde::Deserialize)]
         struct WelcomeInput {
@@ -172,6 +172,8 @@ impl MarmotClient {
         let rumor: UnsignedEvent = serde_json::from_value(input.rumor_event)
             .map_err(|e| MarmotError::Internal(format!("Invalid rumor event: {}", e)))?;
 
+        let mdk = self.mdk.write();
+
         // Process the welcome
         let welcome = mdk
             .process_welcome(&event_id, &rumor)
@@ -184,7 +186,7 @@ impl MarmotClient {
         // Get group info
         let group_id = welcome.mls_group_id.as_slice().to_vec();
         let group_name = welcome.group_name.clone();
-        let epoch = 0u64; // Will be updated after processing
+        let epoch = 0u64;
 
         // Get members
         let members = mdk
@@ -198,7 +200,6 @@ impl MarmotClient {
     /// Encrypt a message for a group.
     /// Returns JSON-serialized Nostr event.
     pub fn encrypt_message(&self, group_id: &[u8], plaintext: &str) -> Result<Vec<u8>, MarmotError> {
-        let mdk = self.mdk.write();
         let mls_group_id = mdk_core::GroupId::from_slice(group_id);
 
         // Create an unsigned event (rumor) with the message content
@@ -210,9 +211,8 @@ impl MarmotClient {
             plaintext.to_string(),
         );
 
-        // Create the encrypted message
-        let event = mdk
-            .create_message(&mls_group_id, rumor)
+        let mdk = self.mdk.write();
+        let event = mdk.create_message(&mls_group_id, rumor)
             .map_err(|e| MarmotError::Internal(format!("Failed to encrypt message: {}", e)))?;
 
         // Serialize to JSON
@@ -226,8 +226,6 @@ impl MarmotClient {
     /// ciphertext: JSON-serialized Nostr event
     /// Returns (sender_pubkey, plaintext, epoch).
     pub fn decrypt_message(&self, _group_id: &[u8], ciphertext: &[u8]) -> Result<(String, String, u64), MarmotError> {
-        let mdk = self.mdk.write();
-
         // Parse the event from JSON
         let event_json = std::str::from_utf8(ciphertext)
             .map_err(|e| MarmotError::Internal(format!("Invalid UTF-8: {}", e)))?;
@@ -235,8 +233,8 @@ impl MarmotClient {
             .map_err(|e| MarmotError::Internal(format!("Invalid event JSON: {}", e)))?;
 
         // Process the message
-        let result = mdk
-            .process_message(&event)
+        let mdk = self.mdk.write();
+        let result = mdk.process_message(&event)
             .map_err(|e| MarmotError::Internal(format!("Failed to process message: {}", e)))?;
 
         // Extract the message content based on result type
@@ -253,8 +251,6 @@ impl MarmotClient {
 
     /// Process a commit message.
     pub fn process_commit(&self, _group_id: &[u8], commit_data: &[u8]) -> Result<(), MarmotError> {
-        let mdk = self.mdk.write();
-
         // Parse the event from JSON
         let event_json = std::str::from_utf8(commit_data)
             .map_err(|e| MarmotError::Internal(format!("Invalid UTF-8: {}", e)))?;
@@ -262,6 +258,7 @@ impl MarmotClient {
             .map_err(|e| MarmotError::Internal(format!("Invalid event JSON: {}", e)))?;
 
         // Process as a message (commits are processed the same way)
+        let mdk = self.mdk.write();
         mdk.process_message(&event)
             .map_err(|e| MarmotError::Internal(format!("Failed to process commit: {}", e)))?;
 
@@ -271,8 +268,9 @@ impl MarmotClient {
     /// Update keys for forward secrecy.
     /// Returns JSON-serialized commit event.
     pub fn update_keys(&self, group_id: &[u8]) -> Result<Vec<u8>, MarmotError> {
-        let mdk = self.mdk.write();
         let mls_group_id = mdk_core::GroupId::from_slice(group_id);
+
+        let mdk = self.mdk.write();
 
         // Perform self-update
         let result = mdk
@@ -293,16 +291,17 @@ impl MarmotClient {
     /// Remove a member from a group.
     /// Returns JSON-serialized commit event.
     pub fn remove_member(&self, group_id: &[u8], member_public_key: &str) -> Result<Vec<u8>, MarmotError> {
-        let mdk = self.mdk.write();
         let mls_group_id = mdk_core::GroupId::from_slice(group_id);
 
         // Parse the member's public key
         let pubkey = PublicKey::from_hex(member_public_key)
             .map_err(|e| MarmotError::InvalidKey(format!("Invalid public key: {}", e)))?;
 
+        let mdk = self.mdk.write();
+
         // Remove the member
         let result = mdk
-            .remove_members(&mls_group_id, &[pubkey])
+            .remove_members(&mls_group_id, &[pubkey.clone()])
             .map_err(|e| MarmotError::Internal(format!("Failed to remove member: {}", e)))?;
 
         // Merge the pending commit
@@ -319,8 +318,9 @@ impl MarmotClient {
     /// Get information about a group.
     /// Returns (name, epoch, members_json) or None if not found.
     pub fn get_group_info(&self, group_id: &[u8]) -> Option<(String, u64, Vec<String>)> {
-        let mdk = self.mdk.read();
         let mls_group_id = mdk_core::GroupId::from_slice(group_id);
+
+        let mdk = self.mdk.read();
 
         // Get the group
         let group = mdk.get_group(&mls_group_id).ok()??;
@@ -337,15 +337,11 @@ impl MarmotClient {
     }
 
     /// Export group state for persistence.
-    /// Note: With memory storage, this exports the current state but
-    /// the state will be lost on restart.
     pub fn export_group_state(&self, group_id: &[u8]) -> Result<Vec<u8>, MarmotError> {
-        let mdk = self.mdk.read();
         let mls_group_id = mdk_core::GroupId::from_slice(group_id);
 
-        // Get the group and serialize it
-        let group = mdk
-            .get_group(&mls_group_id)
+        let mdk = self.mdk.read();
+        let group = mdk.get_group(&mls_group_id)
             .map_err(|e| MarmotError::Internal(format!("Failed to get group: {}", e)))?
             .ok_or_else(|| MarmotError::GroupNotFound(hex::encode(group_id)))?;
 
@@ -356,10 +352,9 @@ impl MarmotClient {
     }
 
     /// Import group state from persistence.
-    /// Note: With memory storage, imported state is not automatically restored.
     pub fn import_group_state(&self, _group_id: &[u8], _state: &[u8]) -> Result<(), MarmotError> {
-        // With memory storage, we can't easily import state
-        // This would require the storage to support import
-        Err(MarmotError::Internal("Import not supported with memory storage".into()))
+        // With memory storage, full import is not supported.
+        // Use the managed (C#) backend for persistent MLS state.
+        Err(MarmotError::Internal("Import not supported with memory storage — use managed backend".into()))
     }
 }

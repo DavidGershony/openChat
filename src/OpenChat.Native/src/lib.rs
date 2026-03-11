@@ -55,6 +55,7 @@ pub extern "C" fn marmot_get_last_error() -> *mut c_char {
 /// # Arguments
 /// * `private_key_hex` - The Nostr private key in hex format
 /// * `public_key_hex` - The Nostr public key in hex format
+/// * `db_path` - Path to SQLite database file for persistent storage, or null for in-memory
 ///
 /// # Returns
 /// A pointer to the client, or null on failure.
@@ -63,6 +64,7 @@ pub extern "C" fn marmot_get_last_error() -> *mut c_char {
 pub extern "C" fn marmot_create_client(
     private_key_hex: *const c_char,
     public_key_hex: *const c_char,
+    db_path: *const c_char,
 ) -> *mut MarmotClient {
     clear_last_error();
 
@@ -82,7 +84,16 @@ pub extern "C" fn marmot_create_client(
         }
     };
 
-    match MarmotClient::new(private_key, public_key) {
+    let db_path_str = if db_path.is_null() {
+        None
+    } else {
+        match unsafe { CStr::from_ptr(db_path) }.to_str() {
+            Ok(s) if !s.is_empty() => Some(s),
+            _ => None,
+        }
+    };
+
+    match MarmotClient::new(private_key, public_key, db_path_str) {
         Ok(client) => Box::into_raw(Box::new(client)),
         Err(e) => {
             set_last_error(e);

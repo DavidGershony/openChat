@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using OpenChat.Core.Configuration;
 using OpenChat.Core.Logging;
 
 namespace OpenChat.Core.Marmot;
@@ -36,15 +37,19 @@ public class MarmotWrapper : IDisposable
 
         try
         {
+            // Use persistent SQLite storage in the profile's data directory
+            var dbPath = Path.Combine(ProfileConfiguration.DataDirectory, "mls_native.db");
+            _logger.LogInformation("Using native MLS SQLite storage at: {DbPath}", dbPath);
+
             _logger.LogDebug("Attempting to load native Marmot library");
-            _client = MarmotInterop.CreateClient(privateKeyHex, publicKeyHex);
+            _client = MarmotInterop.CreateClient(privateKeyHex, publicKeyHex, dbPath);
             if (_client == IntPtr.Zero)
             {
                 var error = GetLastError() ?? "Failed to create Marmot client";
                 _logger.LogError("Failed to create native Marmot client: {Error}", error);
                 throw new MarmotException(error);
             }
-            _logger.LogInformation("Successfully initialized native Marmot client");
+            _logger.LogInformation("Successfully initialized native Marmot client with persistent storage");
             _initialized = true;
         }
         catch (DllNotFoundException ex)
