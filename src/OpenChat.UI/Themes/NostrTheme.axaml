@@ -77,9 +77,9 @@
         </Style.Resources>
     </Style>
 
-    <!-- Window Style -->
+    <!-- Window Style (Background is Transparent for rounded corners; content Border provides the fill) -->
     <Style Selector="Window">
-        <Setter Property="Background" Value="{StaticResource BackgroundDarkBrush}" />
+        <Setter Property="Background" Value="Transparent" />
     </Style>
 
     <!-- TextBlock Styles -->
