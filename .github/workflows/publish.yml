@@ -78,13 +78,25 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
+      - name: Decode keystore
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > src/OpenChat.Android/openchat-release.keystore
+
       - name: Build Android APK
-        run: dotnet publish src/OpenChat.Android/OpenChat.Android.csproj --configuration Release --framework net9.0-android -p:ApplicationDisplayVersion=${{ steps.version.outputs.VERSION }} --output ./publish/android
+        run: >
+          dotnet publish src/OpenChat.Android/OpenChat.Android.csproj
+          --configuration Release
+          --framework net9.0-android
+          -p:ApplicationDisplayVersion=${{ steps.version.outputs.VERSION }}
+          -p:AndroidSigningKeyStore=openchat-release.keystore
+          -p:AndroidSigningKeyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          -p:AndroidSigningKeyPass=${{ secrets.ANDROID_KEY_PASSWORD }}
+          -p:AndroidSigningStorePass=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          --output ./publish/android
 
       - name: Find and rename APK
         id: apk
         run: |
-          APK=$(find ./publish/android -name '*.apk' | head -1)
+          APK=$(find ./publish/android -name '*Signed.apk' -o -name '*.apk' | head -1)
           mv "$APK" ./publish/android/OpenChat.apk
           echo "APK_PATH=./publish/android/OpenChat.apk" >> "$GITHUB_OUTPUT"
 

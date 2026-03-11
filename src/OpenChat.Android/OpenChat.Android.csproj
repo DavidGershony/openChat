@@ -12,6 +12,11 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!-- Release signing configuration (keystore path + credentials from environment or MSBuild properties) -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release' and '$(AndroidSigningKeyStore)' != ''">
+    <AndroidKeyStore>true</AndroidKeyStore>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="ReactiveUI.AndroidX" Version="20.1.52" />
     <PackageReference Include="Xamarin.Google.Android.Material" Version="1.11.0.3" />

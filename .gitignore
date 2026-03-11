@@ -24,6 +24,10 @@ Desktop.ini
 # Claude Code
 .claude/
 
+# Android keystore (stored as GitHub secret, never committed)
+*.keystore
+*.jks
+
 # Misc
 nul
 *.log
