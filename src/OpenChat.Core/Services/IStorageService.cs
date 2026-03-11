@@ -32,9 +32,12 @@ public interface IStorageService
 
     // KeyPackage operations
     Task<KeyPackage?> GetKeyPackageAsync(string id);
+    Task<KeyPackage?> GetKeyPackageByNostrEventIdAsync(string nostrEventId);
     Task<IEnumerable<KeyPackage>> GetUnusedKeyPackagesAsync(string ownerPublicKey);
+    Task<IEnumerable<KeyPackage>> GetAllKeyPackagesAsync(string ownerPublicKey);
     Task SaveKeyPackageAsync(KeyPackage keyPackage);
     Task MarkKeyPackageUsedAsync(string id);
+    Task UpdateKeyPackageStatusAsync(string id, KeyPackageStatus status);
 
     // Pending invite operations
     Task<IEnumerable<PendingInvite>> GetPendingInvitesAsync();

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using ReactiveUI;
 using ReactiveUI.Fody.Helpers;
 using OpenChat.Core.Logging;
+using OpenChat.Core.Models;
 using OpenChat.Core.Services;
 using OpenChat.Presentation.Services;
 
@@ -15,6 +16,7 @@ public class SettingsViewModel : ViewModelBase
     private readonly INostrService _nostrService;
     private readonly IStorageService _storageService;
     private readonly IMlsService _mlsService;
+    private readonly IMessageService _messageService;
     private readonly IPlatformLauncher _launcher;
 
     [Reactive] public string? PublicKeyHex { get; set; }
@@ -36,6 +38,11 @@ public class SettingsViewModel : ViewModelBase
     [Reactive] public string? KeyPackageStatus { get; set; }
     [Reactive] public bool KeyPackageSuccess { get; set; }
 
+    // Key Package Audit
+    [Reactive] public bool IsAuditingKeyPackages { get; set; }
+    [Reactive] public string? AuditStatus { get; set; }
+    [Reactive] public KeyPackageAuditResult? LastAuditResult { get; set; }
+
     public ObservableCollection<RelayViewModel> Relays { get; } = new();
 
     public ReactiveCommand<Unit, Unit> SaveProfileCommand { get; }
@@ -48,13 +55,15 @@ public class SettingsViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> RefreshLogsCommand { get; }
     public ReactiveCommand<Unit, Unit> OpenLogFolderCommand { get; }
     public ReactiveCommand<Unit, Unit> PublishKeyPackageCommand { get; }
+    public ReactiveCommand<Unit, Unit> AuditKeyPackagesCommand { get; }
 
-    public SettingsViewModel(INostrService nostrService, IStorageService storageService, IMlsService mlsService, IPlatformLauncher launcher)
+    public SettingsViewModel(INostrService nostrService, IStorageService storageService, IMlsService mlsService, IMessageService messageService, IPlatformLauncher launcher)
     {
         _logger = LoggingConfiguration.CreateLogger<SettingsViewModel>();
         _nostrService = nostrService;
         _storageService = storageService;
         _mlsService = mlsService;
+        _messageService = messageService;
         _launcher = launcher;
 
         SaveProfileCommand = ReactiveCommand.CreateFromTask(SaveProfileAsync);
@@ -108,8 +117,9 @@ public class SettingsViewModel : ViewModelBase
             }
         });
 
-        // Key package command
+        // Key package commands
         PublishKeyPackageCommand = ReactiveCommand.CreateFromTask(PublishKeyPackageAsync);
+        AuditKeyPackagesCommand = ReactiveCommand.CreateFromTask(AuditKeyPackagesAsync);
 
         // Add default relays
         Relays.Add(new RelayViewModel { Url = "wss://relay.damus.io", IsConnected = false });
@@ -219,6 +229,41 @@ public class SettingsViewModel : ViewModelBase
         finally
         {
             IsPublishingKeyPackage = false;
+        }
+    }
+    private async Task AuditKeyPackagesAsync()
+    {
+        IsAuditingKeyPackages = true;
+        AuditStatus = "Fetching KeyPackages from relays...";
+
+        try
+        {
+            var result = await _messageService.AuditKeyPackagesAsync();
+            LastAuditResult = result;
+
+            if (result.TotalOnRelays == 0)
+            {
+                AuditStatus = "No KeyPackages found on relays. Publish one first.";
+            }
+            else
+            {
+                AuditStatus = $"Audit complete: {result.TotalOnRelays} on relays, " +
+                              $"{result.ActiveWithKeys} active, {result.Lost} lost, {result.Expired} expired";
+            }
+
+            if (result.Lost > 0)
+            {
+                AuditStatus += $"\n{result.Lost} KeyPackage(s) have lost keys — invites to these cannot be accepted.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to audit KeyPackages");
+            AuditStatus = $"Audit failed: {ex.Message}";
+        }
+        finally
+        {
+            IsAuditingKeyPackages = false;
         }
     }
 }

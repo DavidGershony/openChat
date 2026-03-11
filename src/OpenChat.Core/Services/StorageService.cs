@@ -186,6 +186,18 @@ public class StorageService : IStorageService
                 // Column already exists — ignore
             }
 
+            // Migration: add Status column to KeyPackages
+            try
+            {
+                var migrate = connection.CreateCommand();
+                migrate.CommandText = "ALTER TABLE KeyPackages ADD COLUMN Status INTEGER NOT NULL DEFAULT 0";
+                await migrate.ExecuteNonQueryAsync();
+            }
+            catch (SqliteException)
+            {
+                // Column already exists — ignore
+            }
+
             _initialized = true;
             _logger.LogInformation("Database schema initialized successfully");
         }
@@ -605,9 +617,9 @@ public class StorageService : IStorageService
         var command = connection.CreateCommand();
         command.CommandText = @"
             INSERT OR REPLACE INTO KeyPackages
-            (Id, OwnerPublicKey, Data, NostrEventId, CreatedAt, ExpiresAt, IsUsed, CiphersuiteId)
+            (Id, OwnerPublicKey, Data, NostrEventId, CreatedAt, ExpiresAt, IsUsed, CiphersuiteId, Status)
             VALUES
-            (@Id, @OwnerPublicKey, @Data, @NostrEventId, @CreatedAt, @ExpiresAt, @IsUsed, @CiphersuiteId)";
+            (@Id, @OwnerPublicKey, @Data, @NostrEventId, @CreatedAt, @ExpiresAt, @IsUsed, @CiphersuiteId, @Status)";
 
         command.Parameters.AddWithValue("@Id", keyPackage.Id);
         command.Parameters.AddWithValue("@OwnerPublicKey", keyPackage.OwnerPublicKey);
@@ -617,6 +629,7 @@ public class StorageService : IStorageService
         command.Parameters.AddWithValue("@ExpiresAt", keyPackage.ExpiresAt.ToString("O"));
         command.Parameters.AddWithValue("@IsUsed", keyPackage.IsUsed ? 1 : 0);
         command.Parameters.AddWithValue("@CiphersuiteId", keyPackage.CiphersuiteId);
+        command.Parameters.AddWithValue("@Status", (int)keyPackage.Status);
 
         await command.ExecuteNonQueryAsync();
 
@@ -646,6 +659,61 @@ public class StorageService : IStorageService
         command.Parameters.AddWithValue("@Id", id);
 
         await command.ExecuteNonQueryAsync();
+    }
+
+    public async Task UpdateKeyPackageStatusAsync(string id, KeyPackageStatus status)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        var command = connection.CreateCommand();
+        command.CommandText = "UPDATE KeyPackages SET Status = @Status WHERE Id = @Id";
+        command.Parameters.AddWithValue("@Id", id);
+        command.Parameters.AddWithValue("@Status", (int)status);
+
+        await command.ExecuteNonQueryAsync();
+    }
+
+    public async Task<KeyPackage?> GetKeyPackageByNostrEventIdAsync(string nostrEventId)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        var command = connection.CreateCommand();
+        command.CommandText = "SELECT * FROM KeyPackages WHERE NostrEventId = @NostrEventId";
+        command.Parameters.AddWithValue("@NostrEventId", nostrEventId);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            var keyPackage = ReadKeyPackage(reader);
+            keyPackage.RelayUrls = await GetKeyPackageRelaysAsync(connection, keyPackage.Id);
+            return keyPackage;
+        }
+
+        return null;
+    }
+
+    public async Task<IEnumerable<KeyPackage>> GetAllKeyPackagesAsync(string ownerPublicKey)
+    {
+        var keyPackages = new List<KeyPackage>();
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        var command = connection.CreateCommand();
+        command.CommandText = "SELECT * FROM KeyPackages WHERE OwnerPublicKey = @OwnerPublicKey ORDER BY CreatedAt DESC";
+        command.Parameters.AddWithValue("@OwnerPublicKey", ownerPublicKey);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var keyPackage = ReadKeyPackage(reader);
+            keyPackage.RelayUrls = await GetKeyPackageRelaysAsync(connection, keyPackage.Id);
+            keyPackages.Add(keyPackage);
+        }
+
+        return keyPackages;
     }
 
     public async Task SaveMlsStateAsync(string groupId, byte[] state)
@@ -862,7 +930,7 @@ public class StorageService : IStorageService
 
     private static KeyPackage ReadKeyPackage(SqliteDataReader reader)
     {
-        return new KeyPackage
+        var kp = new KeyPackage
         {
             Id = reader.GetString(reader.GetOrdinal("Id")),
             OwnerPublicKey = reader.GetString(reader.GetOrdinal("OwnerPublicKey")),
@@ -873,6 +941,20 @@ public class StorageService : IStorageService
             IsUsed = reader.GetInt32(reader.GetOrdinal("IsUsed")) == 1,
             CiphersuiteId = (ushort)reader.GetInt32(reader.GetOrdinal("CiphersuiteId"))
         };
+
+        // Status column may not exist in older databases before migration runs
+        try
+        {
+            var statusOrdinal = reader.GetOrdinal("Status");
+            if (!reader.IsDBNull(statusOrdinal))
+                kp.Status = (KeyPackageStatus)reader.GetInt32(statusOrdinal);
+        }
+        catch (IndexOutOfRangeException)
+        {
+            // Column doesn't exist yet — default is Active
+        }
+
+        return kp;
     }
 
     private static async Task<List<string>> GetChatParticipantsAsync(SqliteConnection connection, string chatId)

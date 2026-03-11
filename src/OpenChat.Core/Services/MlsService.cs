@@ -279,6 +279,22 @@ public class MlsService : IMlsService
 
     public Task ImportServiceStateAsync(byte[] state) => Task.CompletedTask;
 
+    public int GetStoredKeyPackageCount()
+    {
+        // Rust MDK stores KeyPackages internally in MdkMemoryStorage.
+        // We can't query its count from C#, but it manages its own store.
+        // Return -1 to indicate "unknown" (native manages its own keys).
+        return -1;
+    }
+
+    public bool HasKeyMaterialForKeyPackage(byte[] keyPackageData)
+    {
+        // Rust MDK manages its own key material internally.
+        // We cannot query whether a specific KeyPackage's private key exists
+        // without attempting a process_welcome. Return false conservatively.
+        return false;
+    }
+
     private async Task PersistGroupStateAsync(byte[] groupId)
     {
         if (_storageService == null) return;

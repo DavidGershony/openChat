@@ -759,6 +759,65 @@ public class MessageService : IMessageService, IDisposable
         _logger.LogInformation("ResetGroup: chat {ChatId} deleted, welcome un-dismissed", chatId);
     }
 
+    public async Task<KeyPackageAuditResult> AuditKeyPackagesAsync()
+    {
+        if (_currentUser == null || string.IsNullOrEmpty(_currentUser.PublicKeyHex))
+            throw new InvalidOperationException("No current user. Initialize first.");
+
+        _logger.LogInformation("AuditKeyPackages: fetching own KeyPackages from relays for {PubKey}",
+            _currentUser.PublicKeyHex[..Math.Min(16, _currentUser.PublicKeyHex.Length)]);
+
+        var result = new KeyPackageAuditResult();
+
+        // Fetch all our KeyPackages from relays
+        var relayKeyPackages = (await _nostrService.FetchKeyPackagesAsync(_currentUser.PublicKeyHex)).ToList();
+        result.TotalOnRelays = relayKeyPackages.Count;
+
+        _logger.LogInformation("AuditKeyPackages: found {Count} KeyPackages on relays", relayKeyPackages.Count);
+
+        var storedKpCount = _mlsService.GetStoredKeyPackageCount();
+        _logger.LogInformation("AuditKeyPackages: {Count} KeyPackages with local private keys",
+            storedKpCount >= 0 ? storedKpCount.ToString() : "unknown (native backend)");
+
+        foreach (var relayKp in relayKeyPackages)
+        {
+            // Check if expired
+            if (relayKp.ExpiresAt < DateTime.UtcNow)
+            {
+                result.Expired++;
+                relayKp.Status = KeyPackageStatus.Expired;
+                _logger.LogDebug("AuditKeyPackages: KeyPackage {EventId} is expired",
+                    relayKp.NostrEventId?[..Math.Min(16, relayKp.NostrEventId?.Length ?? 0)] ?? "unknown");
+            }
+            // Check if we have the private key material locally
+            else if (_mlsService.HasKeyMaterialForKeyPackage(relayKp.Data))
+            {
+                result.ActiveWithKeys++;
+                relayKp.Status = KeyPackageStatus.Active;
+                _logger.LogDebug("AuditKeyPackages: KeyPackage {EventId} has local keys (active)",
+                    relayKp.NostrEventId?[..Math.Min(16, relayKp.NostrEventId?.Length ?? 0)] ?? "unknown");
+            }
+            else
+            {
+                result.Lost++;
+                relayKp.Status = KeyPackageStatus.Lost;
+                if (!string.IsNullOrEmpty(relayKp.NostrEventId))
+                    result.LostEventIds.Add(relayKp.NostrEventId);
+                _logger.LogWarning("AuditKeyPackages: KeyPackage {EventId} has NO local keys (LOST)",
+                    relayKp.NostrEventId?[..Math.Min(16, relayKp.NostrEventId?.Length ?? 0)] ?? "unknown");
+            }
+
+            // Save/update in local DB
+            await _storageService.SaveKeyPackageAsync(relayKp);
+        }
+
+        _logger.LogInformation(
+            "AuditKeyPackages: complete — {Total} on relays, {Active} active, {Lost} lost, {Expired} expired",
+            result.TotalOnRelays, result.ActiveWithKeys, result.Lost, result.Expired);
+
+        return result;
+    }
+
     public void Dispose()
     {
         if (_disposed) return;

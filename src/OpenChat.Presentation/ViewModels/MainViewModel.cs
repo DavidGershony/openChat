@@ -69,7 +69,7 @@ public class MainViewModel : ViewModelBase
         // Initialize child view models
         ChatListViewModel = new ChatListViewModel(messageService, storageService, mlsService, nostrService);
         ChatViewModel = new ChatViewModel(messageService, storageService, nostrService, mlsService, clipboard);
-        SettingsViewModel = new SettingsViewModel(nostrService, storageService, mlsService, launcher);
+        SettingsViewModel = new SettingsViewModel(nostrService, storageService, mlsService, messageService, launcher);
         LoginViewModel = new LoginViewModel(nostrService, storageService, qrCodeGenerator);
 
         // Set up commands

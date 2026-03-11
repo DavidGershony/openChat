@@ -141,4 +141,20 @@ public interface IMessageService
     /// Reset a group's MLS state and delete the chat, allowing re-join via welcome rescan.
     /// </summary>
     Task ResetGroupAsync(string chatId);
+
+    /// <summary>
+    /// Audit KeyPackages: fetch own KeyPackages from relays, check which ones
+    /// have local private key material, and mark lost ones.
+    /// Returns (total on relays, active with keys, lost without keys).
+    /// </summary>
+    Task<KeyPackageAuditResult> AuditKeyPackagesAsync();
+}
+
+public class KeyPackageAuditResult
+{
+    public int TotalOnRelays { get; set; }
+    public int ActiveWithKeys { get; set; }
+    public int Lost { get; set; }
+    public int Expired { get; set; }
+    public List<string> LostEventIds { get; set; } = new();
 }

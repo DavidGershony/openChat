@@ -75,7 +75,7 @@ public interface IMlsService
     Task ImportGroupStateAsync(byte[] groupId, byte[] state);
 
     /// <summary>
-    /// Export service-level state (signing keys, stored key package) for persistence.
+    /// Export service-level state (signing keys, stored key packages) for persistence.
     /// Returns null if not supported or no state to export.
     /// </summary>
     Task<byte[]?> ExportServiceStateAsync();
@@ -84,6 +84,17 @@ public interface IMlsService
     /// Import service-level state from persistence.
     /// </summary>
     Task ImportServiceStateAsync(byte[] state);
+
+    /// <summary>
+    /// Get the number of KeyPackages for which we have private key material stored locally.
+    /// </summary>
+    int GetStoredKeyPackageCount();
+
+    /// <summary>
+    /// Check if we have the private key material for a given KeyPackage (by its serialized TLS bytes).
+    /// Used by the KeyPackage audit to determine if a relay-published KeyPackage can still be used.
+    /// </summary>
+    bool HasKeyMaterialForKeyPackage(byte[] keyPackageData);
 }
 
 public class MlsGroupInfo

@@ -30,13 +30,24 @@ public class ManagedMlsService : IMlsService
     private byte[]? _signingPrivateKey;
     private byte[]? _signingPublicKey;
 
-    // Stored from last GenerateKeyPackageAsync, needed for ProcessWelcomeAsync
-    private byte[]? _storedKeyPackageBytes;
-    private byte[]? _storedInitPrivateKey;
-    private byte[]? _storedHpkePrivateKey;
+    /// <summary>
+    /// Private key material for a stored KeyPackage.
+    /// MLS allows multiple KeyPackages per user (RFC 9420 Section 16.8).
+    /// Each can only be used for one Welcome, so we keep several available.
+    /// </summary>
+    private class StoredKeyPackageMaterial
+    {
+        public byte[] KeyPackageBytes { get; init; } = Array.Empty<byte>();
+        public byte[] InitPrivateKey { get; init; } = Array.Empty<byte>();
+        public byte[] HpkePrivateKey { get; init; } = Array.Empty<byte>();
+    }
+
+    // All stored KeyPackages with their private keys (supports multiple)
+    private readonly List<StoredKeyPackageMaterial> _storedKeyPackages = new();
 
     private const string ServiceStateKey = "__service__";
-    private const byte ServiceStateVersion = 1;
+    private const byte ServiceStateVersion = 2;
+    private const byte ServiceStateVersion1 = 1;
 
     public ManagedMlsService(IStorageService? storageService = null)
     {
@@ -118,11 +129,14 @@ public class ManagedMlsService : IMlsService
             out var initPrivateKey, out var hpkePrivateKey,
             supportedExtensionTypes: new ushort[] { 0xF2EE });
 
-        // Store for later ProcessWelcomeAsync
+        // Store for later ProcessWelcomeAsync (add to list, don't overwrite)
         byte[] kpBytes = TlsCodec.Serialize(writer => mlsKp.WriteTo(writer));
-        _storedKeyPackageBytes = kpBytes;
-        _storedInitPrivateKey = initPrivateKey;
-        _storedHpkePrivateKey = hpkePrivateKey;
+        _storedKeyPackages.Add(new StoredKeyPackageMaterial
+        {
+            KeyPackageBytes = kpBytes,
+            InitPrivateKey = initPrivateKey,
+            HpkePrivateKey = hpkePrivateKey
+        });
 
         // Build Nostr event tags using the protocol builder
         var (content, tags) = KeyPackageEventBuilder.BuildKeyPackageEvent(
@@ -225,11 +239,11 @@ public class ManagedMlsService : IMlsService
     {
         EnsureInitialized();
 
-        if (_storedKeyPackageBytes == null || _storedInitPrivateKey == null || _storedHpkePrivateKey == null)
+        if (_storedKeyPackages.Count == 0)
             throw new InvalidOperationException("No stored KeyPackage data. Call GenerateKeyPackageAsync first.");
 
-        _logger.LogInformation("ProcessWelcomeAsync: wrapperEventId={EventId}, welcomeData={Len} bytes (managed)",
-            wrapperEventId[..Math.Min(16, wrapperEventId.Length)], welcomeData.Length);
+        _logger.LogInformation("ProcessWelcomeAsync: wrapperEventId={EventId}, welcomeData={Len} bytes, {KpCount} stored KeyPackages (managed)",
+            wrapperEventId[..Math.Min(16, wrapperEventId.Length)], welcomeData.Length, _storedKeyPackages.Count);
 
         // The welcome data may be either:
         // 1. Raw TLS bytes (from managed/C# MDK sender) — ready to use directly
@@ -240,29 +254,59 @@ public class ManagedMlsService : IMlsService
             mlsWelcomeBytes.Length,
             Convert.ToHexString(mlsWelcomeBytes[..Math.Min(16, mlsWelcomeBytes.Length)]));
 
-        var preview = await _mdk!.PreviewWelcomeAsync(
-            mlsWelcomeBytes,
-            _storedKeyPackageBytes,
-            _storedInitPrivateKey,
-            _storedHpkePrivateKey,
-            _signingPrivateKey!);
-
-        var group = await _mdk.AcceptWelcomeAsync(
-            preview.WelcomeId,
-            _storedKeyPackageBytes,
-            _storedInitPrivateKey,
-            _storedHpkePrivateKey,
-            _signingPrivateKey!);
-
-        await SaveGroupStateAsync(preview.GroupId);
-
-        return new MlsGroupInfo
+        // Try each stored KeyPackage — the Welcome is encrypted to one specific KeyPackage.
+        // MLS allows clients to publish multiple KeyPackages (RFC 9420 Section 16.8).
+        Exception? lastError = null;
+        for (int i = 0; i < _storedKeyPackages.Count; i++)
         {
-            GroupId = preview.GroupId,
-            GroupName = preview.GroupName,
-            Epoch = group.Epoch,
-            MemberPublicKeys = preview.MemberIdentities.ToList()
-        };
+            var kp = _storedKeyPackages[i];
+            try
+            {
+                _logger.LogDebug("ProcessWelcome: trying stored KeyPackage {Index}/{Total} ({Len} bytes)",
+                    i + 1, _storedKeyPackages.Count, kp.KeyPackageBytes.Length);
+
+                var preview = await _mdk!.PreviewWelcomeAsync(
+                    mlsWelcomeBytes,
+                    kp.KeyPackageBytes,
+                    kp.InitPrivateKey,
+                    kp.HpkePrivateKey,
+                    _signingPrivateKey!);
+
+                var group = await _mdk.AcceptWelcomeAsync(
+                    preview.WelcomeId,
+                    kp.KeyPackageBytes,
+                    kp.InitPrivateKey,
+                    kp.HpkePrivateKey,
+                    _signingPrivateKey!);
+
+                _logger.LogInformation("ProcessWelcome: matched stored KeyPackage {Index}/{Total}",
+                    i + 1, _storedKeyPackages.Count);
+
+                // Remove the used KeyPackage — each can only be used once
+                _storedKeyPackages.RemoveAt(i);
+                await SaveServiceStateAsync();
+                await SaveGroupStateAsync(preview.GroupId);
+
+                return new MlsGroupInfo
+                {
+                    GroupId = preview.GroupId,
+                    GroupName = preview.GroupName,
+                    Epoch = group.Epoch,
+                    MemberPublicKeys = preview.MemberIdentities.ToList()
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug("ProcessWelcome: KeyPackage {Index} did not match: {Error}",
+                    i + 1, ex.Message);
+                lastError = ex;
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"None of the {_storedKeyPackages.Count} stored KeyPackages match this Welcome. " +
+            "The private key material for the targeted KeyPackage may have been lost.",
+            lastError);
     }
 
     public async Task<byte[]> EncryptMessageAsync(byte[] groupId, string plaintext)
@@ -417,14 +461,13 @@ public class ManagedMlsService : IMlsService
             writer.WriteOpaqueV(_signingPrivateKey);
             writer.WriteOpaqueV(_signingPublicKey);
 
-            // Stored KeyPackage data (may be null)
-            byte hasKp = (byte)(_storedKeyPackageBytes != null ? 1 : 0);
-            writer.WriteUint8(hasKp);
-            if (_storedKeyPackageBytes != null)
+            // Write count of stored KeyPackages, then each one
+            writer.WriteUint16((ushort)_storedKeyPackages.Count);
+            foreach (var kp in _storedKeyPackages)
             {
-                writer.WriteOpaqueV(_storedKeyPackageBytes);
-                writer.WriteOpaqueV(_storedInitPrivateKey!);
-                writer.WriteOpaqueV(_storedHpkePrivateKey!);
+                writer.WriteOpaqueV(kp.KeyPackageBytes);
+                writer.WriteOpaqueV(kp.InitPrivateKey);
+                writer.WriteOpaqueV(kp.HpkePrivateKey);
             }
         });
 
@@ -435,23 +478,56 @@ public class ManagedMlsService : IMlsService
     {
         var reader = new TlsReader(state);
         byte version = reader.ReadUint8();
-        if (version != ServiceStateVersion)
-            throw new InvalidOperationException($"Unsupported service state version: {version}");
 
         _signingPrivateKey = reader.ReadOpaqueV();
         _signingPublicKey = reader.ReadOpaqueV();
 
-        byte hasKp = reader.ReadUint8();
-        if (hasKp != 0)
+        _storedKeyPackages.Clear();
+
+        if (version == ServiceStateVersion1)
         {
-            _storedKeyPackageBytes = reader.ReadOpaqueV();
-            _storedInitPrivateKey = reader.ReadOpaqueV();
-            _storedHpkePrivateKey = reader.ReadOpaqueV();
+            // v1 format: single optional KeyPackage
+            byte hasKp = reader.ReadUint8();
+            if (hasKp != 0)
+            {
+                _storedKeyPackages.Add(new StoredKeyPackageMaterial
+                {
+                    KeyPackageBytes = reader.ReadOpaqueV(),
+                    InitPrivateKey = reader.ReadOpaqueV(),
+                    HpkePrivateKey = reader.ReadOpaqueV()
+                });
+            }
+        }
+        else if (version == ServiceStateVersion)
+        {
+            // v2 format: list of KeyPackages
+            ushort count = reader.ReadUint16();
+            for (int i = 0; i < count; i++)
+            {
+                _storedKeyPackages.Add(new StoredKeyPackageMaterial
+                {
+                    KeyPackageBytes = reader.ReadOpaqueV(),
+                    InitPrivateKey = reader.ReadOpaqueV(),
+                    HpkePrivateKey = reader.ReadOpaqueV()
+                });
+            }
+        }
+        else
+        {
+            throw new InvalidOperationException($"Unsupported service state version: {version}");
         }
 
-        _logger.LogInformation("Restored MLS service state (signingKey={Len} bytes, hasKeyPackage={HasKp})",
-            _signingPrivateKey.Length, hasKp != 0);
+        _logger.LogInformation("Restored MLS service state (signingKey={Len} bytes, storedKeyPackages={Count})",
+            _signingPrivateKey.Length, _storedKeyPackages.Count);
         return Task.CompletedTask;
+    }
+
+    public int GetStoredKeyPackageCount() => _storedKeyPackages.Count;
+
+    public bool HasKeyMaterialForKeyPackage(byte[] keyPackageData)
+    {
+        return _storedKeyPackages.Any(kp =>
+            kp.KeyPackageBytes.AsSpan().SequenceEqual(keyPackageData.AsSpan()));
     }
 
     // ---- Persistence helpers ----

@@ -1,6 +1,19 @@
 namespace OpenChat.Core.Models;
 
 /// <summary>
+/// Status of a KeyPackage relative to local key material availability.
+/// </summary>
+public enum KeyPackageStatus
+{
+    /// <summary>We have the private key material locally and can process Welcomes encrypted to this KeyPackage.</summary>
+    Active,
+    /// <summary>The KeyPackage exists on relays but the private key material is not available locally.</summary>
+    Lost,
+    /// <summary>The KeyPackage has expired (past its ExpiresAt date).</summary>
+    Expired
+}
+
+/// <summary>
 /// Represents an MLS KeyPackage for group membership.
 /// </summary>
 public class KeyPackage
@@ -47,6 +60,11 @@ public class KeyPackage
     /// MLS ciphersuite identifier.
     /// </summary>
     public ushort CiphersuiteId { get; set; }
+
+    /// <summary>
+    /// Whether we have the local private key material to process Welcomes encrypted to this KeyPackage.
+    /// </summary>
+    public KeyPackageStatus Status { get; set; } = KeyPackageStatus.Active;
 
     /// <summary>
     /// Relay URLs where this KeyPackage was published.

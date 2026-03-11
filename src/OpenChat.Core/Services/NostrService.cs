@@ -847,18 +847,25 @@ public class NostrService : INostrService, IDisposable
             ? _connectedRelays.ToList()
             : new List<string> { "wss://relay.damus.io", "wss://nos.lol", "wss://relay.nostr.band" };
 
+        var seenEventIds = new HashSet<string>();
+
         foreach (var relayUrl in relaysToTry)
         {
             try
             {
                 var packages = await FetchKeyPackagesFromRelayAsync(relayUrl, publicKeyHex);
-                keyPackages.AddRange(packages);
-
-                if (keyPackages.Count > 0)
+                foreach (var pkg in packages)
                 {
-                    _logger.LogInformation("Found {Count} KeyPackages from {Relay}", keyPackages.Count, relayUrl);
-                    break; // Got what we need
+                    // Deduplicate by NostrEventId across relays
+                    var eventId = pkg.NostrEventId ?? pkg.Id;
+                    if (seenEventIds.Add(eventId))
+                    {
+                        keyPackages.Add(pkg);
+                    }
                 }
+
+                _logger.LogInformation("Found {Count} KeyPackages from {Relay} ({Total} total unique)",
+                    packages.Count, relayUrl, keyPackages.Count);
             }
             catch (Exception ex)
             {
