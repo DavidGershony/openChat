@@ -482,7 +482,19 @@ public class ChatListViewModel : ViewModelBase
                 return;
             }
 
-            // Create MLS group
+            // Fetch recipient's KeyPackage BEFORE creating the MLS group
+            // to avoid orphaned groups when no KeyPackage is found
+            _logger.LogDebug("Fetching KeyPackage for {PubKey}", publicKeyHex[..Math.Min(16, publicKeyHex.Length)]);
+            var keyPackages = await _nostrService.FetchKeyPackagesAsync(publicKeyHex);
+            var keyPackage = keyPackages.FirstOrDefault();
+
+            if (keyPackage == null)
+            {
+                NewChatError = "No KeyPackage found for this user — they cannot receive invites";
+                return;
+            }
+
+            // Create MLS group (only after we've confirmed a KeyPackage exists)
             _logger.LogDebug("Creating MLS group for chat...");
             var groupInfo = await _mlsService.CreateGroupAsync(chatName);
             var groupIdHex = Convert.ToHexString(groupInfo.GroupId).ToLowerInvariant();
@@ -500,17 +512,6 @@ public class ChatListViewModel : ViewModelBase
             };
 
             _logger.LogInformation("Created MLS group with ID: {GroupId}", groupIdHex[..Math.Min(16, groupIdHex.Length)]);
-
-            // Fetch recipient's KeyPackage
-            _logger.LogDebug("Fetching KeyPackage for {PubKey}", publicKeyHex[..Math.Min(16, publicKeyHex.Length)]);
-            var keyPackages = await _nostrService.FetchKeyPackagesAsync(publicKeyHex);
-            var keyPackage = keyPackages.FirstOrDefault();
-
-            if (keyPackage == null)
-            {
-                NewChatError = "No KeyPackage found for this user — they cannot receive invites";
-                return;
-            }
 
             // Add member to MLS group
             _logger.LogDebug("Adding member to MLS group");
@@ -974,7 +975,12 @@ public class ChatListViewModel : ViewModelBase
 
     private void OnNewInvite(PendingInvite invite)
     {
-        // Avoid duplicates
+        // Deduplicate by NostrEventId (same welcome event arrives from multiple relays)
+        if (!string.IsNullOrEmpty(invite.NostrEventId) &&
+            PendingInvites.Any(i => i.NostrEventId == invite.NostrEventId))
+            return;
+
+        // Fallback: also check by internal Id
         if (PendingInvites.Any(i => i.Id == invite.Id))
             return;
 
@@ -1125,6 +1131,7 @@ public class ChatItemViewModel : ViewModelBase
 public class PendingInviteItemViewModel : ViewModelBase
 {
     public string Id { get; }
+    public string NostrEventId { get; }
     public string SenderName { get; }
     public string? GroupId { get; }
     public DateTime ReceivedAt { get; }
@@ -1144,6 +1151,7 @@ public class PendingInviteItemViewModel : ViewModelBase
             .ToProperty(this, x => x.IsProcessing);
 
         Id = invite.Id;
+        NostrEventId = invite.NostrEventId;
         SenderPublicKey = invite.SenderPublicKey;
         GroupId = invite.GroupId;
         ReceivedAt = invite.ReceivedAt;

@@ -352,6 +352,29 @@ public class MainViewModel : ViewModelBase
             await _nostrService.SubscribeToWelcomesAsync(CurrentUser.PublicKeyHex);
         }
 
+        // Check if our KeyPackage is published on relays
+        if (!string.IsNullOrEmpty(CurrentUser.PublicKeyHex))
+        {
+            try
+            {
+                _logger.LogDebug("Checking for published KeyPackage on relays");
+                var myKeyPackages = await _nostrService.FetchKeyPackagesAsync(CurrentUser.PublicKeyHex);
+                if (!myKeyPackages.Any())
+                {
+                    _logger.LogWarning("No KeyPackage found on relays for current user");
+                    ChatListViewModel.StatusMessage = "No KeyPackage published — others cannot invite you. Publish one in Settings.";
+                }
+                else
+                {
+                    _logger.LogInformation("Found {Count} KeyPackage(s) on relays", myKeyPackages.Count());
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to check KeyPackage status on relays");
+            }
+        }
+
         // Fetch own profile metadata for avatar
         if (!string.IsNullOrEmpty(CurrentUser.PublicKeyHex))
         {
