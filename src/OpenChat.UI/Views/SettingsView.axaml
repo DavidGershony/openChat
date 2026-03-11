@@ -118,7 +118,7 @@
                             <DataTemplate x:DataType="vm:RelayViewModel">
                                 <Border Background="{StaticResource SurfaceSecondaryBrush}"
                                         CornerRadius="8" Padding="12" Margin="0,4">
-                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                    <Grid ColumnDefinitions="Auto,*,Auto,Auto">
                                         <!-- Status Indicator -->
                                         <Panel Grid.Column="0" Width="10" Height="10" Margin="0,0,12,0">
                                             <Ellipse Fill="{StaticResource StatusOnlineBrush}" IsVisible="{Binding IsConnected}" />
@@ -132,8 +132,16 @@
                                                        IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                                         </StackPanel>
 
+                                        <!-- Usage Toggle -->
+                                        <Button Grid.Column="2" Classes="icon" Margin="4,0"
+                                                Command="{Binding #RelaysItemsControl.DataContext.CycleRelayUsageCommand}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip.Tip="Toggle relay usage: Read &amp; Write / Read / Write">
+                                            <TextBlock Text="{Binding UsageLabel}" FontSize="11" Opacity="0.7" />
+                                        </Button>
+
                                         <!-- Remove Button -->
-                                        <Button Grid.Column="2" Classes="icon"
+                                        <Button Grid.Column="3" Classes="icon"
                                                 Command="{Binding #RelaysItemsControl.DataContext.RemoveRelayCommand}"
                                                 CommandParameter="{Binding}">
                                             <PathIcon Data="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
@@ -152,6 +160,13 @@
                         <Button Grid.Column="1" Classes="primary" Content="Add"
                                 Command="{Binding AddRelayCommand}" Margin="8,0,0,0" />
                     </Grid>
+
+                    <!-- Publish NIP-65 Relay List -->
+                    <Button Classes="secondary" Content="Publish Relay List (NIP-65)"
+                            Command="{Binding PublishRelayListCommand}"
+                            HorizontalAlignment="Left" />
+                    <TextBlock Text="Publishes your relay preferences so others can find you"
+                               Classes="muted" FontSize="11" />
                 </StackPanel>
             </Border>
 

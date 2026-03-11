@@ -1,8 +1,11 @@
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Reactive;
+using System.Reactive.Linq;
 using Microsoft.Extensions.Logging;
 using ReactiveUI;
 using ReactiveUI.Fody.Helpers;
+using OpenChat.Core;
 using OpenChat.Core.Logging;
 using OpenChat.Core.Models;
 using OpenChat.Core.Services;
@@ -56,6 +59,8 @@ public class SettingsViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> OpenLogFolderCommand { get; }
     public ReactiveCommand<Unit, Unit> PublishKeyPackageCommand { get; }
     public ReactiveCommand<Unit, Unit> AuditKeyPackagesCommand { get; }
+    public ReactiveCommand<Unit, Unit> PublishRelayListCommand { get; }
+    public ReactiveCommand<RelayViewModel, Unit> CycleRelayUsageCommand { get; }
 
     public SettingsViewModel(INostrService nostrService, IStorageService storageService, IMlsService mlsService, IMessageService messageService, IPlatformLauncher launcher)
     {
@@ -121,10 +126,13 @@ public class SettingsViewModel : ViewModelBase
         PublishKeyPackageCommand = ReactiveCommand.CreateFromTask(PublishKeyPackageAsync);
         AuditKeyPackagesCommand = ReactiveCommand.CreateFromTask(AuditKeyPackagesAsync);
 
-        // Add default relays
-        Relays.Add(new RelayViewModel { Url = "wss://relay.damus.io", IsConnected = false });
-        Relays.Add(new RelayViewModel { Url = "wss://nos.lol", IsConnected = false });
-        Relays.Add(new RelayViewModel { Url = "wss://relay.nostr.band", IsConnected = false });
+        // Relay list commands
+        PublishRelayListCommand = ReactiveCommand.CreateFromTask(PublishRelayListAsync);
+        CycleRelayUsageCommand = ReactiveCommand.CreateFromTask<RelayViewModel>(CycleRelayUsageAsync);
+
+        // Add default relays (will be replaced by saved relays in LoadSettingsAsync)
+        foreach (var relay in NostrConstants.DefaultRelays)
+            Relays.Add(new RelayViewModel { Url = relay, IsConnected = false });
 
         LoadSettingsAsync().ConfigureAwait(false);
     }
@@ -141,6 +149,15 @@ public class SettingsViewModel : ViewModelBase
             Username = user.Username;
             About = user.About;
             AvatarUrl = user.AvatarUrl;
+
+            // Load saved relay list
+            var savedRelays = await _storageService.GetUserRelayListAsync(user.PublicKeyHex);
+            if (savedRelays.Count > 0)
+            {
+                Relays.Clear();
+                foreach (var relay in savedRelays)
+                    Relays.Add(new RelayViewModel { Url = relay.Url, Usage = relay.Usage, IsConnected = false });
+            }
         }
     }
 
@@ -168,6 +185,7 @@ public class SettingsViewModel : ViewModelBase
 
         await _nostrService.ConnectAsync(NewRelayUrl);
         NewRelayUrl = string.Empty;
+        await SaveRelayListAsync();
     }
 
     private async void RemoveRelay(RelayViewModel relay)
@@ -176,10 +194,53 @@ public class SettingsViewModel : ViewModelBase
         try
         {
             await _nostrService.DisconnectRelayAsync(relay.Url);
+            await SaveRelayListAsync();
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to disconnect relay {Url}", relay.Url);
+        }
+    }
+
+    private async Task CycleRelayUsageAsync(RelayViewModel relay)
+    {
+        relay.Usage = relay.Usage switch
+        {
+            RelayUsage.Both => RelayUsage.Read,
+            RelayUsage.Read => RelayUsage.Write,
+            RelayUsage.Write => RelayUsage.Both,
+            _ => RelayUsage.Both
+        };
+        await SaveRelayListAsync();
+    }
+
+    private async Task SaveRelayListAsync()
+    {
+        if (string.IsNullOrEmpty(PublicKeyHex)) return;
+
+        var relayPrefs = Relays.Select(r => new RelayPreference { Url = r.Url, Usage = r.Usage }).ToList();
+        await _storageService.SaveUserRelayListAsync(PublicKeyHex, relayPrefs);
+        _logger.LogInformation("Saved relay list with {Count} relays", relayPrefs.Count);
+    }
+
+    private async Task PublishRelayListAsync()
+    {
+        if (string.IsNullOrEmpty(PublicKeyHex))
+        {
+            _logger.LogWarning("Cannot publish relay list: no keys loaded");
+            return;
+        }
+
+        try
+        {
+            var relayPrefs = Relays.Select(r => new RelayPreference { Url = r.Url, Usage = r.Usage }).ToList();
+            await _nostrService.PublishRelayListAsync(relayPrefs, PrivateKeyHex);
+            await _storageService.SaveUserRelayListAsync(PublicKeyHex, relayPrefs);
+            _logger.LogInformation("Published and saved NIP-65 relay list");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to publish relay list");
         }
     }
 
@@ -273,4 +334,20 @@ public class RelayViewModel : ViewModelBase
     [Reactive] public string Url { get; set; } = string.Empty;
     [Reactive] public bool IsConnected { get; set; }
     [Reactive] public string? Error { get; set; }
+    [Reactive] public RelayUsage Usage { get; set; } = RelayUsage.Both;
+
+    private readonly ObservableAsPropertyHelper<string> _usageLabel;
+    public string UsageLabel => _usageLabel.Value;
+
+    public RelayViewModel()
+    {
+        _usageLabel = this.WhenAnyValue(x => x.Usage)
+            .Select(u => u switch
+            {
+                RelayUsage.Read => "Read",
+                RelayUsage.Write => "Write",
+                _ => "Read & Write"
+            })
+            .ToProperty(this, x => x.UsageLabel);
+    }
 }

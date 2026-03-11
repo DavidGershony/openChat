@@ -165,6 +165,13 @@ public class StorageService : IStorageService
                 DismissedAt TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS UserRelays (
+                PublicKeyHex TEXT NOT NULL,
+                RelayUrl TEXT NOT NULL,
+                Usage INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (PublicKeyHex, RelayUrl)
+            );
+
             CREATE INDEX IF NOT EXISTS IX_Messages_ChatId ON Messages(ChatId);
             CREATE INDEX IF NOT EXISTS IX_Messages_Timestamp ON Messages(Timestamp);
             CREATE INDEX IF NOT EXISTS IX_Messages_NostrEventId ON Messages(NostrEventId);
@@ -714,6 +721,59 @@ public class StorageService : IStorageService
         }
 
         return keyPackages;
+    }
+
+    public async Task SaveUserRelayListAsync(string publicKeyHex, IEnumerable<RelayPreference> relays)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        await using var transaction = await connection.BeginTransactionAsync();
+
+        // Delete existing relays for this user
+        var deleteCmd = connection.CreateCommand();
+        deleteCmd.CommandText = "DELETE FROM UserRelays WHERE PublicKeyHex = @pubkey";
+        deleteCmd.Parameters.AddWithValue("@pubkey", publicKeyHex);
+        await deleteCmd.ExecuteNonQueryAsync();
+
+        // Insert new relays
+        foreach (var relay in relays)
+        {
+            var insertCmd = connection.CreateCommand();
+            insertCmd.CommandText = @"
+                INSERT INTO UserRelays (PublicKeyHex, RelayUrl, Usage)
+                VALUES (@pubkey, @url, @usage)";
+            insertCmd.Parameters.AddWithValue("@pubkey", publicKeyHex);
+            insertCmd.Parameters.AddWithValue("@url", relay.Url);
+            insertCmd.Parameters.AddWithValue("@usage", (int)relay.Usage);
+            await insertCmd.ExecuteNonQueryAsync();
+        }
+
+        await transaction.CommitAsync();
+        _logger.LogDebug("Saved {Count} relays for {PubKey}", relays.Count(), publicKeyHex[..Math.Min(16, publicKeyHex.Length)] + "...");
+    }
+
+    public async Task<List<RelayPreference>> GetUserRelayListAsync(string publicKeyHex)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        var command = connection.CreateCommand();
+        command.CommandText = "SELECT RelayUrl, Usage FROM UserRelays WHERE PublicKeyHex = @pubkey";
+        command.Parameters.AddWithValue("@pubkey", publicKeyHex);
+
+        var relays = new List<RelayPreference>();
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            relays.Add(new RelayPreference
+            {
+                Url = reader.GetString(0),
+                Usage = (RelayUsage)reader.GetInt32(1)
+            });
+        }
+
+        return relays;
     }
 
     public async Task SaveMlsStateAsync(string groupId, byte[] state)

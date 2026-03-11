@@ -134,6 +134,16 @@ public interface INostrService
     IObservable<MarmotGroupMessageEvent> GroupMessages { get; }
 
     /// <summary>
+    /// Fetch a user's NIP-65 relay list (kind 10002) from discovery relays.
+    /// </summary>
+    Task<List<RelayPreference>> FetchRelayListAsync(string publicKeyHex);
+
+    /// <summary>
+    /// Publish the current user's NIP-65 relay list (kind 10002).
+    /// </summary>
+    Task<string> PublishRelayListAsync(List<RelayPreference> relays, string? privateKeyHex);
+
+    /// <summary>
     /// Convert npub to hex public key.
     /// </summary>
     string? NpubToHex(string npub);

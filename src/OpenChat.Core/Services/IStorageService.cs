@@ -46,6 +46,10 @@ public interface IStorageService
     Task DismissWelcomeEventAsync(string nostrEventId);
     Task<bool> IsWelcomeEventDismissedAsync(string nostrEventId);
 
+    // User relay list (NIP-65)
+    Task SaveUserRelayListAsync(string publicKeyHex, IEnumerable<RelayPreference> relays);
+    Task<List<RelayPreference>> GetUserRelayListAsync(string publicKeyHex);
+
     // MLS state
     Task SaveMlsStateAsync(string groupId, byte[] state);
     Task<byte[]?> GetMlsStateAsync(string groupId);

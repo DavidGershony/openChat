@@ -6,6 +6,7 @@ using System.Reactive.Linq;
 using ReactiveUI;
 using ReactiveUI.Fody.Helpers;
 using Microsoft.Extensions.Logging;
+using OpenChat.Core;
 using OpenChat.Core.Logging;
 using OpenChat.Core.Models;
 using OpenChat.Core.Services;
@@ -149,15 +150,18 @@ public class MainViewModel : ViewModelBase
         ReconnectCommand = ReactiveCommand.CreateFromTask(async () =>
         {
             _logger.LogInformation("Reconnecting to all relays...");
-            var defaultRelays = new[]
+            var relays = NostrConstants.DefaultRelays.ToList();
+
+            // Try to use saved relay list
+            if (CurrentUser != null)
             {
-                "wss://relay.damus.io",
-                "wss://nos.lol",
-                "wss://relay.nostr.band"
-            };
+                var saved = await _storageService.GetUserRelayListAsync(CurrentUser.PublicKeyHex);
+                if (saved.Count > 0)
+                    relays = saved.Select(r => r.Url).Distinct().ToList();
+            }
 
             await _nostrService.DisconnectAsync();
-            await _nostrService.ConnectAsync(defaultRelays);
+            await _nostrService.ConnectAsync(relays);
 
             // Subscriptions are now automatically re-sent by NostrService.ConnectToRelayAsync
             // via ResendSubscriptionsToRelayAsync, so no manual re-subscribe needed here.
@@ -333,16 +337,40 @@ public class MainViewModel : ViewModelBase
             }
         }
 
-        // Connect to default relays
-        _logger.LogInformation("Connecting to default relays");
-        var defaultRelays = new[]
+        // Fetch user's NIP-65 relay list, fall back to defaults
+        var relaysToConnect = NostrConstants.DefaultRelays.ToList();
+        try
         {
-            "wss://relay.damus.io",
-            "wss://nos.lol",
-            "wss://relay.nostr.band"
-        };
+            var savedRelays = await _storageService.GetUserRelayListAsync(CurrentUser.PublicKeyHex);
+            if (savedRelays.Count > 0)
+            {
+                _logger.LogInformation("Using {Count} saved relays from local storage", savedRelays.Count);
+                relaysToConnect = savedRelays.Select(r => r.Url).Distinct().ToList();
+            }
+            else
+            {
+                // Try fetching from discovery relays
+                _logger.LogInformation("No saved relays, fetching NIP-65 relay list from discovery relays");
+                var discoveredRelays = await _nostrService.FetchRelayListAsync(CurrentUser.PublicKeyHex);
+                if (discoveredRelays.Count > 0)
+                {
+                    _logger.LogInformation("Discovered {Count} relays via NIP-65", discoveredRelays.Count);
+                    await _storageService.SaveUserRelayListAsync(CurrentUser.PublicKeyHex, discoveredRelays);
+                    relaysToConnect = discoveredRelays.Select(r => r.Url).Distinct().ToList();
+                }
+                else
+                {
+                    _logger.LogInformation("No NIP-65 relay list found, using defaults");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to fetch relay list, using defaults");
+        }
 
-        await _nostrService.ConnectAsync(defaultRelays);
+        _logger.LogInformation("Connecting to {Count} relays", relaysToConnect.Count);
+        await _nostrService.ConnectAsync(relaysToConnect);
         _logger.LogInformation("Relay connection initiated");
 
         // Subscribe to Welcome messages (incoming group invites)

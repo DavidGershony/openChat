@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using NBitcoin.Secp256k1;
+using OpenChat.Core;
 using OpenChat.Core.Crypto;
 using OpenChat.Core.Logging;
 using OpenChat.Core.Models;
@@ -695,7 +696,7 @@ public class NostrService : INostrService, IDisposable
         // Create kind 443 event (MIP-00)
         var relayUrls = _connectedRelays.Count > 0
             ? _connectedRelays.ToList()
-            : new List<string> { "wss://relay.damus.io", "wss://nos.lol" };
+            : NostrConstants.DefaultRelays.ToList();
 
         List<List<string>> tags;
 
@@ -790,7 +791,7 @@ public class NostrService : INostrService, IDisposable
         // Create kind 444 event (MIP-02) with required tags
         var relayUrls = _connectedRelays.Count > 0
             ? _connectedRelays.ToList()
-            : new List<string> { "wss://relay.damus.io", "wss://nos.lol" };
+            : NostrConstants.DefaultRelays.ToList();
 
         var tags = new List<List<string>>
         {
@@ -845,7 +846,7 @@ public class NostrService : INostrService, IDisposable
         // Try each connected relay
         var relaysToTry = _connectedRelays.Count > 0
             ? _connectedRelays.ToList()
-            : new List<string> { "wss://relay.damus.io", "wss://nos.lol", "wss://relay.nostr.band" };
+            : NostrConstants.DefaultRelays.ToList();
 
         var seenEventIds = new HashSet<string>();
 
@@ -1058,7 +1059,7 @@ public class NostrService : INostrService, IDisposable
 
         var relaysToTry = _connectedRelays.Count > 0
             ? _connectedRelays.ToList()
-            : new List<string> { "wss://relay.damus.io", "wss://nos.lol", "wss://relay.nostr.band" };
+            : NostrConstants.DefaultRelays.ToList();
 
         foreach (var relayUrl in relaysToTry)
         {
@@ -1180,7 +1181,7 @@ public class NostrService : INostrService, IDisposable
             // Try each connected relay until we get metadata
             var relaysToTry = _connectedRelays.Count > 0
                 ? _connectedRelays.ToList()
-                : new List<string> { "wss://relay.damus.io", "wss://nos.lol", "wss://relay.nostr.band" };
+                : NostrConstants.DefaultRelays.ToList();
 
             foreach (var relayUrl in relaysToTry)
             {
@@ -1372,6 +1373,154 @@ public class NostrService : INostrService, IDisposable
             _logger.LogWarning(ex, "Failed to parse metadata content: {Content}", content[..Math.Min(100, content.Length)]);
             return null;
         }
+    }
+
+    public async Task<List<RelayPreference>> FetchRelayListAsync(string publicKeyHex)
+    {
+        _logger.LogInformation("Fetching NIP-65 relay list for {PubKey}", publicKeyHex[..Math.Min(16, publicKeyHex.Length)] + "...");
+
+        var relays = new List<RelayPreference>();
+        long latestCreatedAt = 0;
+
+        foreach (var discoveryRelay in NostrConstants.DiscoveryRelays)
+        {
+            try
+            {
+                var (found, createdAt) = await FetchRelayListFromRelayAsync(discoveryRelay, publicKeyHex);
+                if (found.Count > 0 && createdAt > latestCreatedAt)
+                {
+                    relays = found;
+                    latestCreatedAt = createdAt;
+                    _logger.LogInformation("Found {Count} relays from {Relay} (created_at: {CreatedAt})",
+                        found.Count, discoveryRelay, createdAt);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to fetch relay list from {Relay}", discoveryRelay);
+            }
+        }
+
+        _logger.LogInformation("NIP-65 relay list: {Count} relays found", relays.Count);
+        return relays;
+    }
+
+    private async Task<(List<RelayPreference> Relays, long CreatedAt)> FetchRelayListFromRelayAsync(string relayUrl, string publicKeyHex)
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var ws = new ClientWebSocket();
+
+        await ws.ConnectAsync(new Uri(relayUrl), cts.Token);
+
+        var subId = $"nip65_{Guid.NewGuid():N}"[..16];
+
+        // Request kind 10002 (replaceable event — only latest matters)
+        var filter = new { kinds = new[] { 10002 }, authors = new[] { publicKeyHex }, limit = 1 };
+        var reqMessage = JsonSerializer.Serialize(new object[] { "REQ", subId, filter });
+        var reqBytes = Encoding.UTF8.GetBytes(reqMessage);
+        await ws.SendAsync(new ArraySegment<byte>(reqBytes), WebSocketMessageType.Text, true, cts.Token);
+
+        var buffer = new byte[16384];
+        var relays = new List<RelayPreference>();
+        long createdAt = 0;
+
+        while (ws.State == WebSocketState.Open)
+        {
+            var result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), cts.Token);
+            if (result.MessageType == WebSocketMessageType.Close) break;
+
+            var message = Encoding.UTF8.GetString(buffer, 0, result.Count);
+
+            try
+            {
+                using var doc = JsonDocument.Parse(message);
+                var root = doc.RootElement;
+
+                if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() < 1)
+                    continue;
+
+                var messageType = root[0].GetString();
+
+                if (messageType == "EVENT" && root.GetArrayLength() >= 3)
+                {
+                    var eventData = root[2];
+                    var kind = eventData.GetProperty("kind").GetInt32();
+
+                    if (kind == 10002)
+                    {
+                        createdAt = eventData.GetProperty("created_at").GetInt64();
+                        var tags = eventData.GetProperty("tags");
+
+                        foreach (var tag in tags.EnumerateArray())
+                        {
+                            if (tag.GetArrayLength() < 2) continue;
+                            if (tag[0].GetString() != "r") continue;
+
+                            var url = tag[1].GetString();
+                            if (string.IsNullOrEmpty(url)) continue;
+
+                            var usage = RelayUsage.Both;
+                            if (tag.GetArrayLength() >= 3)
+                            {
+                                var marker = tag[2].GetString();
+                                usage = marker switch
+                                {
+                                    "read" => RelayUsage.Read,
+                                    "write" => RelayUsage.Write,
+                                    _ => RelayUsage.Both
+                                };
+                            }
+
+                            relays.Add(new RelayPreference { Url = url, Usage = usage });
+                        }
+                    }
+                }
+                else if (messageType == "EOSE")
+                {
+                    break;
+                }
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "Failed to parse relay message");
+            }
+        }
+
+        try
+        {
+            var closeMessage = JsonSerializer.Serialize(new object[] { "CLOSE", subId });
+            var closeBytes = Encoding.UTF8.GetBytes(closeMessage);
+            if (ws.State == WebSocketState.Open)
+            {
+                await ws.SendAsync(new ArraySegment<byte>(closeBytes), WebSocketMessageType.Text, true, cts.Token);
+                await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Done", cts.Token);
+            }
+        }
+        catch { /* Ignore close errors */ }
+
+        return (relays, createdAt);
+    }
+
+    public async Task<string> PublishRelayListAsync(List<RelayPreference> relays, string? privateKeyHex)
+    {
+        _logger.LogInformation("Publishing NIP-65 relay list with {Count} relays", relays.Count);
+
+        var tags = new List<List<string>>();
+        foreach (var relay in relays)
+        {
+            var tag = relay.Usage switch
+            {
+                RelayUsage.Read => new List<string> { "r", relay.Url, "read" },
+                RelayUsage.Write => new List<string> { "r", relay.Url, "write" },
+                _ => new List<string> { "r", relay.Url }
+            };
+            tags.Add(tag);
+        }
+
+        // Kind 10002 is replaceable — content is empty per NIP-65
+        var eventId = await PublishEventAsync(10002, "", tags, privateKeyHex);
+        _logger.LogInformation("Published NIP-65 relay list, event ID: {EventId}", eventId);
+        return eventId;
     }
 
     public string? NpubToHex(string npub)
