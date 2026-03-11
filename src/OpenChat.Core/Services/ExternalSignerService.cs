@@ -227,6 +227,48 @@ public class ExternalSignerService : IExternalSigner, IDisposable
         return uri;
     }
 
+    public async Task ReconnectAsync()
+    {
+        // No-op if already connected or no prior connection state
+        if (IsConnected || _relayUrl == null || _localPrivateKeyHex == null || _localPublicKeyHex == null)
+        {
+            _logger.LogDebug("ReconnectAsync: skipping (IsConnected={IsConnected}, hasRelay={HasRelay})",
+                IsConnected, _relayUrl != null);
+            return;
+        }
+
+        _logger.LogInformation("Reconnecting to relay {Relay} after app resume", _relayUrl);
+
+        try
+        {
+            // Clean up old WebSocket
+            _cts?.Cancel();
+            if (_webSocket != null)
+            {
+                try { _webSocket.Dispose(); } catch { }
+                _webSocket = null;
+            }
+            _cts?.Dispose();
+
+            // Re-establish connection
+            _cts = new CancellationTokenSource();
+            _webSocket = new ClientWebSocket();
+            await _webSocket.ConnectAsync(new Uri(_relayUrl), _cts.Token);
+            _logger.LogInformation("Reconnected WebSocket to {Relay}. State: {State}", _relayUrl, _webSocket.State);
+
+            // Restart listener and re-subscribe
+            _ = Task.Run(() => ListenForMessagesAsync(_cts.Token));
+            await SubscribeToSignerAsync();
+
+            _status.OnNext(new ExternalSignerStatus { State = ExternalSignerState.WaitingForApproval });
+            _logger.LogInformation("Re-subscribed to kind 24133 events after reconnect");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to reconnect to relay");
+        }
+    }
+
     private bool ParseConnectionString(string connectionString, out string? remotePubKey, out string? relayUrl, out string? secret)
     {
         remotePubKey = null;

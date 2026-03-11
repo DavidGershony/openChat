@@ -75,6 +75,13 @@ public interface IExternalSigner
     /// Status observable will fire Connected when the signer connects.
     /// </summary>
     Task<string> GenerateAndListenForConnectionAsync(string relayUrl);
+
+    /// <summary>
+    /// Reconnect to the relay after the WebSocket was dropped (e.g. app backgrounded).
+    /// Re-establishes the WebSocket and re-subscribes using existing keys/state.
+    /// No-op if already connected or if no prior connection was initiated.
+    /// </summary>
+    Task ReconnectAsync();
 }
 
 public class ExternalSignerStatus

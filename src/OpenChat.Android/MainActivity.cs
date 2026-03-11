@@ -111,6 +111,19 @@ public class MainActivity : AppCompatActivity, IActivatableView
             .Commit();
     }
 
+    protected override void OnResume()
+    {
+        base.OnResume();
+
+        // Reconnect external signer WebSocket after returning from background
+        // (e.g. user switched to Amber to scan QR, then came back)
+        var signer = _viewModel?.LoginViewModel?.ExternalSigner;
+        if (signer != null && !signer.IsConnected)
+        {
+            _ = signer.ReconnectAsync();
+        }
+    }
+
     protected override void OnDestroy()
     {
         _disposables.Dispose();
