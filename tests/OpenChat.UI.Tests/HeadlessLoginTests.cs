@@ -1,0 +1,112 @@
+using System.Reactive.Linq;
+using Avalonia.Headless.XUnit;
+using Avalonia.Threading;
+using OpenChat.Core.Models;
+using OpenChat.Presentation.ViewModels;
+using Xunit;
+
+namespace OpenChat.UI.Tests;
+
+/// <summary>
+/// Headless tests for login, key generation, key import, and logout flows.
+/// </summary>
+public class HeadlessLoginTests : HeadlessTestBase
+{
+    [AvaloniaTheory]
+    [InlineData("rust")]
+    [InlineData("managed")]
+    public async Task ImportPrivateKey_LogsInAndShowsMainUI(string backend)
+    {
+        if (ShouldSkip(backend)) return;
+        var ctx = await CreateRealContext(backend, saveUser: false);
+
+        var mainVm = CreateMainViewModel(ctx);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.False(mainVm.IsLoggedIn);
+
+        // Import the private key via LoginViewModel
+        mainVm.LoginViewModel.PrivateKeyInput = ctx.User.Nsec;
+        mainVm.LoginViewModel.ImportKeyCommand.Execute().Subscribe();
+        await Task.Delay(500);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(mainVm.IsLoggedIn);
+        Assert.NotNull(mainVm.CurrentUser);
+        Assert.Equal(ctx.User.PublicKeyHex, mainVm.CurrentUser!.PublicKeyHex);
+    }
+
+    [AvaloniaTheory]
+    [InlineData("rust")]
+    [InlineData("managed")]
+    public async Task GenerateNewKey_CreatesValidKeysAndLogsIn(string backend)
+    {
+        if (ShouldSkip(backend)) return;
+        var ctx = await CreateRealContext(backend, saveUser: false);
+
+        var mainVm = CreateMainViewModel(ctx);
+        Dispatcher.UIThread.RunJobs();
+
+        // Generate a new key
+        mainVm.LoginViewModel.GenerateNewKeyCommand.Execute().Subscribe();
+        await Task.Delay(300);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(mainVm.LoginViewModel.ShowGeneratedKeys);
+        Assert.NotNull(mainVm.LoginViewModel.GeneratedNsec);
+        Assert.NotNull(mainVm.LoginViewModel.GeneratedNpub);
+        Assert.StartsWith("nsec1", mainVm.LoginViewModel.GeneratedNsec);
+        Assert.StartsWith("npub1", mainVm.LoginViewModel.GeneratedNpub);
+
+        // Use the generated key to log in
+        mainVm.LoginViewModel.UseGeneratedKeyCommand.Execute().Subscribe();
+        await Task.Delay(500);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(mainVm.IsLoggedIn);
+        Assert.NotNull(mainVm.CurrentUser);
+    }
+
+    [AvaloniaTheory]
+    [InlineData("rust")]
+    [InlineData("managed")]
+    public async Task Logout_ClearsStateAndShowsLogin(string backend)
+    {
+        if (ShouldSkip(backend)) return;
+        var ctx = await CreateRealContext(backend);
+        await ctx.MessageService.InitializeAsync();
+
+        var mainVm = CreateMainViewModel(ctx);
+        Dispatcher.UIThread.RunJobs();
+
+        // Simulate login
+        mainVm.LoginViewModel.LoggedInUser = ctx.User;
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(mainVm.IsLoggedIn);
+
+        // Create a group so chat list has content
+        var groupInfo = await ctx.MlsService.CreateGroupAsync("Pre-Logout Group");
+        var chat = new Chat
+        {
+            Id = Guid.NewGuid().ToString(),
+            Name = "Pre-Logout Group",
+            Type = ChatType.Group,
+            MlsGroupId = groupInfo.GroupId,
+            CreatedAt = DateTime.UtcNow,
+            LastActivityAt = DateTime.UtcNow
+        };
+        await ctx.Storage.SaveChatAsync(chat);
+        await mainVm.ChatListViewModel.LoadChatsAsync();
+        Dispatcher.UIThread.RunJobs();
+        Assert.NotEmpty(mainVm.ChatListViewModel.Chats);
+
+        // Logout
+        mainVm.LogoutCommand.Execute().Subscribe();
+        await Task.Delay(300);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.False(mainVm.IsLoggedIn);
+        Assert.Null(mainVm.CurrentUser);
+        Assert.Empty(mainVm.ChatListViewModel.Chats);
+    }
+}
