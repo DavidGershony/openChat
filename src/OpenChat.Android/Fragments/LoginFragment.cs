@@ -98,11 +98,35 @@ public class LoginFragment : Fragment
             CopyToClipboard("nsec", ViewModel.GeneratedNsec);
         };
 
+        // Sync bunker URL on text change so canExecute stays current
+        bunkerUrlInput.TextChanged += (s, e) =>
+        {
+            ViewModel.BunkerUrl = bunkerUrlInput.Text ?? string.Empty;
+        };
+
         // External signer
         connectButton.Click += (s, e) =>
         {
             ViewModel.BunkerUrl = bunkerUrlInput.Text ?? string.Empty;
             ViewModel.ConnectExternalSignerCommand.Execute().Subscribe().DisposeWith(_disposables);
+        };
+
+        // Make nostrconnect URI tappable to open in Amber
+        connectUriText.Click += (s, e) =>
+        {
+            var uri = ViewModel.NostrConnectUri;
+            if (!string.IsNullOrEmpty(uri))
+            {
+                try
+                {
+                    var intent = new Intent(Intent.ActionView, global::Android.Net.Uri.Parse(uri));
+                    StartActivity(intent);
+                }
+                catch (Exception ex)
+                {
+                    Toast.MakeText(Activity, "No app found to handle nostrconnect:// links", ToastLength.Short)?.Show();
+                }
+            }
         };
 
         // Bind ViewModel to views
@@ -176,8 +200,9 @@ public class LoginFragment : Fragment
             .ObserveOn(RxApp.MainThreadScheduler)
             .Subscribe(uri =>
             {
-                connectUriText.Text = uri ?? "";
+                connectUriText.Text = string.IsNullOrEmpty(uri) ? "" : "Tap to open in Amber (or scan QR above)";
                 connectUriText.Visibility = string.IsNullOrEmpty(uri) ? ViewStates.Gone : ViewStates.Visible;
+                connectUriText.Clickable = !string.IsNullOrEmpty(uri);
             })
             .DisposeWith(_disposables);
 

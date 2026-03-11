@@ -221,16 +221,19 @@
                 android:contentDescription="NostrConnect QR code"
                 android:visibility="gone" />
 
-            <!-- nostrconnect URI -->
+            <!-- nostrconnect URI (tap to open in Amber) -->
             <TextView
                 android:id="@+id/nostr_connect_uri"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:fontFamily="monospace"
-                android:textSize="10sp"
-                android:textIsSelectable="true"
-                android:textColor="@color/text_secondary"
+                android:textSize="14sp"
+                android:textColor="@color/primary"
                 android:layout_marginTop="8dp"
+                android:padding="12dp"
+                android:gravity="center"
+                android:clickable="true"
+                android:focusable="true"
+                android:background="?attr/selectableItemBackground"
                 android:visibility="gone" />
 
             <!-- Bunker URL input -->
