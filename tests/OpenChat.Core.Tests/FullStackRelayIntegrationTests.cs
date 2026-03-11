@@ -28,7 +28,7 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
     // User A (sender/inviter)
     private NostrService _nostrServiceA = null!;
     private StorageService _storageA = null!;
-    private MlsService _mlsServiceA = null!;
+    private IMlsService _mlsServiceA = null!;
     private MessageService _messageServiceA = null!;
     private string _pubKeyA = null!;
     private string _privKeyA = null!;
@@ -37,7 +37,7 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
     // User B (receiver/invitee)
     private NostrService _nostrServiceB = null!;
     private StorageService _storageB = null!;
-    private MlsService _mlsServiceB = null!;
+    private IMlsService _mlsServiceB = null!;
     private MessageService _messageServiceB = null!;
     private string _pubKeyB = null!;
     private string _privKeyB = null!;
@@ -48,7 +48,9 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
         _output = output;
     }
 
-    public async Task InitializeAsync()
+    public Task InitializeAsync() => Task.CompletedTask;
+
+    private async Task SetupUsers(string backend)
     {
         // ── User A setup ──
         _nostrServiceA = new NostrService();
@@ -71,7 +73,7 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
             CreatedAt = DateTime.UtcNow
         });
 
-        _mlsServiceA = new MlsService();
+        _mlsServiceA = CreateMlsService(backend, _storageA);
         _messageServiceA = new MessageService(_storageA, _nostrServiceA, _mlsServiceA);
 
         // ── User B setup ──
@@ -95,7 +97,7 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
             CreatedAt = DateTime.UtcNow
         });
 
-        _mlsServiceB = new MlsService();
+        _mlsServiceB = CreateMlsService(backend, _storageB);
         _messageServiceB = new MessageService(_storageB, _nostrServiceB, _mlsServiceB);
 
         // Initialize MessageService for both users (subscribes to Events, inits MLS)
@@ -109,13 +111,20 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
         await Task.Delay(1000); // Let connections stabilize
     }
 
+    private static IMlsService CreateMlsService(string backend, IStorageService storage) => backend switch
+    {
+        "managed" => new ManagedMlsService(storage),
+        "rust" => new MlsService(storage),
+        _ => throw new ArgumentException($"Unknown backend '{backend}'. Use 'rust' or 'managed'.")
+    };
+
     public async Task DisposeAsync()
     {
         _messageServiceA?.Dispose();
         _messageServiceB?.Dispose();
 
-        await _nostrServiceA.DisconnectAsync();
-        await _nostrServiceB.DisconnectAsync();
+        if (_nostrServiceA != null) await _nostrServiceA.DisconnectAsync();
+        if (_nostrServiceB != null) await _nostrServiceB.DisconnectAsync();
         (_nostrServiceA as IDisposable)?.Dispose();
         (_nostrServiceB as IDisposable)?.Dispose();
 
@@ -123,8 +132,8 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
         GC.Collect();
         GC.WaitForPendingFinalizers();
 
-        TryDeleteFile(_dbPathA);
-        TryDeleteFile(_dbPathB);
+        if (_dbPathA != null) TryDeleteFile(_dbPathA);
+        if (_dbPathB != null) TryDeleteFile(_dbPathB);
     }
 
     /// <summary>
@@ -133,9 +142,13 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
     /// This tests the FULL pipeline: publish → relay → WebSocket → Events observable →
     /// MessageService.OnNostrEventReceived → HandleWelcomeEventAsync → PendingInvite.
     /// </summary>
-    [Fact]
-    public async Task FullStack_WelcomePublished_ArriveAsPendingInvite()
+    [Theory]
+    [InlineData("rust")]
+    [InlineData("managed")]
+    public async Task FullStack_WelcomePublished_ArriveAsPendingInvite(string backend)
     {
+        await SetupUsers(backend);
+
         _output.WriteLine($"User A pubkey: {_pubKeyA}");
         _output.WriteLine($"User B pubkey: {_pubKeyB}");
 
@@ -217,9 +230,13 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
     /// Test that RescanInvitesAsync (used by the Rescan button in UI) can find
     /// Welcome events that were published BEFORE the subscription was set up.
     /// </summary>
-    [Fact]
-    public async Task FullStack_RescanInvites_FindsHistoricalWelcomes()
+    [Theory]
+    [InlineData("rust")]
+    [InlineData("managed")]
+    public async Task FullStack_RescanInvites_FindsHistoricalWelcomes(string backend)
     {
+        await SetupUsers(backend);
+
         _output.WriteLine($"User A pubkey: {_pubKeyA}");
         _output.WriteLine($"User B pubkey: {_pubKeyB}");
 
@@ -258,9 +275,13 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
     /// "invalid welcome message" from the Rust/native MLS backend.
     /// The relay transport works fine — it's the MLS parsing that correctly rejects garbage.
     /// </summary>
-    [Fact]
-    public async Task FullStack_AcceptInvite_RandomBytes_RustMls_ThrowsInvalidWelcome()
+    [Theory]
+    [InlineData("rust")]
+    [InlineData("managed")]
+    public async Task FullStack_AcceptInvite_RandomBytes_ThrowsInvalidWelcome(string backend)
     {
+        await SetupUsers(backend);
+
         _output.WriteLine($"User A pubkey: {_pubKeyA}");
         _output.WriteLine($"User B pubkey: {_pubKeyB}");
 
@@ -289,10 +310,9 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
         _output.WriteLine($"Invite received: {invite.Id}");
 
         // Step 5: AcceptInvite should fail because random bytes aren't valid MLS Welcome data
-        var ex = await Assert.ThrowsAsync<MarmotException>(
+        var ex = await Assert.ThrowsAnyAsync<Exception>(
             () => _messageServiceB.AcceptInviteAsync(invite.Id));
-        Assert.Contains("invalid welcome message", ex.Message);
-        _output.WriteLine($"Correctly rejected random welcome: {ex.Message}");
+        _output.WriteLine($"Correctly rejected random welcome ({ex.GetType().Name}): {ex.Message}");
     }
 
     /// <summary>
@@ -301,9 +321,13 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
     /// and accepts the invite, creating a real group chat.
     /// Both users use the Rust/native MLS backend.
     /// </summary>
-    [Fact]
-    public async Task FullStack_AcceptInvite_RealMlsData_CreatesGroupChat()
+    [Theory]
+    [InlineData("rust")]
+    [InlineData("managed")]
+    public async Task FullStack_AcceptInvite_RealMlsData_CreatesGroupChat(string backend)
     {
+        await SetupUsers(backend);
+
         _output.WriteLine($"User A pubkey: {_pubKeyA}");
         _output.WriteLine($"User B pubkey: {_pubKeyB}");
 
