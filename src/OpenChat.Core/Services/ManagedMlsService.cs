@@ -334,9 +334,33 @@ public class ManagedMlsService : IMlsService
         _logger.LogDebug("DecryptMessage: group={GroupId}, ciphertext={Len} bytes (managed)",
             groupIdHex[..Math.Min(16, groupIdHex.Length)], ciphertext.Length);
 
+        // Ciphertext may be a JSON Nostr event (from Rust/native MDK) with base64 content,
+        // or raw TLS bytes (from C# MDK). Extract the payload bytes if JSON.
+        bool isFromNostrEvent = ciphertext.Length > 0 && (ciphertext[0] == (byte)'{' || ciphertext[0] == (byte)'[');
+        var payloadBytes = ExtractMlsMessageBytes(ciphertext);
+
+        // MIP-03: If the message came from a Nostr event, the payload is
+        // ChaCha20-Poly1305 encrypted with the group's MLS exporter secret.
+        // Decrypt the outer layer to get the raw MLS PrivateMessage bytes.
+        byte[] mlsBytes;
+        if (isFromNostrEvent)
+        {
+            _logger.LogDebug("DecryptMessage: applying MIP-03 ChaCha20-Poly1305 decryption ({Len} bytes)",
+                payloadBytes.Length);
+            var exporterSecret = _mdk!.GetExporterSecret(groupId);
+            mlsBytes = Mip03Crypto.Decrypt(exporterSecret, payloadBytes);
+            _logger.LogDebug("DecryptMessage: MIP-03 decrypted to {Len} bytes, first 32: {Hex}",
+                mlsBytes.Length,
+                Convert.ToHexString(mlsBytes[..Math.Min(32, mlsBytes.Length)]));
+        }
+        else
+        {
+            mlsBytes = payloadBytes;
+        }
+
         // Use a synthetic event ID for deduplication
         var eventId = Guid.NewGuid().ToString("N");
-        var result = await _mdk!.ProcessMessageAsync(groupId, ciphertext, eventId);
+        var result = await _mdk!.ProcessMessageAsync(groupId, mlsBytes, eventId);
 
         if (result is ApplicationMessageResult appMsg)
         {
@@ -356,7 +380,8 @@ public class ManagedMlsService : IMlsService
             };
         }
 
-        throw new InvalidOperationException($"Expected ApplicationMessageResult but got {result.GetType().Name}");
+        var reason = result is UnprocessableResult ur ? ur.Reason : result.GetType().Name;
+        throw new InvalidOperationException($"Expected ApplicationMessageResult but got {result.GetType().Name}: {reason}");
     }
 
     public async Task ProcessCommitAsync(byte[] groupId, byte[] commitData)
@@ -382,6 +407,13 @@ public class ManagedMlsService : IMlsService
         {
             throw new InvalidOperationException($"Failed to process commit: {unprocessable.Reason}");
         }
+    }
+
+    /// <summary>Test-only: exposes the exporter secret for diagnostic purposes.</summary>
+    internal byte[] GetExporterSecretForDiag(byte[] groupId)
+    {
+        EnsureInitialized();
+        return _mdk!.GetExporterSecret(groupId);
     }
 
     public async Task<byte[]> UpdateKeysAsync(byte[] groupId)
@@ -698,6 +730,47 @@ public class ManagedMlsService : IMlsService
             throw new InvalidOperationException(
                 "Failed to extract MLS Welcome bytes from JSON welcome data", ex);
         }
+    }
+
+    /// <summary>
+    /// Extracts raw MLS message bytes from whatever format the ciphertext arrives in.
+    /// Handles JSON Nostr events (from Rust/native MDK) and raw TLS bytes (from C# MDK).
+    /// </summary>
+    private byte[] ExtractMlsMessageBytes(byte[] ciphertext)
+    {
+        if (ciphertext.Length == 0)
+            return ciphertext;
+
+        byte first = ciphertext[0];
+
+        // JSON object or array — Rust/native MDK Nostr event format
+        if (first == (byte)'{' || first == (byte)'[')
+        {
+            _logger.LogDebug("DecryptMessage: detected JSON message data, extracting MLS bytes");
+            try
+            {
+                var json = Encoding.UTF8.GetString(ciphertext);
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+
+                var content = root.GetProperty("content").GetString()
+                    ?? throw new InvalidOperationException("Message event has null content field.");
+
+                return Convert.FromBase64String(content);
+            }
+            catch (InvalidOperationException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException(
+                    "Failed to extract MLS message bytes from JSON event", ex);
+            }
+        }
+
+        // Raw TLS bytes — pass through
+        return ciphertext;
     }
 
     /// <summary>
