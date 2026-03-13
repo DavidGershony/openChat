@@ -32,13 +32,14 @@ namespace OpenChat.Core.Marmot.Generated
         ///  # Arguments
         ///  * `private_key_hex` - The Nostr private key in hex format
         ///  * `public_key_hex` - The Nostr public key in hex format
+        ///  * `db_path` - Path to SQLite database file for persistent storage, or null for in-memory
         ///
         ///  # Returns
         ///  A pointer to the client, or null on failure.
         ///  The caller must free the client using `marmot_destroy_client`.
         /// </summary>
         [DllImport(__DllName, EntryPoint = "marmot_create_client", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-        internal static extern MarmotClient* marmot_create_client(byte* private_key_hex, byte* public_key_hex);
+        internal static extern MarmotClient* marmot_create_client(byte* private_key_hex, byte* public_key_hex, byte* db_path);
 
         /// <summary>
         ///  Destroy a Marmot client and free its resources.

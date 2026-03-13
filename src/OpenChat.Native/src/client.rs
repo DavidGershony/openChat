@@ -59,13 +59,13 @@ impl MarmotClient {
         let relays = self.default_relays.clone();
 
         let mdk = self.mdk.read();
-        let (key_package_base64, mdk_tags) = mdk.create_key_package_for_event(&public_key, relays)
+        let (key_package_base64, mdk_tags, _raw_kp) = mdk.create_key_package_for_event(&public_key, relays)
             .map_err(|e| MarmotError::Internal(format!("Failed to create key package: {}", e)))?;
 
         // Convert nostr::Tag array to Vec<Vec<String>> for JSON serialization
         let tags: Vec<Vec<String>> = mdk_tags
             .into_iter()
-            .map(|tag| tag.to_vec())
+            .map(|tag: nostr::Tag| tag.to_vec())
             .collect();
 
         // Return both content and tags as JSON
