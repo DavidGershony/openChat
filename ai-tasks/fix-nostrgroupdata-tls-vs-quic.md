@@ -1,59 +1,51 @@
-# Fix NostrGroupData (0xF2EE) TLS vs QUIC VarInt Encoding Mismatch
+# Fix NostrGroupData (0xF2EE) Codec: Match Rust MDK Wire Format
 
 ## Problem
 
-The Rust MDK and C# MarmotCs both use the `0xF2EE` MLS extension for group metadata (name, description, admins, relays), but they serialize it with **completely different binary formats**. This means neither side can decode the other's extension data.
+The C# `NostrGroupDataCodec` uses QUIC VarInt encoding, but the Rust MDK (the reference implementation) uses TLS codec. The C# encoding was written against the MIP-01 field descriptions without verifying the actual Rust binary output. It should have matched the Rust wire format from the start.
 
-Currently the C# side catches the `FormatException` and falls back to an empty group name, but this loses metadata.
+The Rust wire format is implicitly defined by `#[derive(TlsSerialize, TlsDeserialize)]` on the `TlsNostrGroupDataExtension` struct in `mdk-core/src/extension/types.rs`. There is no separate wire format spec — the Rust code IS the spec.
 
-## Rust MDK Format (TLS Codec)
+Currently a `FormatException` catch in `Mdk.cs` silently drops group metadata on Rust→C# Welcomes. This workaround must be removed once the codec is fixed.
+
+## Rust MDK Wire Format (the source of truth)
 
 File: `~/.cargo/git/checkouts/mdk-7d5a3a2420b194f5/d3cb3f1/crates/mdk-core/src/extension/types.rs`
 
 ```
-u16 (big-endian):     version (currently 2)
-[u8; 32]:             nostr_group_id
-opaque<2>:            name (2-byte BE length prefix + UTF-8)
-opaque<2>:            description
-vector<4> of [u8;32]: admin_pubkeys (4-byte BE length prefix, then N*32 bytes)
+u16 (big-endian):       version (currently 2)
+[u8; 32]:               nostr_group_id
+opaque<2>:              name (2-byte BE length prefix + UTF-8)
+opaque<2>:              description
+vector<4> of [u8; 32]:  admin_pubkeys (4-byte BE length prefix, then N*32 bytes)
 vector<4> of opaque<2>: relays (4-byte BE length prefix, then len-prefixed strings)
-opaque<2>:            image_hash (empty or 32 bytes)
-opaque<2>:            image_key (empty or 32 bytes; v2=seed, v1=encryption key)
-opaque<2>:            image_nonce (empty or 12 bytes)
-opaque<2>:            image_upload_key (v2 only; empty or 32 bytes)
+opaque<2>:              image_hash (empty or 32 bytes)
+opaque<2>:              image_key (empty or 32 bytes; v2=seed, v1=direct key)
+opaque<2>:              image_nonce (empty or 12 bytes)
+opaque<2>:              image_upload_key (v2 only; empty or 32 bytes)
 ```
 
-- Uses OpenMLS's TLS codec: fixed-width big-endian length prefixes (`opaque<2>` = 2-byte prefix, `vector<4>` = 4-byte prefix)
-- Includes `nostr_group_id` (32 bytes) — not present in C#
-- Includes 4 image fields — not serialized in C#
-- Version field is `u16` big-endian (`0x00 0x02` for version 2)
+TLS codec means fixed-width big-endian length prefixes: `opaque<2>` = 2-byte prefix, `vector<4>` = 4-byte prefix. This is NOT QUIC VarInt.
 
-## C# MarmotCs Format (QUIC VarInt)
+## What C# Currently Does (wrong)
 
 File: `C:\Users\david\openCodeProjects\marmot-cs\src\MarmotCs.Protocol\Mip01\NostrGroupDataCodec.cs`
 
 ```
-varint:               version (1-8 bytes, RFC 9000 encoding)
-varint-prefixed:      name (varint length + UTF-8)
+varint:               version
+varint-prefixed:      name
 varint-prefixed:      description
 varint:               num_admins, then num_admins * 32 raw bytes
 varint:               num_relays, then varint-prefixed relay URL strings
 (no group_id, no image fields)
 ```
 
-- Uses QUIC VarInt (RFC 9000 Section 16): variable-length integers
-- Version field is a single varint byte (`0x02` for version 2)
-- Missing `nostr_group_id` field entirely
-- Missing all image fields
+This was built using DotnetMls's `WriteOpaqueV`/`ReadOpaqueV` helpers (QUIC VarInt) because they were convenient. The developer read the MIP-01 field list and picked an encoding that was available in the C# codebase, without checking the Rust binary output.
 
-## Why It Breaks
-
-When Rust creates a group and sends a Welcome, the 0xF2EE extension contains TLS-encoded data starting with `0x00 0x02` (u16 version=2). The C# decoder reads with QUIC VarInt, interprets `0x00` as version 0, then throws:
-```
-FormatException: Unsupported NostrGroupData version: 0. Expected 2.
-```
-
-The reverse direction has the same problem — Rust can't decode C#'s QUIC VarInt format.
+Three categories of error:
+1. **Wrong encoding**: QUIC VarInt instead of TLS codec fixed-width prefixes
+2. **Missing fields**: `nostr_group_id` (32 bytes) and 4 image fields not present at all
+3. **Wrong version byte**: varint `0x02` vs TLS `0x00 0x02` — causes Rust bytes to be misread as version 0
 
 ## Version History (Rust MDK Changelog)
 
@@ -63,38 +55,59 @@ The reverse direction has the same problem — Rust can't decode C#'s QUIC VarIn
 | 1 | v0.5.2 (2025-10-16) | Added version field. Admin pubkeys = hex-encoded strings |
 | 2 | v0.6.0 (2026-02-18) | Admin pubkeys = raw 32-byte keys. image_key = seed (HKDF). Added image_upload_key |
 
-C# only implements version 2 because it was built after the v0.6.0 migration.
+C# should support version 2 (current) and version 1 (for backward compat with older Rust clients), matching Rust's behavior.
 
-## Fix Required
+## Fix
 
-The C# codec in `MarmotCs.Protocol` needs to switch from QUIC VarInt to TLS codec to match Rust MDK's format. This is the correct direction since Rust MDK is the reference implementation.
+Rewrite `NostrGroupDataCodec` to produce and consume the exact same bytes as the Rust `TlsNostrGroupDataExtension`. The Rust struct is the reference — match it field-for-field, byte-for-byte.
 
-### Changes needed in MarmotCs.Protocol:
+### Step 1: Rewrite `NostrGroupDataCodec.cs`
 
-1. **`NostrGroupDataCodec.cs`**: Rewrite `Encode()` and `Decode()` to use TLS-style fixed-width big-endian length prefixes instead of QUIC VarInt
-2. **`NostrGroupDataExtension.cs`**: Add `NostrGroupId` (byte[32]) property
-3. **Add image fields**: `ImageHash`, `ImageKey`, `ImageNonce`, `ImageUploadKey` (all optional byte arrays)
-4. **Version field**: Write as `u16` big-endian, not varint
-5. **Admin pubkeys**: Write as `vector<4>` of `[u8; 32]` (4-byte BE length prefix)
-6. **Relays**: Write as `vector<4>` of `opaque<2>` strings
+Replace all QUIC VarInt calls with TLS codec equivalents:
 
-### Changes needed in MarmotCs.Core:
+| Field | Rust encoding | C# should use |
+|-------|--------------|---------------|
+| version | `u16` BE | `writer.WriteUint16(version)` |
+| nostr_group_id | `[u8; 32]` | `writer.WriteBytes(groupId)` (fixed 32 bytes) |
+| name | `opaque<2>` | `writer.WriteUint16((ushort)bytes.Length)` then `writer.WriteBytes(bytes)` |
+| description | `opaque<2>` | same as name |
+| admin_pubkeys | `vector<4>` of `[u8; 32]` | `writer.WriteUint32((uint)(count * 32))` then each 32-byte key |
+| relays | `vector<4>` of `opaque<2>` | `writer.WriteUint32(totalLen)` then each `opaque<2>` string |
+| image_hash | `opaque<2>` | 2-byte prefix + 0 or 32 bytes |
+| image_key | `opaque<2>` | 2-byte prefix + 0 or 32 bytes |
+| image_nonce | `opaque<2>` | 2-byte prefix + 0 or 12 bytes |
+| image_upload_key | `opaque<2>` (v2 only) | 2-byte prefix + 0 or 32 bytes |
 
-1. **`Mdk.cs`**: Remove the `FormatException` catch workaround in `PreviewWelcomeAsync` and `AcceptWelcomeAsync` once the codec is fixed
-2. **`Mdk.cs`**: Populate `NostrGroupId` when creating groups
+### Step 2: Update `NostrGroupDataExtension.cs`
 
-### Testing
+Add the missing fields to the data model:
+- `NostrGroupId` (byte[32])
+- `ImageHash` (byte[]?)
+- `ImageKey` (byte[]?)
+- `ImageNonce` (byte[]?)
+- `ImageUploadKey` (byte[]?)
 
-- Unit tests in `MarmotCs.Protocol.Tests` for round-trip encode/decode
-- Cross-encode test: take known Rust-encoded 0xF2EE bytes and verify C# can decode them
-- Cross-MDK integration test in openChat: `CrossMdk_RustCreatesGroup_ManagedAcceptsWelcome_ThroughRelay`
+### Step 3: Update `Mdk.cs` in MarmotCs.Core
+
+- Remove the `try/catch FormatException` workaround in `PreviewWelcomeAsync` and `AcceptWelcomeAsync`
+- Populate `NostrGroupId` when creating groups
+
+### Step 4: Verify with a hex dump
+
+Get the Rust MDK to create a group, capture the 0xF2EE extension bytes from the Welcome, and verify the C# codec decodes them correctly. Then encode the same data in C# and verify byte-for-byte equality.
+
+## Testing
+
+1. **Unit test**: Round-trip encode/decode in `MarmotCs.Protocol.Tests`
+2. **Cross-encode test**: Hardcode known Rust-encoded 0xF2EE bytes, verify C# decodes them
+3. **Cross-MDK integration test**: `CrossMdk_RustCreatesGroup_ManagedAcceptsWelcome_ThroughRelay` in openChat
 
 ## File Reference
 
 | File | Repo | Purpose |
 |------|------|---------|
-| `NostrGroupDataCodec.cs` | marmot-cs/src/MarmotCs.Protocol/Mip01/ | C# encoder/decoder (needs rewrite) |
-| `NostrGroupDataExtension.cs` | marmot-cs/src/MarmotCs.Protocol/Mip01/ | Data model (needs new fields) |
-| `types.rs` | mdk-core/src/extension/ (Rust MDK) | Reference implementation |
-| `Mdk.cs` | marmot-cs/src/MarmotCs.Core/ | FormatException workaround to remove |
+| `NostrGroupDataCodec.cs` | marmot-cs/src/MarmotCs.Protocol/Mip01/ | Rewrite: replace QUIC VarInt with TLS codec |
+| `NostrGroupDataExtension.cs` | marmot-cs/src/MarmotCs.Protocol/Mip01/ | Add missing fields |
+| `types.rs` | mdk-core/src/extension/ (Rust MDK) | The reference — match this exactly |
+| `Mdk.cs` | marmot-cs/src/MarmotCs.Core/ | Remove FormatException workaround |
 | `CrossMdkRelayIntegrationTests.cs` | openChat/tests/OpenChat.Core.Tests/ | Integration test |
