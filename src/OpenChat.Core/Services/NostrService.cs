@@ -12,7 +12,7 @@ using OpenChat.Core;
 using OpenChat.Core.Crypto;
 using OpenChat.Core.Logging;
 using OpenChat.Core.Models;
-using Nip44 = OpenChat.Core.Crypto.Nip44;
+using MarmotCs.Protocol.Nip44;
 
 namespace OpenChat.Core.Services;
 
@@ -870,7 +870,9 @@ public class NostrService : INostrService, IDisposable
         var rumorJson = SerializeRumor(senderPublicKeyHex, rumorCreatedAt, kind, rumorTags, content);
 
         // 2. Create Seal (kind 13): encrypt rumor with NIP-44, sign with sender key
-        var sealContent = Nip44.Encrypt(rumorJson, senderPrivateKeyHex, recipientPublicKeyHex);
+        var sealConvKey = Nip44Encryption.DeriveConversationKey(
+            Convert.FromHexString(senderPrivateKeyHex), Convert.FromHexString(recipientPublicKeyHex));
+        var sealContent = Nip44Encryption.Encrypt(rumorJson, sealConvKey);
         var sealCreatedAt = RandomizeTimestamp(rumorCreatedAt);
         var sealTags = new List<List<string>>();
 
@@ -882,7 +884,9 @@ public class NostrService : INostrService, IDisposable
 
         // 3. Create Gift Wrap (kind 1059): encrypt seal with NIP-44 using ephemeral key
         var (ephemeralPrivHex, ephemeralPubHex, _, _) = GenerateKeyPair();
-        var giftContent = Nip44.Encrypt(sealJson, ephemeralPrivHex, recipientPublicKeyHex);
+        var giftConvKey = Nip44Encryption.DeriveConversationKey(
+            Convert.FromHexString(ephemeralPrivHex), Convert.FromHexString(recipientPublicKeyHex));
+        var giftContent = Nip44Encryption.Encrypt(sealJson, giftConvKey);
         var giftCreatedAt = RandomizeTimestamp(rumorCreatedAt);
         var giftTags = new List<List<string>>
         {
@@ -911,7 +915,9 @@ public class NostrService : INostrService, IDisposable
         try
         {
             // 1. Decrypt gift wrap content → Seal JSON
-            var sealJson = Nip44.Decrypt(giftWrapEvent.Content, recipientPrivateKeyHex, giftWrapEvent.PublicKey);
+            var unwrapConvKey = Nip44Encryption.DeriveConversationKey(
+                Convert.FromHexString(recipientPrivateKeyHex), Convert.FromHexString(giftWrapEvent.PublicKey));
+            var sealJson = Nip44Encryption.Decrypt(giftWrapEvent.Content, unwrapConvKey);
 
             using var sealDoc = JsonDocument.Parse(sealJson);
             var seal = sealDoc.RootElement;
@@ -919,7 +925,9 @@ public class NostrService : INostrService, IDisposable
             var sealContent = seal.GetProperty("content").GetString() ?? "";
 
             // 2. Decrypt seal content → Rumor JSON
-            var rumorJson = Nip44.Decrypt(sealContent, recipientPrivateKeyHex, sealPubkey);
+            var sealConvKey2 = Nip44Encryption.DeriveConversationKey(
+                Convert.FromHexString(recipientPrivateKeyHex), Convert.FromHexString(sealPubkey));
+            var rumorJson = Nip44Encryption.Decrypt(sealContent, sealConvKey2);
 
             using var rumorDoc = JsonDocument.Parse(rumorJson);
             var rumor = rumorDoc.RootElement;

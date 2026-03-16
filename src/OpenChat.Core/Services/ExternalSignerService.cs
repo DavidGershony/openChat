@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using NBitcoin.Secp256k1;
+using MarmotCs.Protocol.Nip44;
 using OpenChat.Core.Crypto;
 using OpenChat.Core.Logging;
 using System.Security.Cryptography;
@@ -806,117 +807,11 @@ public class ExternalSignerService : IExternalSigner, IDisposable
         return Encoding.UTF8.GetString(decrypted);
     }
 
-    /// <summary>
-    /// NIP-44 v2 decryption: HKDF + ChaCha20 + HMAC-SHA256.
-    /// </summary>
     private static string DecryptNip44(string base64Payload, string privateKeyHex, string pubKeyHex)
     {
-        var payload = Convert.FromBase64String(base64Payload);
-
-        // Payload: version(1) || nonce(32) || ciphertext(variable) || hmac(32)
-        if (payload.Length < 99) // 1 + 32 + 2(min padded) + 32(mac) = 67 minimum, but padded min is 32 so 1+32+32+32=97
-            throw new FormatException("NIP-44 payload too short");
-
-        if (payload[0] != 2)
-            throw new FormatException($"Unsupported NIP-44 version: {payload[0]}");
-
-        var nonce = payload[1..33];
-        var ciphertext = payload[33..^32];
-        var mac = payload[^32..];
-
-        // Shared secret (same ECDH as NIP-04)
-        var sharedSecret = ComputeNip04SharedSecret(privateKeyHex, pubKeyHex);
-
-        // Conversation key = HKDF-Extract(salt="nip44-v2", ikm=shared_secret)
-        var salt = Encoding.UTF8.GetBytes("nip44-v2");
-        var conversationKey = HKDF.Extract(HashAlgorithmName.SHA256, sharedSecret, salt);
-
-        // Message keys = HKDF-Expand(prk=conversation_key, info=nonce, L=76)
-        var messageKeys = HKDF.Expand(HashAlgorithmName.SHA256, conversationKey, 76, nonce);
-        var chachaKey = messageKeys[..32];
-        var chachaNonce = messageKeys[32..44];
-        var hmacKey = messageKeys[44..76];
-
-        // Verify HMAC-SHA256(hmac_key, nonce || ciphertext)
-        using var hmacSha256 = new System.Security.Cryptography.HMACSHA256(hmacKey);
-        var macInput = new byte[nonce.Length + ciphertext.Length];
-        Buffer.BlockCopy(nonce, 0, macInput, 0, nonce.Length);
-        Buffer.BlockCopy(ciphertext, 0, macInput, nonce.Length, ciphertext.Length);
-        var expectedMac = hmacSha256.ComputeHash(macInput);
-        if (!CryptographicOperations.FixedTimeEquals(expectedMac, mac))
-            throw new CryptographicException("NIP-44 HMAC verification failed");
-
-        // Decrypt with ChaCha20
-        var padded = ChaCha20Transform(chachaKey, chachaNonce, ciphertext);
-
-        // Unpad: first 2 bytes are big-endian plaintext length
-        var plaintextLen = (padded[0] << 8) | padded[1];
-        if (plaintextLen < 1 || plaintextLen > padded.Length - 2)
-            throw new FormatException($"Invalid NIP-44 padding length: {plaintextLen}");
-
-        return Encoding.UTF8.GetString(padded, 2, plaintextLen);
-    }
-
-    /// <summary>
-    /// ChaCha20 stream cipher (RFC 8439). XORs input with keystream.
-    /// </summary>
-    private static byte[] ChaCha20Transform(byte[] key, byte[] nonce, byte[] input)
-    {
-        var output = new byte[input.Length];
-        var state = new uint[16];
-        var working = new uint[16];
-
-        // Initialize state: constants + key + counter + nonce
-        state[0] = 0x61707865; // "expa"
-        state[1] = 0x3320646e; // "nd 3"
-        state[2] = 0x79622d32; // "2-by"
-        state[3] = 0x6b206574; // "te k"
-        for (int i = 0; i < 8; i++)
-            state[4 + i] = BitConverter.ToUInt32(key, i * 4);
-        state[12] = 0; // counter
-        for (int i = 0; i < 3; i++)
-            state[13 + i] = BitConverter.ToUInt32(nonce, i * 4);
-
-        int offset = 0;
-        while (offset < input.Length)
-        {
-            Array.Copy(state, working, 16);
-
-            // 20 rounds (10 double rounds)
-            for (int i = 0; i < 10; i++)
-            {
-                // Column rounds
-                QR(working, 0, 4, 8, 12); QR(working, 1, 5, 9, 13);
-                QR(working, 2, 6, 10, 14); QR(working, 3, 7, 11, 15);
-                // Diagonal rounds
-                QR(working, 0, 5, 10, 15); QR(working, 1, 6, 11, 12);
-                QR(working, 2, 7, 8, 13); QR(working, 3, 4, 9, 14);
-            }
-
-            // Add initial state and XOR with input
-            for (int i = 0; i < 16; i++)
-                working[i] += state[i];
-
-            var keystream = new byte[64];
-            Buffer.BlockCopy(working, 0, keystream, 0, 64);
-
-            int blockLen = Math.Min(64, input.Length - offset);
-            for (int i = 0; i < blockLen; i++)
-                output[offset + i] = (byte)(input[offset + i] ^ keystream[i]);
-
-            offset += 64;
-            state[12]++; // increment counter
-        }
-
-        return output;
-
-        static void QR(uint[] s, int a, int b, int c, int d)
-        {
-            s[a] += s[b]; s[d] ^= s[a]; s[d] = (s[d] << 16) | (s[d] >> 16);
-            s[c] += s[d]; s[b] ^= s[c]; s[b] = (s[b] << 12) | (s[b] >> 20);
-            s[a] += s[b]; s[d] ^= s[a]; s[d] = (s[d] << 8) | (s[d] >> 24);
-            s[c] += s[d]; s[b] ^= s[c]; s[b] = (s[b] << 7) | (s[b] >> 25);
-        }
+        var conversationKey = Nip44Encryption.DeriveConversationKey(
+            Convert.FromHexString(privateKeyHex), Convert.FromHexString(pubKeyHex));
+        return Nip44Encryption.Decrypt(base64Payload, conversationKey);
     }
 
     public void Dispose()
