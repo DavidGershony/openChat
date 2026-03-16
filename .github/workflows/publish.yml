@@ -85,8 +85,8 @@ jobs:
 
       - name: Build Android APK
         env:
-          SIGNING_KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          SIGNING_STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: >
           dotnet publish src/OpenChat.Android/OpenChat.Android.csproj
           --configuration Release
@@ -94,8 +94,8 @@ jobs:
           -p:ApplicationDisplayVersion=${{ steps.version.outputs.VERSION }}
           -p:AndroidSigningKeyStore=${{ github.workspace }}/openchat-release.keystore
           -p:AndroidSigningKeyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
-          -p:AndroidSigningKeyPass=env:SIGNING_KEY_PASS
-          -p:AndroidSigningStorePass=env:SIGNING_STORE_PASS
+          -p:AndroidSigningKeyPass=env:ANDROID_KEY_PASSWORD
+          -p:AndroidSigningStorePass=env:ANDROID_KEYSTORE_PASSWORD
           --output ./publish/android
 
       - name: Find and rename APK
