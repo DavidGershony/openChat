@@ -94,6 +94,7 @@ jobs:
           -p:AndroidSigningKeyPass=env:ANDROID_SIGNING_PASSWORD
           -p:AndroidSigningStorePass=env:ANDROID_SIGNING_PASSWORD
           -p:AndroidUseApkSigner=true
+          -p:AndroidPackageFormat=apk
           --output ./publish/android
 
       - name: Find and rename APK
