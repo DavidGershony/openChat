@@ -417,7 +417,7 @@ public class MessageService : IMessageService, IDisposable
     {
         try
         {
-            _logger.LogDebug("OnNostrEventReceived: kind {Kind} event {EventId} from {Relay}",
+            _logger.LogInformation("OnNostrEventReceived: kind {Kind} event {EventId} from {Relay}",
                 nostrEvent.Kind, nostrEvent.EventId[..Math.Min(16, nostrEvent.EventId.Length)], nostrEvent.RelayUrl);
 
             switch (nostrEvent.Kind)
@@ -514,14 +514,14 @@ public class MessageService : IMessageService, IDisposable
                     ?? nostrEvent.Tags.FirstOrDefault(t => t.Count > 1 && t[0] == "g");
         if (groupTag == null)
         {
-            _logger.LogDebug("HandleGroupMessage: no 'h' or 'g' tag in kind 445 event {EventId}",
+            _logger.LogWarning("HandleGroupMessage: no 'h' or 'g' tag in kind 445 event {EventId}",
                 nostrEvent.EventId[..Math.Min(16, nostrEvent.EventId.Length)]);
             return;
         }
 
         var groupIdHex = groupTag[1];
         var groupId = Convert.FromHexString(groupIdHex);
-        _logger.LogDebug("HandleGroupMessage: kind 445 for group {GroupId} from {Sender}",
+        _logger.LogInformation("HandleGroupMessage: kind 445 for group {GroupId} from {Sender}",
             groupIdHex[..Math.Min(16, groupIdHex.Length)],
             nostrEvent.PublicKey[..Math.Min(16, nostrEvent.PublicKey.Length)]);
 
@@ -533,14 +533,16 @@ public class MessageService : IMessageService, IDisposable
 
         if (chat == null)
         {
-            _logger.LogWarning("HandleGroupMessage: no chat found for group {GroupId}", groupIdHex[..Math.Min(16, groupIdHex.Length)]);
+            _logger.LogWarning("HandleGroupMessage: no chat found for group {GroupId}. Known groups: [{KnownGroups}]",
+                groupIdHex[..Math.Min(16, groupIdHex.Length)],
+                string.Join(", ", chats.Where(c => c.MlsGroupId != null).Select(c => Convert.ToHexString(c.MlsGroupId!).ToLowerInvariant()[..Math.Min(16, Convert.ToHexString(c.MlsGroupId!).Length)])));
             return;
         }
 
         // Skip relay echoes of our own messages (already saved locally by SendMessageAsync)
         if (nostrEvent.PublicKey == _currentUser?.PublicKeyHex)
         {
-            _logger.LogDebug("HandleGroupMessage: skipping echo of own message {EventId}",
+            _logger.LogInformation("HandleGroupMessage: skipping echo of own message {EventId}",
                 nostrEvent.EventId[..Math.Min(16, nostrEvent.EventId.Length)]);
             return;
         }
@@ -549,14 +551,14 @@ public class MessageService : IMessageService, IDisposable
         if (!string.IsNullOrEmpty(nostrEvent.EventId) &&
             await _storageService.MessageExistsByNostrEventIdAsync(nostrEvent.EventId))
         {
-            _logger.LogDebug("HandleGroupMessage: skipping duplicate event {EventId}",
+            _logger.LogInformation("HandleGroupMessage: skipping duplicate event {EventId}",
                 nostrEvent.EventId[..Math.Min(16, nostrEvent.EventId.Length)]);
             return;
         }
 
         // Decrypt message
         var encryptedData = Convert.FromBase64String(nostrEvent.Content);
-        _logger.LogDebug("HandleGroupMessage: decrypting {Len} bytes for chat {ChatId}", encryptedData.Length, chat.Id);
+        _logger.LogInformation("HandleGroupMessage: decrypting {Len} bytes for chat {ChatName}", encryptedData.Length, chat.Name);
 
         MlsDecryptedMessage decrypted;
         try
