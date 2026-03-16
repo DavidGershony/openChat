@@ -79,14 +79,11 @@ jobs:
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       - name: Decode keystore
-        run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > ${{ github.workspace }}/openchat-release.keystore
-          keytool -list -keystore ${{ github.workspace }}/openchat-release.keystore -storepass "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" 2>&1 | head -5
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > ${{ github.workspace }}/openchat-release.keystore
 
       - name: Build Android APK
         env:
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_SIGNING_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: >
           dotnet publish src/OpenChat.Android/OpenChat.Android.csproj
           --configuration Release
@@ -94,8 +91,9 @@ jobs:
           -p:ApplicationDisplayVersion=${{ steps.version.outputs.VERSION }}
           -p:AndroidSigningKeyStore=${{ github.workspace }}/openchat-release.keystore
           -p:AndroidSigningKeyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
-          -p:AndroidSigningKeyPass=env:ANDROID_KEY_PASSWORD
-          -p:AndroidSigningStorePass=env:ANDROID_KEYSTORE_PASSWORD
+          -p:AndroidSigningKeyPass=env:ANDROID_SIGNING_PASSWORD
+          -p:AndroidSigningStorePass=env:ANDROID_SIGNING_PASSWORD
+          -p:AndroidUseApkSigner=true
           --output ./publish/android
 
       - name: Find and rename APK
