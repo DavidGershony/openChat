@@ -14,7 +14,7 @@ interop with the Rust marmot reference implementation (marmot-web-chat).
 - **Required Tags**:
   - `e`: Nostr event ID of the referenced kind 443 (KeyPackage event)
   - `relays`: relay URLs
-  - `encoding`: `"mls-base64"`
+  - `encoding`: `"base64"`
 - **NIP-59 Wrapping**:
   - Rumor: unsigned kind 444 event with Welcome content and tags
   - Seal: kind 13, NIP-44 encrypted rumor, signed by sender
@@ -24,7 +24,7 @@ interop with the Rust marmot reference implementation (marmot-web-chat).
 
 ### marmot-cs Protocol Layer
 - [ ] `WelcomeEventBuilder.BuildWelcomeEvent` produces correct content and tags
-- [ ] `encoding` tag value is exactly `"mls-base64"`
+- [ ] `encoding` tag value is exactly `"base64"`
 - [ ] `e` tag references the correct KeyPackage event ID
 - [ ] `WelcomeEventParser.ParseWelcomeEvent` correctly validates encoding
 - [ ] Parser extracts KeyPackage event ID and relay list

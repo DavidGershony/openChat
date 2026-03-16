@@ -196,9 +196,7 @@ public class ManagedMlsService : IMlsService
         if (string.IsNullOrEmpty(keyPackage.EventJson))
             throw new InvalidOperationException("KeyPackage is missing the Nostr event JSON required for MLS processing");
 
-        // Extract raw KeyPackage bytes from the event JSON content.
-        // The content is base64-encoded regardless of whether the encoding tag says
-        // "base64" (Rust MDK) or "mls-base64" (C# MDK) — both are standard base64.
+        // Extract raw KeyPackage bytes from the base64-encoded event content.
         byte[] kpBytes;
         try
         {

@@ -11,10 +11,10 @@ Rust marmot reference implementation.
 - **Nostr Kind**: 443
 - **Content**: base64-encoded MLS KeyPackage bytes
 - **Required Tags**:
-  - `encoding`: `"mls-base64"`
-  - `protocol_version`: `"0"`
-  - `ciphersuite`: `"1"` (MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519)
-  - `extensions`: `""` (empty)
+  - `encoding`: `"base64"`
+  - `mls_protocol_version`: `"1.0"`
+  - `mls_ciphersuite`: `"0x0001"` (MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519)
+  - `mls_extensions`: supported extension type IDs (e.g. `"0xf2ee"`)
   - `relays`: relay URLs
   - `i`: KeyPackageRef hex (RFC 9420 Section 5.2 RefHash)
 - **KeyPackageRef**: `RefHash("MLS 1.0 KeyPackage Reference", keyPackageBytes)` → lowercase hex
@@ -23,7 +23,7 @@ Rust marmot reference implementation.
 
 ### marmot-cs Protocol Layer
 - [ ] `KeyPackageEventBuilder.BuildKeyPackageEvent` produces all required tags in correct order
-- [ ] `encoding` tag value is exactly `"mls-base64"` (not `"base64"`)
+- [ ] `encoding` tag value is exactly `"base64"`
 - [ ] `i` tag contains correct KeyPackageRef (verify with known test vector)
 - [ ] `KeyPackageEventParser.ParseKeyPackageEvent` correctly validates encoding tag
 - [ ] Parser handles missing optional tags gracefully (relays)

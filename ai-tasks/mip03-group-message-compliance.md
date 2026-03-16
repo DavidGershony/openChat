@@ -27,7 +27,7 @@ interop with the Rust marmot reference implementation.
 - [ ] Output format is `base64(nonce || ciphertext || tag)` — nonce first, tag last
 - [ ] AAD is empty (not null, not group ID — empty)
 - [ ] `h` tag contains group ID as lowercase hex
-- [ ] `encoding` tag is `"base64"` (NOT `"mls-base64"` — different from MIP-00/02)
+- [ ] `encoding` tag is `"base64"`
 - [ ] `GroupEventParser.ParseGroupEvent` correctly extracts nonce, ciphertext, tag
 - [ ] Parser validates minimum payload size (29 bytes: 12 nonce + 16 tag + 1 ciphertext)
 - [ ] Decryption key is exactly 32 bytes
