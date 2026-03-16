@@ -28,6 +28,9 @@ Desktop.ini
 *.keystore
 *.jks
 
+# NuGet packages
+*.nupkg
+
 # Misc
 nul
 *.log
