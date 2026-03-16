@@ -90,9 +90,9 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
         Assert.NotNull(keyPackageB.Data);
         Assert.True(keyPackageB.Data.Length > 0, "KeyPackage data should be non-empty");
         Assert.True(keyPackageB.Data.Length >= 64, $"KeyPackage should be >= 64 bytes, got {keyPackageB.Data.Length}");
-        // Should have MIP-00 tags (Rust uses mls_ciphersuite/encoding, Managed uses ciphersuite/encoding)
-        Assert.Contains(keyPackageB.NostrTags, t => t.Count >= 2 && t[0] == "encoding");
-        Assert.Contains(keyPackageB.NostrTags, t => t.Count >= 2 && (t[0] == "mls_ciphersuite" || t[0] == "ciphersuite"));
+        // Should have MIP-00 tags
+        Assert.Contains(keyPackageB.NostrTags, t => t.Count >= 2 && t[0] == "encoding" && t[1] == "base64");
+        Assert.Contains(keyPackageB.NostrTags, t => t.Count >= 2 && t[0] == "mls_ciphersuite");
 
         // ── Phase 3: Group Creation (User A) ──
         var groupInfo = await _mlsServiceA.CreateGroupAsync("Test Group");
@@ -688,7 +688,7 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
         mockNostr.Setup(n => n.ConnectAsync(It.IsAny<string>())).Returns(Task.CompletedTask);
         mockNostr.Setup(n => n.ConnectAsync(It.IsAny<IEnumerable<string>>())).Returns(Task.CompletedTask);
         mockNostr.Setup(n => n.DisconnectAsync()).Returns(Task.CompletedTask);
-        mockNostr.Setup(n => n.SubscribeToWelcomesAsync(It.IsAny<string>())).Returns(Task.CompletedTask);
+        mockNostr.Setup(n => n.SubscribeToWelcomesAsync(It.IsAny<string>(), It.IsAny<string?>())).Returns(Task.CompletedTask);
         mockNostr.Setup(n => n.SubscribeToGroupMessagesAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<DateTimeOffset?>())).Returns(Task.CompletedTask);
         mockNostr.Setup(n => n.SubscribeAsync(It.IsAny<string>(), It.IsAny<NostrFilter>())).Returns(Task.CompletedTask);
         mockNostr.Setup(n => n.UnsubscribeAsync(It.IsAny<string>())).Returns(Task.CompletedTask);
@@ -737,7 +737,7 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
         mockNostr.Setup(n => n.ConnectAsync(It.IsAny<string>())).Returns(Task.CompletedTask);
         mockNostr.Setup(n => n.ConnectAsync(It.IsAny<IEnumerable<string>>())).Returns(Task.CompletedTask);
         mockNostr.Setup(n => n.DisconnectAsync()).Returns(Task.CompletedTask);
-        mockNostr.Setup(n => n.SubscribeToWelcomesAsync(It.IsAny<string>())).Returns(Task.CompletedTask);
+        mockNostr.Setup(n => n.SubscribeToWelcomesAsync(It.IsAny<string>(), It.IsAny<string?>())).Returns(Task.CompletedTask);
         mockNostr.Setup(n => n.SubscribeToGroupMessagesAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<DateTimeOffset?>())).Returns(Task.CompletedTask);
         mockNostr.Setup(n => n.SubscribeAsync(It.IsAny<string>(), It.IsAny<NostrFilter>())).Returns(Task.CompletedTask);
         mockNostr.Setup(n => n.UnsubscribeAsync(It.IsAny<string>())).Returns(Task.CompletedTask);

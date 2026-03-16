@@ -107,10 +107,10 @@ public interface INostrService
     Task<UserMetadata?> FetchUserMetadataAsync(string publicKeyHex);
 
     /// <summary>
-    /// Subscribe to Welcome messages (kind 444) for a user.
-    /// Returns an observable of welcome events.
+    /// Subscribe to Welcome messages (NIP-59 gift-wrapped kind 1059) for a user.
+    /// The private key is needed to decrypt the gift wrap.
     /// </summary>
-    Task SubscribeToWelcomesAsync(string publicKeyHex);
+    Task SubscribeToWelcomesAsync(string publicKeyHex, string? privateKeyHex = null);
 
     /// <summary>
     /// Directly fetch Welcome events (kind 444) for a user from relays.

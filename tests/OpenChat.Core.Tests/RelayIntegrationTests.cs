@@ -135,7 +135,7 @@ public class RelayIntegrationTests : IAsyncLifetime
     public async Task PublishWelcome_UserBReceivesViaSubscription()
     {
         // User B subscribes to welcomes
-        await _nostrServiceB.SubscribeToWelcomesAsync(_pubKeyB);
+        await _nostrServiceB.SubscribeToWelcomesAsync(_pubKeyB, _privKeyB);
         await Task.Delay(500);
 
         // Set up event listener before publishing
@@ -208,7 +208,7 @@ public class RelayIntegrationTests : IAsyncLifetime
         Assert.NotEmpty(fetchedKPs);
 
         // Phase 3: User B subscribes to welcomes, User A sends welcome
-        await _nostrServiceB.SubscribeToWelcomesAsync(_pubKeyB);
+        await _nostrServiceB.SubscribeToWelcomesAsync(_pubKeyB, _privKeyB);
         await Task.Delay(500);
 
         var welcomeReceived = new TaskCompletionSource<NostrEventReceived>();

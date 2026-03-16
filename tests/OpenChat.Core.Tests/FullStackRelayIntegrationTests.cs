@@ -153,7 +153,7 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
         _output.WriteLine($"User B pubkey: {_pubKeyB}");
 
         // Step 1: User B subscribes to welcomes via the real relay
-        await _nostrServiceB.SubscribeToWelcomesAsync(_pubKeyB);
+        await _nostrServiceB.SubscribeToWelcomesAsync(_pubKeyB, _privKeyB);
         _output.WriteLine("User B subscribed to welcomes");
         await Task.Delay(500);
 
@@ -286,7 +286,7 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
         _output.WriteLine($"User B pubkey: {_pubKeyB}");
 
         // Step 1: Subscribe User B to welcomes
-        await _nostrServiceB.SubscribeToWelcomesAsync(_pubKeyB);
+        await _nostrServiceB.SubscribeToWelcomesAsync(_pubKeyB, _privKeyB);
         await Task.Delay(500);
 
         // Step 2: Set up invite listener
@@ -374,7 +374,7 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
         _output.WriteLine($"User A added User B: welcome={welcome.WelcomeData.Length} bytes");
 
         // Step 5: User B subscribes to welcomes
-        await _nostrServiceB.SubscribeToWelcomesAsync(_pubKeyB);
+        await _nostrServiceB.SubscribeToWelcomesAsync(_pubKeyB, _privKeyB);
         await Task.Delay(500);
 
         var inviteTcs = new TaskCompletionSource<PendingInvite>(

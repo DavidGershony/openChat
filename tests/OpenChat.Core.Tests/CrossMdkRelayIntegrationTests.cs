@@ -142,7 +142,7 @@ public class CrossMdkRelayIntegrationTests : IAsyncLifetime
         _output.WriteLine($"User B generated KeyPackage ({keyPackage.Data.Length} bytes)");
 
         // Subscribe User B to welcomes
-        await _nostrServiceB.SubscribeToWelcomesAsync(_pubKeyB);
+        await _nostrServiceB.SubscribeToWelcomesAsync(_pubKeyB, _privKeyB);
         await Task.Delay(500);
 
         // Set up invite listener
@@ -236,7 +236,7 @@ public class CrossMdkRelayIntegrationTests : IAsyncLifetime
         _output.WriteLine($"User A added User B: welcome={welcome.WelcomeData.Length} bytes, commit={welcome.CommitData?.Length} bytes");
 
         // ── Phase 5: User B subscribes to Welcomes and User A publishes Welcome ──
-        await _nostrServiceB.SubscribeToWelcomesAsync(_pubKeyB);
+        await _nostrServiceB.SubscribeToWelcomesAsync(_pubKeyB, _privKeyB);
         await Task.Delay(500);
 
         var inviteTcs = new TaskCompletionSource<PendingInvite>(

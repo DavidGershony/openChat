@@ -144,7 +144,8 @@ public class ManagedMlsService : IMlsService
 
         // Build Nostr event tags using the protocol builder
         var (content, tags) = KeyPackageEventBuilder.BuildKeyPackageEvent(
-            kpBytes, _publicKeyHex!, Array.Empty<string>());
+            kpBytes, _publicKeyHex!, Array.Empty<string>(),
+            supportedExtensionTypes: new ushort[] { 0xF2EE });
 
         // Convert string[][] tags to List<List<string>> for OpenChat's KeyPackage model
         var nostrTags = tags.Select(t => t.ToList()).ToList();

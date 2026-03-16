@@ -12,6 +12,7 @@ using OpenChat.Core;
 using OpenChat.Core.Crypto;
 using OpenChat.Core.Logging;
 using OpenChat.Core.Models;
+using Nip44 = OpenChat.Core.Crypto.Nip44;
 
 namespace OpenChat.Core.Services;
 
@@ -29,6 +30,7 @@ public class NostrService : INostrService, IDisposable
     private readonly HashSet<string> _subscribedGroupIds = new();
     private DateTimeOffset? _groupMessagesSince;
     private string? _subscribedUserPubKey;
+    private string? _subscribedUserPrivKey;
     private IExternalSigner? _externalSigner;
     private bool _disposed;
 
@@ -112,13 +114,13 @@ public class NostrService : INostrService, IDisposable
     {
         try
         {
-            // Re-subscribe to Welcome messages (kind 444)
+            // Re-subscribe to Welcome messages (kind 1059 gift wrap)
             if (!string.IsNullOrEmpty(_subscribedUserPubKey) && ws.State == WebSocketState.Open)
             {
                 var subId = $"welcome_{Guid.NewGuid():N}"[..16];
                 var filter = new Dictionary<string, object>
                 {
-                    { "kinds", new[] { 444 } },
+                    { "kinds", new[] { 1059 } },
                     { "#p", new[] { _subscribedUserPubKey } }
                 };
 
@@ -156,6 +158,26 @@ public class NostrService : INostrService, IDisposable
         }
     }
 
+    /// <summary>
+    /// Reads a complete WebSocket message, accumulating frames until EndOfMessage is true.
+    /// Handles messages larger than the receive buffer (e.g. MLS Welcome events).
+    /// </summary>
+    private static async Task<(WebSocketMessageType Type, string Text)?> ReceiveFullMessageAsync(
+        ClientWebSocket ws, byte[] buffer, CancellationToken ct)
+    {
+        using var ms = new MemoryStream();
+        WebSocketReceiveResult result;
+        do
+        {
+            result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
+            if (result.MessageType == WebSocketMessageType.Close)
+                return (WebSocketMessageType.Close, string.Empty);
+            ms.Write(buffer, 0, result.Count);
+        } while (!result.EndOfMessage);
+
+        return (result.MessageType, Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length));
+    }
+
     private async Task ListenToRelayAsync(string relayUrl, ClientWebSocket ws, CancellationToken ct)
     {
         var buffer = new byte[65536];
@@ -164,16 +186,14 @@ public class NostrService : INostrService, IDisposable
         {
             while (ws.State == WebSocketState.Open && !ct.IsCancellationRequested)
             {
-                var result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
-
-                if (result.MessageType == WebSocketMessageType.Close)
+                var msg = await ReceiveFullMessageAsync(ws, buffer, ct);
+                if (msg == null || msg.Value.Type == WebSocketMessageType.Close)
                 {
                     _logger.LogInformation("Relay {RelayUrl} closed connection", relayUrl);
                     break;
                 }
 
-                var message = Encoding.UTF8.GetString(buffer, 0, result.Count);
-                ProcessRelayMessage(relayUrl, message);
+                ProcessRelayMessage(relayUrl, msg.Value.Text);
             }
         }
         catch (OperationCanceledException)
@@ -216,8 +236,21 @@ public class NostrService : INostrService, IDisposable
                     _events.OnNext(nostrEvent);
 
                     // Route Marmot-specific events
-                    if (nostrEvent.Kind == 444)
+                    if (nostrEvent.Kind == 1059 && !string.IsNullOrEmpty(_subscribedUserPrivKey))
                     {
+                        // NIP-59 Gift Wrap — unwrap to find the inner rumor
+                        var rumor = UnwrapGiftWrap(nostrEvent, _subscribedUserPrivKey);
+                        if (rumor != null && rumor.Kind == 444)
+                        {
+                            _logger.LogInformation("Unwrapped gift wrap → kind 444 Welcome from {Sender}",
+                                rumor.PublicKey[..Math.Min(16, rumor.PublicKey.Length)]);
+                            _events.OnNext(rumor); // Fire the unwrapped rumor as an event
+                            ProcessWelcomeEvent(rumor);
+                        }
+                    }
+                    else if (nostrEvent.Kind == 444)
+                    {
+                        // Legacy: raw kind 444 (not gift-wrapped) for backward compatibility
                         ProcessWelcomeEvent(nostrEvent);
                     }
                     else if (nostrEvent.Kind == 445)
@@ -582,20 +615,20 @@ public class NostrService : INostrService, IDisposable
         await Task.CompletedTask;
     }
 
-    public async Task SubscribeToWelcomesAsync(string publicKeyHex)
+    public async Task SubscribeToWelcomesAsync(string publicKeyHex, string? privateKeyHex = null)
     {
-        _logger.LogInformation("Subscribing to Welcome messages for {PubKey}",
+        _logger.LogInformation("Subscribing to Welcome messages (kind 1059 gift wrap) for {PubKey}",
             publicKeyHex[..Math.Min(16, publicKeyHex.Length)] + "...");
 
         _subscribedUserPubKey = publicKeyHex;
+        _subscribedUserPrivKey = privateKeyHex;
 
-        // Build REQ for kind 444 events where p-tag matches our pubkey
+        // Subscribe to NIP-59 Gift Wrap (kind 1059) where p-tag matches our pubkey
         var subId = $"welcome_{Guid.NewGuid():N}"[..16];
 
-        // Create filter: {"kinds": [444], "#p": [publicKeyHex]}
         var filter = new Dictionary<string, object>
         {
-            { "kinds", new[] { 444 } },
+            { "kinds", new[] { 1059 } },
             { "#p", new[] { publicKeyHex } }
         };
 
@@ -693,93 +726,37 @@ public class NostrService : INostrService, IDisposable
 
     public async Task<string> PublishKeyPackageAsync(byte[] keyPackageData, string? privateKeyHex, List<List<string>>? mdkTags = null)
     {
-        // Create kind 443 event (MIP-00)
+        if (mdkTags == null || mdkTags.Count == 0)
+        {
+            _logger.LogWarning("No MDK tags provided for KeyPackage — MDK should always provide tags");
+        }
+
+        // Use MDK-provided tags directly — marmot-cs now produces the correct MIP-00 format.
+        // Only filter out the NIP-70 "-" tag (protected event marker) which relays reject without NIP-42 auth,
+        // and populate empty relay tags with connected relay URLs.
         var relayUrls = _connectedRelays.Count > 0
             ? _connectedRelays.ToList()
             : NostrConstants.DefaultRelays.ToList();
 
-        List<List<string>> tags;
-
-        if (mdkTags != null && mdkTags.Count > 0)
-        {
-            // Use MDK-provided tags, applying necessary normalization:
-            // 1. Filter out the "-" tag (NIP-70 protected event marker) — relays reject without NIP-42 auth
-            // 2. Normalize tag names: the C# MDK uses short names (protocol_version, ciphersuite)
-            //    but the Rust MDK / MIP-00 spec requires mls_-prefixed names (mls_protocol_version, mls_ciphersuite)
-            //    Also normalize encoding: "mls-base64" → "base64" for cross-MDK compatibility
-            tags = mdkTags
-                .Where(t => !(t.Count == 1 && t[0] == "-"))
-                .Select(t =>
+        var tags = (mdkTags ?? new List<List<string>>())
+            .Where(t => !(t.Count == 1 && t[0] == "-"))
+            .Select(t =>
+            {
+                // Populate empty relay tags with connected relay URLs
+                if (t.Count >= 1 && t[0] == "relays" && t.Count <= 1)
                 {
-                    if (t.Count < 1) return t;
-                    var normalized = new List<string>(t);
-                    switch (normalized[0])
-                    {
-                        case "protocol_version":
-                            normalized[0] = "mls_protocol_version";
-                            // Normalize value: "0" → "1.0"
-                            if (normalized.Count > 1 && normalized[1] == "0")
-                                normalized[1] = "1.0";
-                            break;
-                        case "ciphersuite":
-                            normalized[0] = "mls_ciphersuite";
-                            // Normalize value: "1" → "0x0001"
-                            if (normalized.Count > 1 && ushort.TryParse(normalized[1], out var cs))
-                                normalized[1] = $"0x{cs:x4}";
-                            break;
-                        case "extensions":
-                            normalized[0] = "mls_extensions";
-                            // Remove empty extension values — Rust MDK requires 0xXXXX format
-                            for (int i = normalized.Count - 1; i >= 1; i--)
-                            {
-                                if (string.IsNullOrEmpty(normalized[i]))
-                                    normalized.RemoveAt(i);
-                            }
-                            // If no actual values remain, add standard Marmot extensions:
-                            // 0xf2ee = NostrGroupData, 0x000a = last_resort
-                            if (normalized.Count <= 1)
-                            {
-                                normalized.Add("0xf2ee");
-                                normalized.Add("0x000a");
-                            }
-                            break;
-                        case "encoding" when normalized.Count > 1 && normalized[1] == "mls-base64":
-                            normalized[1] = "base64";
-                            break;
-                        case "relays" when normalized.Count <= 1:
-                            // Add connected relay URLs if the C# MDK provided an empty relays tag
-                            normalized.AddRange(relayUrls);
-                            break;
-                    }
-                    return normalized;
-                })
-                .Where(t => t != null)
-                .ToList();
-            _logger.LogInformation("Using {Count} MDK-provided tags for KeyPackage (filtered from {Original})",
-                tags.Count, mdkTags.Count);
+                    var withRelays = new List<string>(t);
+                    withRelays.AddRange(relayUrls);
+                    return withRelays;
+                }
+                return t;
+            })
+            .ToList();
 
-            // Log the tags for debugging
-            foreach (var tag in tags)
-            {
-                _logger.LogDebug("MDK Tag: [{Tags}]", string.Join(", ", tag));
-            }
-        }
-        else
+        _logger.LogInformation("Publishing KeyPackage with {Count} tags", tags.Count);
+        foreach (var tag in tags)
         {
-            // Fallback to hardcoded tags if MDK doesn't provide them
-            _logger.LogWarning("No MDK tags provided, using fallback hardcoded tags");
-            tags = new List<List<string>>
-            {
-                new() { "encoding", "base64" },
-                new() { "mls_protocol_version", "1.0" },
-                new() { "mls_ciphersuite", "0x0001" },  // MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519
-                new() { "mls_extensions", "0xf2ee", "0x000a" },  // marmot_group_data, last_resort
-            };
-
-            // Add relays tag with all connected relay URLs
-            var relaysTag = new List<string> { "relays" };
-            relaysTag.AddRange(relayUrls);
-            tags.Add(relaysTag);
+            _logger.LogDebug("KP Tag: [{Tags}]", string.Join(", ", tag));
         }
 
         var eventId = await PublishEventAsync(443, Convert.ToBase64String(keyPackageData), tags, privateKeyHex);
@@ -788,7 +765,7 @@ public class NostrService : INostrService, IDisposable
 
     public async Task<string> PublishWelcomeAsync(byte[] welcomeData, string recipientPublicKey, string? privateKeyHex, string? keyPackageEventId = null)
     {
-        // Create kind 444 event (MIP-02) with required tags
+        // Create kind 444 Welcome rumor (unsigned) wrapped in NIP-59 Gift Wrap per MIP-02
         var relayUrls = _connectedRelays.Count > 0
             ? _connectedRelays.ToList()
             : NostrConstants.DefaultRelays.ToList();
@@ -804,7 +781,6 @@ public class NostrService : INostrService, IDisposable
             if (readRelays.Count > 0)
             {
                 _logger.LogInformation("Adding {Count} NIP-65 read relays for Welcome delivery", readRelays.Count);
-                // Connect to recipient's read relays so PublishEventAsync can reach them
                 foreach (var readRelay in readRelays.Where(r => !_connectedRelays.Contains(r)))
                 {
                     try { await ConnectAsync(readRelay); }
@@ -818,25 +794,238 @@ public class NostrService : INostrService, IDisposable
             _logger.LogWarning(ex, "Failed to discover recipient relays for Welcome delivery");
         }
 
-        var tags = new List<List<string>>
+        // Build the unsigned kind 444 rumor
+        var rumorTags = new List<List<string>>
         {
-            new() { "p", recipientPublicKey },
             new() { "encoding", "base64" }
         };
-
-        // Add KeyPackage event ID reference (required per MIP-02)
         if (!string.IsNullOrEmpty(keyPackageEventId))
         {
-            tags.Add(new List<string> { "e", keyPackageEventId });
+            rumorTags.Add(new List<string> { "e", keyPackageEventId });
         }
-
-        // Add relays tag for locating Group Events
         var relaysTag = new List<string> { "relays" };
         relaysTag.AddRange(relayUrls);
-        tags.Add(relaysTag);
+        rumorTags.Add(relaysTag);
 
-        var eventId = await PublishEventAsync(444, Convert.ToBase64String(welcomeData), tags, privateKeyHex);
-        return eventId;
+        // Determine sender pubkey
+        string senderPrivateKeyHex;
+        string senderPublicKeyHex;
+        if (!string.IsNullOrEmpty(privateKeyHex))
+        {
+            senderPrivateKeyHex = privateKeyHex;
+            senderPublicKeyHex = Convert.ToHexString(DerivePublicKey(Convert.FromHexString(privateKeyHex))).ToLowerInvariant();
+        }
+        else if (_externalSigner?.IsConnected == true)
+        {
+            throw new NotSupportedException("NIP-59 Gift Wrap with external signer is not yet supported for Welcome events");
+        }
+        else
+        {
+            throw new InvalidOperationException("Cannot publish Welcome: no private key and no external signer connected.");
+        }
+
+        // Create gift-wrapped event
+        var giftWrapMessage = CreateGiftWrap(
+            kind: 444,
+            content: Convert.ToBase64String(welcomeData),
+            rumorTags: rumorTags,
+            senderPrivateKeyHex: senderPrivateKeyHex,
+            senderPublicKeyHex: senderPublicKeyHex,
+            recipientPublicKeyHex: recipientPublicKey);
+
+        _logger.LogInformation("Publishing NIP-59 gift-wrapped Welcome (kind 1059) for {Recipient}",
+            recipientPublicKey[..Math.Min(16, recipientPublicKey.Length)]);
+
+        // Publish the kind 1059 gift wrap to all relays
+        var eventBytes = Encoding.UTF8.GetBytes(giftWrapMessage.EventMessage);
+        foreach (var (relayUrl, ws) in _relayConnections)
+        {
+            if (ws.State == WebSocketState.Open)
+            {
+                try
+                {
+                    await ws.SendAsync(new ArraySegment<byte>(eventBytes), WebSocketMessageType.Text, true, CancellationToken.None);
+                    _logger.LogDebug("Sent gift-wrapped Welcome to {RelayUrl}", relayUrl);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to send gift-wrapped Welcome to {RelayUrl}", relayUrl);
+                }
+            }
+        }
+
+        return giftWrapMessage.EventId;
+    }
+
+    /// <summary>
+    /// Creates a NIP-59 Gift Wrap: Rumor → Seal (kind 13) → Gift Wrap (kind 1059).
+    /// </summary>
+    private (string EventMessage, string EventId) CreateGiftWrap(
+        int kind, string content, List<List<string>> rumorTags,
+        string senderPrivateKeyHex, string senderPublicKeyHex,
+        string recipientPublicKeyHex)
+    {
+        // 1. Create unsigned rumor (kind 444)
+        var rumorCreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var rumorJson = SerializeRumor(senderPublicKeyHex, rumorCreatedAt, kind, rumorTags, content);
+
+        // 2. Create Seal (kind 13): encrypt rumor with NIP-44, sign with sender key
+        var sealContent = Nip44.Encrypt(rumorJson, senderPrivateKeyHex, recipientPublicKeyHex);
+        var sealCreatedAt = RandomizeTimestamp(rumorCreatedAt);
+        var sealTags = new List<List<string>>();
+
+        var sealSerializedForId = SerializeForEventId(senderPublicKeyHex, sealCreatedAt, 13, sealTags, sealContent);
+        var sealIdBytes = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(sealSerializedForId));
+        var sealId = Convert.ToHexString(sealIdBytes).ToLowerInvariant();
+        var sealSig = Convert.ToHexString(SignSchnorr(sealIdBytes, Convert.FromHexString(senderPrivateKeyHex))).ToLowerInvariant();
+        var sealJson = SerializeEventJson(sealId, senderPublicKeyHex, sealCreatedAt, 13, sealTags, sealContent, sealSig);
+
+        // 3. Create Gift Wrap (kind 1059): encrypt seal with NIP-44 using ephemeral key
+        var (ephemeralPrivHex, ephemeralPubHex, _, _) = GenerateKeyPair();
+        var giftContent = Nip44.Encrypt(sealJson, ephemeralPrivHex, recipientPublicKeyHex);
+        var giftCreatedAt = RandomizeTimestamp(rumorCreatedAt);
+        var giftTags = new List<List<string>>
+        {
+            new() { "p", recipientPublicKeyHex }
+        };
+
+        var giftSerializedForId = SerializeForEventId(ephemeralPubHex, giftCreatedAt, 1059, giftTags, giftContent);
+        var giftIdBytes = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(giftSerializedForId));
+        var giftId = Convert.ToHexString(giftIdBytes).ToLowerInvariant();
+        var giftSig = Convert.ToHexString(SignSchnorr(giftIdBytes, Convert.FromHexString(ephemeralPrivHex))).ToLowerInvariant();
+
+        var eventMessage = SerializeEventMessage(giftId, ephemeralPubHex, giftCreatedAt, 1059, giftTags, giftContent, giftSig);
+
+        _logger.LogDebug("Created gift wrap: rumor kind={Kind}, seal={SealId}, wrap={GiftId}",
+            kind, sealId[..16], giftId[..16]);
+
+        return (eventMessage, giftId);
+    }
+
+    /// <summary>
+    /// Unwraps a NIP-59 Gift Wrap event into the original rumor.
+    /// Returns the parsed rumor as a NostrEventReceived, or null if unwrapping fails.
+    /// </summary>
+    private NostrEventReceived? UnwrapGiftWrap(NostrEventReceived giftWrapEvent, string recipientPrivateKeyHex)
+    {
+        try
+        {
+            // 1. Decrypt gift wrap content → Seal JSON
+            var sealJson = Nip44.Decrypt(giftWrapEvent.Content, recipientPrivateKeyHex, giftWrapEvent.PublicKey);
+
+            using var sealDoc = JsonDocument.Parse(sealJson);
+            var seal = sealDoc.RootElement;
+            var sealPubkey = seal.GetProperty("pubkey").GetString() ?? "";
+            var sealContent = seal.GetProperty("content").GetString() ?? "";
+
+            // 2. Decrypt seal content → Rumor JSON
+            var rumorJson = Nip44.Decrypt(sealContent, recipientPrivateKeyHex, sealPubkey);
+
+            using var rumorDoc = JsonDocument.Parse(rumorJson);
+            var rumor = rumorDoc.RootElement;
+
+            // 3. Parse rumor into NostrEventReceived
+            var rumorKind = rumor.GetProperty("kind").GetInt32();
+            var rumorContent = rumor.GetProperty("content").GetString() ?? "";
+            var rumorPubkey = rumor.GetProperty("pubkey").GetString() ?? "";
+            var rumorCreatedAt = rumor.GetProperty("created_at").GetInt64();
+
+            var tags = new List<List<string>>();
+            if (rumor.TryGetProperty("tags", out var tagsElement))
+            {
+                foreach (var tag in tagsElement.EnumerateArray())
+                {
+                    var tagList = new List<string>();
+                    foreach (var item in tag.EnumerateArray())
+                        tagList.Add(item.GetString() ?? "");
+                    tags.Add(tagList);
+                }
+            }
+
+            // Use the gift wrap event ID as the event identifier (the rumor has no real ID)
+            return new NostrEventReceived
+            {
+                Kind = rumorKind,
+                EventId = giftWrapEvent.EventId,
+                PublicKey = rumorPubkey,
+                Content = rumorContent,
+                CreatedAt = DateTimeOffset.FromUnixTimeSeconds(rumorCreatedAt).UtcDateTime,
+                Tags = tags,
+                RelayUrl = giftWrapEvent.RelayUrl
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to unwrap gift wrap event {EventId}", giftWrapEvent.EventId[..Math.Min(16, giftWrapEvent.EventId.Length)]);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Serializes an unsigned rumor event to JSON (no sig field).
+    /// </summary>
+    private string SerializeRumor(string pubkey, long createdAt, int kind, List<List<string>> tags, string content)
+    {
+        using var ms = new MemoryStream();
+        using var w = new Utf8JsonWriter(ms);
+        w.WriteStartObject();
+        w.WriteString("pubkey", pubkey);
+        w.WriteNumber("created_at", createdAt);
+        w.WriteNumber("kind", kind);
+        w.WritePropertyName("tags");
+        w.WriteStartArray();
+        foreach (var tag in tags)
+        {
+            w.WriteStartArray();
+            foreach (var item in tag)
+                w.WriteStringValue(item);
+            w.WriteEndArray();
+        }
+        w.WriteEndArray();
+        w.WriteString("content", content);
+        w.WriteEndObject();
+        w.Flush();
+        return Encoding.UTF8.GetString(ms.ToArray());
+    }
+
+    /// <summary>
+    /// Serializes a signed event to JSON (with id, pubkey, sig, etc).
+    /// </summary>
+    private string SerializeEventJson(string id, string pubkey, long createdAt, int kind,
+        List<List<string>> tags, string content, string sig)
+    {
+        using var ms = new MemoryStream();
+        using var w = new Utf8JsonWriter(ms);
+        w.WriteStartObject();
+        w.WriteString("id", id);
+        w.WriteString("pubkey", pubkey);
+        w.WriteNumber("created_at", createdAt);
+        w.WriteNumber("kind", kind);
+        w.WritePropertyName("tags");
+        w.WriteStartArray();
+        foreach (var tag in tags)
+        {
+            w.WriteStartArray();
+            foreach (var item in tag)
+                w.WriteStringValue(item);
+            w.WriteEndArray();
+        }
+        w.WriteEndArray();
+        w.WriteString("content", content);
+        w.WriteString("sig", sig);
+        w.WriteEndObject();
+        w.Flush();
+        return Encoding.UTF8.GetString(ms.ToArray());
+    }
+
+    /// <summary>
+    /// Randomizes timestamp by +/- up to 2 days for NIP-59 unlinkability.
+    /// </summary>
+    private static long RandomizeTimestamp(long baseTimestamp)
+    {
+        var twoDaysInSeconds = 2 * 24 * 60 * 60;
+        var offset = RandomNumberGenerator.GetInt32(-twoDaysInSeconds, twoDaysInSeconds);
+        return baseTimestamp + offset;
     }
 
     public async Task<string> PublishCommitAsync(byte[] commitData, string groupId, string? privateKeyHex)
@@ -958,12 +1147,11 @@ public class NostrService : INostrService, IDisposable
 
         while (ws.State == WebSocketState.Open)
         {
-            var result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), cts.Token);
-
-            if (result.MessageType == WebSocketMessageType.Close)
+            var msg = await ReceiveFullMessageAsync(ws, buffer, cts.Token);
+            if (msg == null || msg.Value.Type == WebSocketMessageType.Close)
                 break;
 
-            var message = Encoding.UTF8.GetString(buffer, 0, result.Count);
+            var message = msg.Value.Text;
 
             try
             {
@@ -1003,7 +1191,7 @@ public class NostrService : INostrService, IDisposable
 
                                     switch (tagName)
                                     {
-                                        case "encoding" when tagValue is "base64" or "mls-base64":
+                                        case "encoding" when tagValue == "base64":
                                             hasEncoding = true;
                                             break;
                                         case "mls_ciphersuite":
@@ -1014,13 +1202,7 @@ public class NostrService : INostrService, IDisposable
                                                     ciphersuiteId = parsed;
                                             }
                                             break;
-                                        case "ciphersuite":
-                                            hasCiphersuite = true;
-                                            if (tagValue != null && ushort.TryParse(tagValue, out var csId))
-                                                ciphersuiteId = csId;
-                                            break;
                                         case "mls_protocol_version":
-                                        case "protocol_version":
                                             hasProtocolVersion = true;
                                             break;
                                     }
@@ -1135,7 +1317,7 @@ public class NostrService : INostrService, IDisposable
     {
         var events = new List<NostrEventReceived>();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         using var ws = new ClientWebSocket();
 
         _logger.LogDebug("Connecting to relay {Relay} for Welcome fetch", relayUrl);
@@ -1143,16 +1325,16 @@ public class NostrService : INostrService, IDisposable
 
         var subId = $"wf_{Guid.NewGuid():N}"[..16];
 
-        // REQ for kind 444 events where p-tag matches our pubkey
+        // Fetch NIP-59 Gift Wraps (kind 1059) addressed to us
         var filter = new Dictionary<string, object>
         {
-            { "kinds", new[] { 444 } },
+            { "kinds", new[] { 1059 } },
             { "#p", new[] { publicKeyHex } },
             { "limit", 50 }
         };
         var reqMessage = JsonSerializer.Serialize(new object[] { "REQ", subId, filter });
 
-        _logger.LogDebug("Sending Welcome fetch REQ: {Message}", reqMessage);
+        _logger.LogDebug("Sending Welcome fetch REQ (kind 1059): {Message}", reqMessage);
         var reqBytes = Encoding.UTF8.GetBytes(reqMessage);
         await ws.SendAsync(new ArraySegment<byte>(reqBytes), WebSocketMessageType.Text, true, cts.Token);
 
@@ -1160,12 +1342,11 @@ public class NostrService : INostrService, IDisposable
 
         while (ws.State == WebSocketState.Open)
         {
-            var result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), cts.Token);
-
-            if (result.MessageType == WebSocketMessageType.Close)
+            var msg = await ReceiveFullMessageAsync(ws, buffer, cts.Token);
+            if (msg == null || msg.Value.Type == WebSocketMessageType.Close)
                 break;
 
-            var message = Encoding.UTF8.GetString(buffer, 0, result.Count);
+            var message = msg.Value.Text;
 
             try
             {
@@ -1181,12 +1362,17 @@ public class NostrService : INostrService, IDisposable
                 {
                     var eventData = root[2];
                     var nostrEvent = ParseNostrEvent(eventData, relayUrl);
-                    if (nostrEvent != null && nostrEvent.Kind == 444)
+                    if (nostrEvent != null && nostrEvent.Kind == 1059 && !string.IsNullOrEmpty(_subscribedUserPrivKey))
                     {
-                        _logger.LogDebug("Found Welcome event {EventId} from {Sender}",
-                            nostrEvent.EventId[..Math.Min(16, nostrEvent.EventId.Length)],
-                            nostrEvent.PublicKey[..Math.Min(16, nostrEvent.PublicKey.Length)]);
-                        events.Add(nostrEvent);
+                        // Unwrap gift wrap to get the inner rumor
+                        var rumor = UnwrapGiftWrap(nostrEvent, _subscribedUserPrivKey);
+                        if (rumor != null && rumor.Kind == 444)
+                        {
+                            _logger.LogDebug("Unwrapped Welcome event {EventId} from {Sender}",
+                                rumor.EventId[..Math.Min(16, rumor.EventId.Length)],
+                                rumor.PublicKey[..Math.Min(16, rumor.PublicKey.Length)]);
+                            events.Add(rumor);
+                        }
                     }
                 }
                 else if (messageType == "EOSE")
@@ -1297,12 +1483,11 @@ public class NostrService : INostrService, IDisposable
 
         while (ws.State == WebSocketState.Open)
         {
-            var result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), cts.Token);
-
-            if (result.MessageType == WebSocketMessageType.Close)
+            var msg = await ReceiveFullMessageAsync(ws, buffer, cts.Token);
+            if (msg == null || msg.Value.Type == WebSocketMessageType.Close)
                 break;
 
-            var message = Encoding.UTF8.GetString(buffer, 0, result.Count);
+            var message = msg.Value.Text;
             _logger.LogDebug("Received from relay: {Message}", message[..Math.Min(200, message.Length)]);
 
             try
@@ -1476,10 +1661,10 @@ public class NostrService : INostrService, IDisposable
 
         while (ws.State == WebSocketState.Open)
         {
-            var result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), cts.Token);
-            if (result.MessageType == WebSocketMessageType.Close) break;
+            var msg = await ReceiveFullMessageAsync(ws, buffer, cts.Token);
+            if (msg == null || msg.Value.Type == WebSocketMessageType.Close) break;
 
-            var message = Encoding.UTF8.GetString(buffer, 0, result.Count);
+            var message = msg.Value.Text;
 
             try
             {

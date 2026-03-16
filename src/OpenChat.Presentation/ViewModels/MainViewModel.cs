@@ -390,8 +390,8 @@ public class MainViewModel : ViewModelBase
         // Subscribe to Welcome messages (incoming group invites)
         if (!string.IsNullOrEmpty(CurrentUser.PublicKeyHex))
         {
-            _logger.LogDebug("Subscribing to welcome messages");
-            await _nostrService.SubscribeToWelcomesAsync(CurrentUser.PublicKeyHex);
+            _logger.LogDebug("Subscribing to welcome messages (NIP-59 gift wrap)");
+            await _nostrService.SubscribeToWelcomesAsync(CurrentUser.PublicKeyHex, CurrentUser.PrivateKeyHex);
         }
 
         // Check if our KeyPackage is published on relays
