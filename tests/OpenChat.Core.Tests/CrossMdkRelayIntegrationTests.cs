@@ -282,29 +282,6 @@ public class CrossMdkRelayIntegrationTests : IAsyncLifetime
         Assert.True(ciphertextA.Length > 0);
         _output.WriteLine($"User A encrypted: {ciphertextA.Length} bytes");
 
-        // Diagnostic: peek at ciphertext format
-        _output.WriteLine($"Ciphertext first byte: 0x{ciphertextA[0]:X2} (JSON='{{':0x7B)");
-        if (ciphertextA[0] == (byte)'{' || ciphertextA[0] == (byte)'[')
-        {
-            var json = System.Text.Encoding.UTF8.GetString(ciphertextA);
-            _output.WriteLine($"Ciphertext is JSON ({json.Length} chars): {json[..Math.Min(200, json.Length)]}...");
-            using var doc = System.Text.Json.JsonDocument.Parse(json);
-            var content = doc.RootElement.GetProperty("content").GetString()!;
-            var decoded = Convert.FromBase64String(content);
-            _output.WriteLine($"Base64 content decoded: {decoded.Length} bytes, first 4: {Convert.ToHexString(decoded[..Math.Min(4, decoded.Length)])}");
-        }
-
-        // Diagnostic: manually do MIP-03 decryption to see the raw MLS bytes
-        {
-            var json = System.Text.Encoding.UTF8.GetString(ciphertextA);
-            using var doc = System.Text.Json.JsonDocument.Parse(json);
-            var content = doc.RootElement.GetProperty("content").GetString()!;
-            var payloadBytes = Convert.FromBase64String(content);
-            var exporterSecret = _managedMlsServiceB.GetExporterSecretForDiag(chatB.MlsGroupId!);
-            var rawMlsBytes = MarmotCs.Core.Mip03Crypto.Decrypt(exporterSecret, payloadBytes);
-            _output.WriteLine($"MIP-03 decrypted: {rawMlsBytes.Length} bytes, first 32: {Convert.ToHexString(rawMlsBytes[..Math.Min(32, rawMlsBytes.Length)])}");
-        }
-
         var decryptedByB = await _managedMlsServiceB.DecryptMessageAsync(chatB.MlsGroupId!, ciphertextA);
         Assert.Equal("Hello from Rust!", decryptedByB.Plaintext);
         _output.WriteLine($"User B decrypted: \"{decryptedByB.Plaintext}\"");
@@ -319,7 +296,7 @@ public class CrossMdkRelayIntegrationTests : IAsyncLifetime
         Assert.Equal("Hello from Managed!", decryptedByA.Plaintext);
         _output.WriteLine($"User A decrypted: \"{decryptedByA.Plaintext}\"");
 
-        _output.WriteLine("CROSS-MDK TEST PASSED: Rust → Relay → Managed Welcome + bidirectional message exchange");
+        _output.WriteLine("CROSS-MDK TEST PASSED: Rust ↔ Managed bidirectional message exchange");
     }
 
     // ═══════════════════════════════════════════════════════════════════

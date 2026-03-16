@@ -1,6 +1,8 @@
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using NBitcoin.Secp256k1;
 using OpenChat.Core.Logging;
 using OpenChat.Core.Models;
 using MarmotCs.Core;
@@ -26,6 +28,7 @@ public class ManagedMlsService : IMlsService
 
     private Mdk<MemoryStorageProvider>? _mdk;
     private string? _publicKeyHex;
+    private string? _privateKeyHex;
     private byte[]? _identity;
     private byte[]? _signingPrivateKey;
     private byte[]? _signingPublicKey;
@@ -68,6 +71,7 @@ public class ManagedMlsService : IMlsService
 
         _logger.LogInformation("Initializing managed MLS service");
         _publicKeyHex = publicKeyHex;
+        _privateKeyHex = privateKeyHex;
         _identity = Convert.FromHexString(publicKeyHex);
 
         // Try to restore signing keys from persisted service state first
@@ -317,13 +321,41 @@ public class ManagedMlsService : IMlsService
         _logger.LogDebug("EncryptMessage: group={GroupId}, plaintext length={Len} (managed)",
             groupIdHex[..Math.Min(16, groupIdHex.Length)], plaintext.Length);
 
-        var result = await _mdk!.CreateMessageAsync(groupId, Encoding.UTF8.GetBytes(plaintext));
+        // Match the Rust MDK flow:
+        // 1. Wrap plaintext in a Nostr rumor event (kind 9)
+        // 2. MLS-encrypt the rumor → raw TLS bytes
+        // 3. MIP-03 encrypt with exporter_secret (ChaCha20-Poly1305)
+        // 4. Build a signed Nostr event (kind 445) with base64 content and h-tag
 
-        _logger.LogDebug("EncryptMessage: produced {Len} bytes ciphertext (managed)", result.Length);
+        // Step 1: Create rumor event JSON (same as Rust: kind 9, pubkey, content)
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var rumorId = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        var escapedContent = JsonSerializer.Serialize(plaintext);
+        var rumorJson = $"{{\"id\":\"{rumorId}\",\"pubkey\":\"{_publicKeyHex}\",\"created_at\":{now},\"kind\":9,\"tags\":[],\"content\":{escapedContent}}}";
+
+        // Step 2: MLS-encrypt the rumor
+        var mlsBytes = await _mdk!.CreateMessageAsync(groupId, Encoding.UTF8.GetBytes(rumorJson));
+
+        // Step 3: MIP-03 ChaCha20-Poly1305 encryption
+        var exporterSecret = _mdk!.GetExporterSecret(groupId);
+        var mip03Encrypted = Mip03Crypto.Encrypt(exporterSecret, mlsBytes);
+        var base64Content = Convert.ToBase64String(mip03Encrypted);
+
+        // Step 4: Build signed kind 445 Nostr event
+        // Use the Nostr group ID from the 0xF2EE extension (32 bytes, 64 hex chars)
+        // for the h-tag, matching the Rust MDK. Fall back to MLS group ID if extension absent.
+        var nostrGroupId = _mdk!.GetNostrGroupId(groupId);
+        var hTagValue = nostrGroupId != null
+            ? Convert.ToHexString(nostrGroupId).ToLowerInvariant()
+            : groupIdHex;
+        var tags = new List<List<string>> { new() { "h", hTagValue }, new() { "encoding", "base64" } };
+        var eventJson = BuildSignedNostrEvent(445, base64Content, tags);
+
+        _logger.LogDebug("EncryptMessage: produced {Len} bytes event JSON (managed)", eventJson.Length);
 
         await SaveGroupStateAsync(groupId);
 
-        return result;
+        return eventJson;
     }
 
     public async Task<MlsDecryptedMessage> DecryptMessageAsync(byte[] groupId, byte[] ciphertext)
@@ -367,6 +399,30 @@ public class ManagedMlsService : IMlsService
             var senderHex = Convert.ToHexString(appMsg.Message.SenderIdentity);
             var plaintext = Encoding.UTF8.GetString(appMsg.Message.Content);
 
+            // The Rust MDK wraps messages as Nostr rumor events (JSON with "content" field).
+            // Extract the actual message text from the rumor event if present.
+            if (plaintext.Length > 0 && plaintext[0] == '{')
+            {
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(plaintext);
+                    if (doc.RootElement.TryGetProperty("content", out var contentProp))
+                    {
+                        var extracted = contentProp.GetString();
+                        if (extracted != null)
+                        {
+                            _logger.LogDebug("DecryptMessage: extracted content from rumor event ({RumorLen} bytes → {ContentLen} chars)",
+                                plaintext.Length, extracted.Length);
+                            plaintext = extracted;
+                        }
+                    }
+                }
+                catch (System.Text.Json.JsonException ex)
+                {
+                    _logger.LogDebug(ex, "DecryptMessage: plaintext starts with '{{' but is not valid JSON, using raw value");
+                }
+            }
+
             _logger.LogDebug("DecryptMessage: sender={Sender}, epoch={Epoch}, plaintext length={Len} (managed)",
                 senderHex[..Math.Min(16, senderHex.Length)], appMsg.Message.Epoch, plaintext.Length);
 
@@ -407,13 +463,6 @@ public class ManagedMlsService : IMlsService
         {
             throw new InvalidOperationException($"Failed to process commit: {unprocessable.Reason}");
         }
-    }
-
-    /// <summary>Test-only: exposes the exporter secret for diagnostic purposes.</summary>
-    internal byte[] GetExporterSecretForDiag(byte[] groupId)
-    {
-        EnsureInitialized();
-        return _mdk!.GetExporterSecret(groupId);
     }
 
     public async Task<byte[]> UpdateKeysAsync(byte[] groupId)
@@ -794,6 +843,82 @@ public class ManagedMlsService : IMlsService
         result[2] = 0x00; result[3] = 0x03; // WireFormat = mls_welcome (3)
         Buffer.BlockCopy(rawWelcome, 0, result, 4, rawWelcome.Length);
         return result;
+    }
+
+    /// <summary>
+    /// Builds a signed Nostr event JSON (as UTF-8 bytes) matching the Rust MDK output format.
+    /// NIP-01 event serialization, SHA-256 event ID, BIP-340 Schnorr signature.
+    /// </summary>
+    private byte[] BuildSignedNostrEvent(int kind, string content, List<List<string>> tags)
+    {
+        var privateKeyBytes = Convert.FromHexString(_privateKeyHex!);
+        var createdAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        // NIP-01: event ID = SHA256([0,pubkey,created_at,kind,tags,content])
+        string serializedForId;
+        using (var stream = new MemoryStream())
+        {
+            using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions
+            {
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            }))
+            {
+                writer.WriteStartArray();
+                writer.WriteNumberValue(0);
+                writer.WriteStringValue(_publicKeyHex);
+                writer.WriteNumberValue(createdAt);
+                writer.WriteNumberValue(kind);
+                writer.WriteStartArray();
+                foreach (var tag in tags)
+                {
+                    writer.WriteStartArray();
+                    foreach (var v in tag) writer.WriteStringValue(v);
+                    writer.WriteEndArray();
+                }
+                writer.WriteEndArray();
+                writer.WriteStringValue(content);
+                writer.WriteEndArray();
+            }
+            serializedForId = Encoding.UTF8.GetString(stream.ToArray());
+        }
+
+        var eventIdBytes = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(serializedForId));
+        var eventId = Convert.ToHexString(eventIdBytes).ToLowerInvariant();
+
+        // BIP-340 Schnorr signature
+        if (!Context.Instance.TryCreateECPrivKey(privateKeyBytes, out var ecPrivKey) || ecPrivKey is null)
+            throw new InvalidOperationException("Invalid Nostr private key for signing");
+        var sig = ecPrivKey.SignBIP340(eventIdBytes);
+        var sigBytes = new byte[64];
+        sig.WriteToSpan(sigBytes);
+        var sigHex = Convert.ToHexString(sigBytes).ToLowerInvariant();
+
+        // Build the event JSON object (NOT wrapped in ["EVENT",...] relay message)
+        using var eventStream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(eventStream, new JsonWriterOptions
+        {
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        }))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("id", eventId);
+            writer.WriteString("pubkey", _publicKeyHex);
+            writer.WriteNumber("created_at", createdAt);
+            writer.WriteNumber("kind", kind);
+            writer.WritePropertyName("tags");
+            writer.WriteStartArray();
+            foreach (var tag in tags)
+            {
+                writer.WriteStartArray();
+                foreach (var v in tag) writer.WriteStringValue(v);
+                writer.WriteEndArray();
+            }
+            writer.WriteEndArray();
+            writer.WriteString("content", content);
+            writer.WriteString("sig", sigHex);
+            writer.WriteEndObject();
+        }
+        return eventStream.ToArray();
     }
 
     private void EnsureInitialized()

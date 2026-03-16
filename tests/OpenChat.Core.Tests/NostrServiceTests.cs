@@ -1,3 +1,4 @@
+using System.Net.WebSockets;
 using OpenChat.Core.Services;
 using Xunit;
 
@@ -5,11 +6,28 @@ namespace OpenChat.Core.Tests;
 
 public class NostrServiceTests
 {
+    private const string LocalRelayUrl = "ws://localhost:7777";
     private readonly NostrService _nostrService;
 
     public NostrServiceTests()
     {
         _nostrService = new NostrService();
+    }
+
+    private static bool IsLocalRelayAvailable()
+    {
+        try
+        {
+            using var ws = new ClientWebSocket();
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            ws.ConnectAsync(new Uri(LocalRelayUrl), cts.Token).GetAwaiter().GetResult();
+            ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None).GetAwaiter().GetResult();
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     [Fact]
@@ -88,27 +106,31 @@ public class NostrServiceTests
         Assert.Equal(npub, importedNpub);
     }
 
-    [Fact(Skip = "Requires local relay on ws://localhost:7777")]
+    [SkippableFact]
     public async Task ConnectAsync_ShouldUpdateConnectionStatus()
     {
+        Skip.IfNot(IsLocalRelayAvailable(), "Requires local relay on ws://localhost:7777");
+
         // Arrange
         var statusUpdates = new List<NostrConnectionStatus>();
         using var subscription = _nostrService.ConnectionStatus.Subscribe(status => statusUpdates.Add(status));
 
         // Act
-        await _nostrService.ConnectAsync("wss://relay.test");
+        await _nostrService.ConnectAsync(LocalRelayUrl);
 
         // Assert
         Assert.Single(statusUpdates);
-        Assert.Equal("wss://relay.test", statusUpdates[0].RelayUrl);
+        Assert.Equal(LocalRelayUrl, statusUpdates[0].RelayUrl);
         Assert.True(statusUpdates[0].IsConnected);
     }
 
-    [Fact(Skip = "Requires local relay on ws://localhost:7777")]
+    [SkippableFact]
     public async Task DisconnectAsync_ShouldUpdateConnectionStatus()
     {
+        Skip.IfNot(IsLocalRelayAvailable(), "Requires local relay on ws://localhost:7777");
+
         // Arrange
-        await _nostrService.ConnectAsync("wss://relay.test");
+        await _nostrService.ConnectAsync(LocalRelayUrl);
 
         var statusUpdates = new List<NostrConnectionStatus>();
         using var subscription = _nostrService.ConnectionStatus.Subscribe(status => statusUpdates.Add(status));
