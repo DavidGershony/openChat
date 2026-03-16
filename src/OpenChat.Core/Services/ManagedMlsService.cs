@@ -127,11 +127,13 @@ public class ManagedMlsService : IMlsService
         EnsureInitialized();
 
         // Call MlsGroup.CreateKeyPackage directly to capture initPriv/hpkePriv.
-        // Advertise support for NostrGroupData extension (0xF2EE) so Rust MLS groups accept this KeyPackage.
+        // Advertise support for required extensions:
+        //   0x000A = LastResort (RFC 9420 Section 17.3) — required by Rust MDK
+        //   0xF2EE = NostrGroupData (marmot extension for group metadata)
         var mlsKp = MlsGroup.CreateKeyPackage(
             _cipherSuite, _identity!, _signingPrivateKey!, _signingPublicKey!,
             out var initPrivateKey, out var hpkePrivateKey,
-            supportedExtensionTypes: new ushort[] { 0xF2EE });
+            supportedExtensionTypes: new ushort[] { 0x000A, 0xF2EE });
 
         // Store for later ProcessWelcomeAsync (add to list, don't overwrite)
         byte[] kpBytes = TlsCodec.Serialize(writer => mlsKp.WriteTo(writer));
@@ -145,7 +147,7 @@ public class ManagedMlsService : IMlsService
         // Build Nostr event tags using the protocol builder
         var (content, tags) = KeyPackageEventBuilder.BuildKeyPackageEvent(
             kpBytes, _publicKeyHex!, Array.Empty<string>(),
-            supportedExtensionTypes: new ushort[] { 0xF2EE });
+            supportedExtensionTypes: new ushort[] { 0x000A, 0xF2EE });
 
         // Convert string[][] tags to List<List<string>> for OpenChat's KeyPackage model
         var nostrTags = tags.Select(t => t.ToList()).ToList();

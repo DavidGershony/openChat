@@ -1904,7 +1904,7 @@ public class NostrService : INostrService, IDisposable
     /// Uses Utf8JsonWriter for deterministic output instead of JsonSerializer.Serialize(object[])
     /// which incorrectly serializes boxed List&lt;List&lt;string&gt;&gt; values.
     /// </summary>
-    private static string SerializeForEventId(string pubkey, long createdAt, int kind, List<List<string>> tags, string content)
+    internal static string SerializeForEventId(string pubkey, long createdAt, int kind, List<List<string>> tags, string content)
     {
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }))
@@ -1966,7 +1966,7 @@ public class NostrService : INostrService, IDisposable
         return Encoding.UTF8.GetString(stream.ToArray());
     }
 
-    private static byte[] SignSchnorr(byte[] message, byte[] privateKey)
+    internal static byte[] SignSchnorr(byte[] message, byte[] privateKey)
     {
         if (!Context.Instance.TryCreateECPrivKey(privateKey, out var ecPrivKey) || ecPrivKey is null)
         {
@@ -1980,7 +1980,7 @@ public class NostrService : INostrService, IDisposable
         return sigBytes;
     }
 
-    private static byte[] DerivePublicKey(byte[] privateKey)
+    internal static byte[] DerivePublicKey(byte[] privateKey)
     {
         // Use secp256k1 to derive the public key (x-only for Nostr)
         if (!Context.Instance.TryCreateECPrivKey(privateKey, out var ecPrivKey) || ecPrivKey is null)
