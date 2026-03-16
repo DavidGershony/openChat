@@ -79,12 +79,9 @@ jobs:
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       - name: Decode keystore
-        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > src/OpenChat.Android/openchat-release.keystore
-
-      - name: Verify keystore
         run: |
-          ls -la src/OpenChat.Android/openchat-release.keystore
-          keytool -list -keystore src/OpenChat.Android/openchat-release.keystore -storepass "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" -v 2>&1 | head -20
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > ${{ github.workspace }}/openchat-release.keystore
+          keytool -list -keystore ${{ github.workspace }}/openchat-release.keystore -storepass "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" 2>&1 | head -5
 
       - name: Build Android APK
         env:
@@ -95,7 +92,7 @@ jobs:
           --configuration Release
           --framework net9.0-android
           -p:ApplicationDisplayVersion=${{ steps.version.outputs.VERSION }}
-          -p:AndroidSigningKeyStore=openchat-release.keystore
+          -p:AndroidSigningKeyStore=${{ github.workspace }}/openchat-release.keystore
           -p:AndroidSigningKeyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
           -p:AndroidSigningKeyPass=env:SIGNING_KEY_PASS
           -p:AndroidSigningStorePass=env:SIGNING_STORE_PASS
