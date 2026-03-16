@@ -116,11 +116,21 @@ public class MainActivity : AppCompatActivity, IActivatableView
         base.OnResume();
 
         // Reconnect external signer WebSocket after returning from background
-        // (e.g. user switched to Amber to scan QR, then came back)
+        // (e.g. user switched to Amber to approve, then came back)
         var signer = _viewModel?.LoginViewModel?.ExternalSigner;
         if (signer != null && !signer.IsConnected)
         {
-            _ = signer.ReconnectAsync();
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await signer.ReconnectAsync();
+                }
+                catch (Exception ex)
+                {
+                    global::Android.Util.Log.Error("OpenChat", $"Signer reconnect failed: {ex.Message}");
+                }
+            });
         }
     }
 

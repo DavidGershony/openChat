@@ -31,6 +31,7 @@ public class ExternalSignerService : IExternalSigner, IDisposable
     private string? _localPrivateKeyHex;
     private string? _localPublicKeyHex;
     private readonly Dictionary<string, TaskCompletionSource<string>> _pendingRequests = new();
+    private long _subscriptionSince;
     private bool _disposed;
 
     public ExternalSignerService()
@@ -82,6 +83,7 @@ public class ExternalSignerService : IExternalSigner, IDisposable
 
             // Connect to relay
             _logger.LogInformation("Connecting to relay: {RelayUrl}", _relayUrl);
+            _subscriptionSince = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 5;
             _cts = new CancellationTokenSource();
             _webSocket = new ClientWebSocket();
             await _webSocket.ConnectAsync(new Uri(_relayUrl!), _cts.Token);
@@ -213,6 +215,7 @@ public class ExternalSignerService : IExternalSigner, IDisposable
 
         _status.OnNext(new ExternalSignerStatus { State = ExternalSignerState.Connecting });
 
+        _subscriptionSince = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 5;
         _cts = new CancellationTokenSource();
         _webSocket = new ClientWebSocket();
         await _webSocket.ConnectAsync(new Uri(relayUrl), _cts.Token);
@@ -250,7 +253,7 @@ public class ExternalSignerService : IExternalSigner, IDisposable
             }
             _cts?.Dispose();
 
-            // Re-establish connection
+            // Re-establish connection (keep the original _subscriptionSince so we don't miss events)
             _cts = new CancellationTokenSource();
             _webSocket = new ClientWebSocket();
             await _webSocket.ConnectAsync(new Uri(_relayUrl), _cts.Token);
@@ -261,7 +264,7 @@ public class ExternalSignerService : IExternalSigner, IDisposable
             await SubscribeToSignerAsync();
 
             _status.OnNext(new ExternalSignerStatus { State = ExternalSignerState.WaitingForApproval });
-            _logger.LogInformation("Re-subscribed to kind 24133 events after reconnect");
+            _logger.LogInformation("Re-subscribed to kind 24133 events after reconnect (since={Since})", _subscriptionSince);
         }
         catch (Exception ex)
         {
@@ -339,12 +342,13 @@ public class ExternalSignerService : IExternalSigner, IDisposable
         if (_webSocket == null || _localPublicKeyHex == null) return;
 
         // Subscribe to kind 24133 events (NIP-46 responses) tagged to our local pubkey
+        // Use the original subscription time so reconnects don't miss events sent while backgrounded
         var subscriptionId = Guid.NewGuid().ToString("N")[..8];
         var filter = new Dictionary<string, object>
         {
             ["kinds"] = new[] { 24133 },
             ["#p"] = new[] { _localPublicKeyHex },
-            ["since"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 10
+            ["since"] = _subscriptionSince
         };
 
         var req = JsonSerializer.Serialize(new object[] { "REQ", subscriptionId, filter });
