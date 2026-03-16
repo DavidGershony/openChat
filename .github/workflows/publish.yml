@@ -81,6 +81,11 @@ jobs:
       - name: Decode keystore
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > src/OpenChat.Android/openchat-release.keystore
 
+      - name: Verify keystore
+        run: |
+          ls -la src/OpenChat.Android/openchat-release.keystore
+          keytool -list -keystore src/OpenChat.Android/openchat-release.keystore -storepass "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" -v 2>&1 | head -20
+
       - name: Build Android APK
         env:
           SIGNING_KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
