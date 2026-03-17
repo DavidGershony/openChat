@@ -89,13 +89,12 @@
                                         </Border>
                                     </Panel>
                                     <!-- Name or loading indicator -->
-                                    <StackPanel VerticalAlignment="Center">
+                                    <StackPanel VerticalAlignment="Center" MaxWidth="120">
                                         <TextBlock Text="{Binding HeaderDisplayName}" FontSize="18" FontWeight="Bold"
-                                                   TextTrimming="CharacterEllipsis" MaxWidth="160"
+                                                   TextTrimming="CharacterEllipsis"
                                                    IsVisible="{Binding !IsHeaderLoading}" />
-                                        <ProgressBar IsIndeterminate="True" Width="40" Height="3"
-                                                     Foreground="{StaticResource NostrPurpleBrush}"
-                                                     IsVisible="{Binding IsHeaderLoading}" />
+                                        <TextBlock Text="Loading..." FontSize="13" Classes="muted"
+                                                   IsVisible="{Binding IsHeaderLoading}" />
                                     </StackPanel>
                                 </StackPanel>
 
