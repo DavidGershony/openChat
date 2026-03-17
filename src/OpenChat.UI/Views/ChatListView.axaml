@@ -25,39 +25,9 @@
         </Border>
 
         <!-- Pending Invites Section -->
-        <Border Grid.Row="1" Padding="12,0,12,8">
+        <Border Grid.Row="1" Padding="12,0,12,8"
+                IsVisible="{Binding PendingInvites.Count}">
             <StackPanel Spacing="8">
-                <!-- Section Header with Rescan Button -->
-                <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,4">
-                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
-                        <PathIcon Data="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"
-                                  Width="16" Height="16" Foreground="{StaticResource NostrPurpleBrush}" />
-                        <TextBlock Text="Invites" FontWeight="SemiBold" FontSize="13"
-                                   Foreground="{StaticResource NostrPurpleBrush}" VerticalAlignment="Center" />
-                        <Border Background="{StaticResource NostrPurpleBrush}" CornerRadius="8"
-                                MinWidth="20" Height="18" Padding="5,0"
-                                IsVisible="{Binding PendingInvites.Count}">
-                            <TextBlock Text="{Binding PendingInviteCount}" FontSize="11" FontWeight="SemiBold"
-                                       Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        </Border>
-                    </StackPanel>
-                    <Button Grid.Column="1" Classes="secondary" Padding="8,4"
-                            Command="{Binding RescanInvitesCommand}"
-                            IsEnabled="{Binding !IsRescanningInvites}"
-                            ToolTip.Tip="Re-scan relays for pending invites">
-                        <StackPanel Orientation="Horizontal" Spacing="4">
-                            <PathIcon Data="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"
-                                      Width="14" Height="14"
-                                      IsVisible="{Binding !IsRescanningInvites}" />
-                            <TextBlock Text="Scanning..."
-                                       FontSize="11" VerticalAlignment="Center"
-                                       IsVisible="{Binding IsRescanningInvites}" />
-                            <TextBlock Text="Scan"
-                                       FontSize="11" VerticalAlignment="Center"
-                                       IsVisible="{Binding !IsRescanningInvites}" />
-                        </StackPanel>
-                    </Button>
-                </Grid>
 
                 <!-- Invite Items -->
                 <ItemsControl ItemsSource="{Binding PendingInvites}">

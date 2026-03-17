@@ -82,6 +82,9 @@ public class MainViewModel : ViewModelBase
         ShowChatsCommand = ReactiveCommand.Create(() =>
         {
             CurrentView = null; // Main chat view
+
+            // Sync relay statuses with any changes made in settings
+            RefreshRelayStatusesFromSettings();
         });
 
         LogoutCommand = ReactiveCommand.CreateFromTask(LogoutAsync);
@@ -491,6 +494,36 @@ public class MainViewModel : ViewModelBase
         {
             _logger.LogError(ex, "InitializeAfterLoginAsync failed");
         }
+    }
+
+    private void RefreshRelayStatusesFromSettings()
+    {
+        var settingsRelays = SettingsViewModel.Relays;
+
+        // Remove relay statuses that no longer exist in settings
+        var toRemove = RelayStatuses.Where(rs => !settingsRelays.Any(sr => sr.Url == rs.Url)).ToList();
+        foreach (var item in toRemove)
+        {
+            RelayStatuses.Remove(item);
+            _logger.LogInformation("Removed relay status for {Url} (removed in settings)", item.Url);
+        }
+
+        // Add relay statuses for new relays added in settings
+        foreach (var sr in settingsRelays)
+        {
+            if (!RelayStatuses.Any(rs => rs.Url == sr.Url))
+            {
+                RelayStatuses.Add(new RelayStatusViewModel
+                {
+                    Url = sr.Url,
+                    IsConnected = sr.IsConnected,
+                    Error = sr.Error
+                });
+                _logger.LogInformation("Added relay status for {Url} (added in settings)", sr.Url);
+            }
+        }
+
+        IsConnected = RelayStatuses.Any(r => r.IsConnected);
     }
 
     private async Task LogoutAsync()
