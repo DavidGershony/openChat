@@ -1027,12 +1027,14 @@ public class NostrService : INostrService, IDisposable
     }
 
     /// <summary>
-    /// Randomizes timestamp by +/- up to 2 days for NIP-59 unlinkability.
+    /// Randomizes timestamp for NIP-59 unlinkability.
+    /// Only offsets into the past (0 to -2 days) to avoid relay rejection
+    /// for future timestamps ("created_at too late").
     /// </summary>
     private static long RandomizeTimestamp(long baseTimestamp)
     {
         var twoDaysInSeconds = 2 * 24 * 60 * 60;
-        var offset = RandomNumberGenerator.GetInt32(-twoDaysInSeconds, twoDaysInSeconds);
+        var offset = RandomNumberGenerator.GetInt32(-twoDaysInSeconds, 0);
         return baseTimestamp + offset;
     }
 
