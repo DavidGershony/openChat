@@ -177,8 +177,8 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
         // ── Phase 7: Send Message A → Group ──
         byte[]? capturedEncryptedDataA = null;
         _mockNostrA
-            .Setup(n => n.PublishGroupMessageAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<string>()))
-            .Callback<byte[], string, string>((data, _, _) => capturedEncryptedDataA = data)
+            .Setup(n => n.PublishRawEventJsonAsync(It.IsAny<byte[]>()))
+            .Callback<byte[]>(data => capturedEncryptedDataA = data)
             .ReturnsAsync("fake445msgA");
 
         var messageA = await _messageServiceA.SendMessageAsync(chatA.Id, "Hello from A!");
@@ -218,8 +218,8 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
         // ── Phase 9: Send Message B → Group ──
         byte[]? capturedEncryptedDataB = null;
         _mockNostrB
-            .Setup(n => n.PublishGroupMessageAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<string>()))
-            .Callback<byte[], string, string>((data, _, _) => capturedEncryptedDataB = data)
+            .Setup(n => n.PublishRawEventJsonAsync(It.IsAny<byte[]>()))
+            .Callback<byte[]>(data => capturedEncryptedDataB = data)
             .ReturnsAsync("fake445msgB");
 
         var messageB = await _messageServiceB.SendMessageAsync(chatB.Id, "Hello from B!");
@@ -467,8 +467,8 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
         // ── Phase 7: User A sends message, User B decrypts ──
         byte[]? capturedCiphertext1 = null;
         _mockNostrA
-            .Setup(n => n.PublishGroupMessageAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<string>()))
-            .Callback<byte[], string, string>((data, _, _) => capturedCiphertext1 = data)
+            .Setup(n => n.PublishRawEventJsonAsync(It.IsAny<byte[]>()))
+            .Callback<byte[]>(data => capturedCiphertext1 = data)
             .ReturnsAsync("fakemsg1");
 
         var msg1 = await _messageServiceA.SendMessageAsync(chatA.Id, "Before restart");
@@ -532,6 +532,8 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
             .Returns<byte[]>(gid => _mlsServiceA.ExportGroupStateAsync(gid));
         wrappedMlsA.Setup(m => m.GetGroupInfoAsync(It.IsAny<byte[]>()))
             .Returns<byte[]>(gid => _mlsServiceA.GetGroupInfoAsync(gid));
+        wrappedMlsA.Setup(m => m.GetNostrGroupId(It.IsAny<byte[]>()))
+            .Returns<byte[]>(gid => _mlsServiceA.GetNostrGroupId(gid));
 
         var wrappedMlsB = new Mock<IMlsService>();
         wrappedMlsB.Setup(m => m.InitializeAsync(It.IsAny<string>(), It.IsAny<string>())).Returns(Task.CompletedTask);
@@ -543,6 +545,8 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
             .Returns<byte[]>(gid => _mlsServiceB.ExportGroupStateAsync(gid));
         wrappedMlsB.Setup(m => m.GetGroupInfoAsync(It.IsAny<byte[]>()))
             .Returns<byte[]>(gid => _mlsServiceB.GetGroupInfoAsync(gid));
+        wrappedMlsB.Setup(m => m.GetNostrGroupId(It.IsAny<byte[]>()))
+            .Returns<byte[]>(gid => _mlsServiceB.GetNostrGroupId(gid));
 
         // New MessageServices using same databases + MLS engines (via wrapper)
         var messageServiceA2 = new MessageService(_storageA, mockNostrA2.Object, wrappedMlsA.Object);
@@ -567,8 +571,8 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
             // ── Phase 10: User A sends another message AFTER restart ──
             byte[]? capturedCiphertext2 = null;
             mockNostrA2
-                .Setup(n => n.PublishGroupMessageAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<string>()))
-                .Callback<byte[], string, string>((data, _, _) => capturedCiphertext2 = data)
+                .Setup(n => n.PublishRawEventJsonAsync(It.IsAny<byte[]>()))
+                .Callback<byte[]>(data => capturedCiphertext2 = data)
                 .ReturnsAsync("fakemsg2");
 
             var msg2 = await messageServiceA2.SendMessageAsync(restoredChatA.Id, "After restart!");
@@ -583,8 +587,8 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
             // ── Phase 12: User B sends a reply after restart ──
             byte[]? capturedCiphertext3 = null;
             mockNostrB2
-                .Setup(n => n.PublishGroupMessageAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<string>()))
-                .Callback<byte[], string, string>((data, _, _) => capturedCiphertext3 = data)
+                .Setup(n => n.PublishRawEventJsonAsync(It.IsAny<byte[]>()))
+                .Callback<byte[]>(data => capturedCiphertext3 = data)
                 .ReturnsAsync("fakemsg3");
 
             var msg3 = await messageServiceB2.SendMessageAsync(restoredChatB.Id, "B replies after restart!");
@@ -599,8 +603,8 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
             // User A encrypts, we simulate relay delivery to B's MessageService
             byte[]? capturedCiphertext4 = null;
             mockNostrA2
-                .Setup(n => n.PublishGroupMessageAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<string>()))
-                .Callback<byte[], string, string>((data, _, _) => capturedCiphertext4 = data)
+                .Setup(n => n.PublishRawEventJsonAsync(It.IsAny<byte[]>()))
+                .Callback<byte[]>(data => capturedCiphertext4 = data)
                 .ReturnsAsync("fakemsg4");
 
             var msg4 = await messageServiceA2.SendMessageAsync(restoredChatA.Id, "Full round-trip after restart");
@@ -675,6 +679,8 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
             .ReturnsAsync(() => "fakewelcome_" + Guid.NewGuid().ToString("N"));
         mockNostr.Setup(n => n.PublishGroupMessageAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync(() => "fakemsg_" + Guid.NewGuid().ToString("N"));
+        mockNostr.Setup(n => n.PublishRawEventJsonAsync(It.IsAny<byte[]>()))
+            .ReturnsAsync(() => "fakemsg_" + Guid.NewGuid().ToString("N"));
         mockNostr.Setup(n => n.PublishCommitAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync(() => "fakecommit_" + Guid.NewGuid().ToString("N"));
 
@@ -723,6 +729,8 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
         mockNostr.Setup(n => n.PublishWelcomeAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()))
             .ReturnsAsync(() => "fakewelcome_" + Guid.NewGuid().ToString("N"));
         mockNostr.Setup(n => n.PublishGroupMessageAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(() => "fakemsg_" + Guid.NewGuid().ToString("N"));
+        mockNostr.Setup(n => n.PublishRawEventJsonAsync(It.IsAny<byte[]>()))
             .ReturnsAsync(() => "fakemsg_" + Guid.NewGuid().ToString("N"));
         mockNostr.Setup(n => n.PublishCommitAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync(() => "fakecommit_" + Guid.NewGuid().ToString("N"));

@@ -46,11 +46,9 @@ public class HeadlessMlsMessagingTests : HeadlessTestBase
         Assert.Equal("Hello encrypted world!", message.Content);
         Assert.NotNull(message.NostrEventId);
 
-        // Verify PublishGroupMessageAsync was called with encrypted bytes
-        ctx.MockNostr.Verify(n => n.PublishGroupMessageAsync(
-            It.Is<byte[]>(data => data.Length > 0),
-            It.IsAny<string>(),
-            It.IsAny<string>()), Moq.Times.Once);
+        // Verify PublishRawEventJsonAsync was called with encrypted event JSON bytes
+        ctx.MockNostr.Verify(n => n.PublishRawEventJsonAsync(
+            It.Is<byte[]>(data => data.Length > 0)), Moq.Times.Once);
     }
 
     [AvaloniaTheory]
