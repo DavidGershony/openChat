@@ -18,9 +18,15 @@ public class Chat
     public ChatType Type { get; set; } = ChatType.DirectMessage;
 
     /// <summary>
-    /// MLS group ID for encrypted group chats.
+    /// MLS group ID for encrypted group chats (used for MLS encrypt/decrypt operations).
     /// </summary>
     public byte[]? MlsGroupId { get; set; }
+
+    /// <summary>
+    /// Nostr group ID from the MLS 0xF2EE extension (used for kind 445 h-tag and relay subscriptions).
+    /// Distinct from MlsGroupId — this is what the Nostr protocol uses for message routing.
+    /// </summary>
+    public byte[]? NostrGroupId { get; set; }
 
     /// <summary>
     /// Current MLS epoch number for the group.

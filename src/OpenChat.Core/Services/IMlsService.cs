@@ -86,6 +86,13 @@ public interface IMlsService
     Task ImportServiceStateAsync(byte[] state);
 
     /// <summary>
+    /// Get the Nostr group ID (from 0xF2EE extension) for a given MLS group.
+    /// This is the value used in the 'h' tag for kind 445 events.
+    /// Returns null if the extension is not present.
+    /// </summary>
+    byte[]? GetNostrGroupId(byte[] groupId);
+
+    /// <summary>
     /// Get the number of KeyPackages for which we have private key material stored locally.
     /// </summary>
     int GetStoredKeyPackageCount();

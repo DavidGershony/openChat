@@ -130,11 +130,13 @@ public class MessageService : IMessageService, IDisposable
                 _logger.LogInformation("SendMessage: encrypting for group {GroupId}, content length={Len}",
                     groupIdHex[..Math.Min(16, groupIdHex.Length)], content.Length);
 
-                var encryptedData = await _mlsService.EncryptMessageAsync(chat.MlsGroupId, content);
-                _logger.LogDebug("SendMessage: encrypted to {Len} bytes, publishing kind 445", encryptedData.Length);
+                // EncryptMessageAsync returns a complete signed kind 445 Nostr event JSON
+                // with the correct h-tag (NostrGroupId from 0xF2EE extension).
+                // Publish it directly — do NOT wrap in another event.
+                var eventJsonBytes = await _mlsService.EncryptMessageAsync(chat.MlsGroupId, content);
+                _logger.LogDebug("SendMessage: encrypted to {Len} bytes, publishing kind 445", eventJsonBytes.Length);
 
-                message.NostrEventId = await _nostrService.PublishGroupMessageAsync(
-                    encryptedData, groupIdHex, _currentUser.PrivateKeyHex);
+                message.NostrEventId = await _nostrService.PublishRawEventJsonAsync(eventJsonBytes);
                 _logger.LogInformation("SendMessage: published kind 445 event {EventId}", message.NostrEventId);
             }
             else
@@ -525,17 +527,19 @@ public class MessageService : IMessageService, IDisposable
             groupIdHex[..Math.Min(16, groupIdHex.Length)],
             nostrEvent.PublicKey[..Math.Min(16, nostrEvent.PublicKey.Length)]);
 
-        // Find chat with this group ID
+        // Find chat with this group ID — check both NostrGroupId (h-tag routing) and MlsGroupId (legacy)
         var chats = await _storageService.GetAllChatsAsync();
         var chat = chats.FirstOrDefault(c =>
-            c.MlsGroupId != null &&
-            Convert.ToHexString(c.MlsGroupId).Equals(groupIdHex, StringComparison.OrdinalIgnoreCase));
+            (c.NostrGroupId != null && Convert.ToHexString(c.NostrGroupId).Equals(groupIdHex, StringComparison.OrdinalIgnoreCase)) ||
+            (c.MlsGroupId != null && Convert.ToHexString(c.MlsGroupId).Equals(groupIdHex, StringComparison.OrdinalIgnoreCase)));
 
         if (chat == null)
         {
             _logger.LogWarning("HandleGroupMessage: no chat found for group {GroupId}. Known groups: [{KnownGroups}]",
                 groupIdHex[..Math.Min(16, groupIdHex.Length)],
-                string.Join(", ", chats.Where(c => c.MlsGroupId != null).Select(c => Convert.ToHexString(c.MlsGroupId!).ToLowerInvariant()[..Math.Min(16, Convert.ToHexString(c.MlsGroupId!).Length)])));
+                string.Join(", ", chats.Where(c => c.MlsGroupId != null).Select(c =>
+                    (c.NostrGroupId != null ? "nostr:" + Convert.ToHexString(c.NostrGroupId).ToLowerInvariant()[..Math.Min(16, Convert.ToHexString(c.NostrGroupId).Length)] + "/" : "") +
+                    "mls:" + Convert.ToHexString(c.MlsGroupId!).ToLowerInvariant()[..Math.Min(16, Convert.ToHexString(c.MlsGroupId!).Length)])));
             return;
         }
 
@@ -641,12 +645,16 @@ public class MessageService : IMessageService, IDisposable
                 ? $"Chat with {invite.SenderDisplayName}"
                 : $"Group {invite.SenderPublicKey[..8]}";
 
+        // Get the NostrGroupId (from 0xF2EE extension) for relay subscriptions and h-tag routing
+        var nostrGroupId = _mlsService.GetNostrGroupId(groupInfo.GroupId);
+
         var chat = new Chat
         {
             Id = Guid.NewGuid().ToString(),
             Name = chatName,
             Type = ChatType.Group,
             MlsGroupId = groupInfo.GroupId,
+            NostrGroupId = nostrGroupId,
             MlsEpoch = groupInfo.Epoch,
             ParticipantPublicKeys = groupInfo.MemberPublicKeys,
             WelcomeNostrEventId = invite.NostrEventId,

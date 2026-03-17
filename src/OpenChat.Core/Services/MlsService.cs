@@ -279,6 +279,13 @@ public class MlsService : IMlsService
 
     public Task ImportServiceStateAsync(byte[] state) => Task.CompletedTask;
 
+    public byte[]? GetNostrGroupId(byte[] groupId)
+    {
+        // Rust MDK handles NostrGroupId internally — the encrypted event
+        // it produces already contains the correct h-tag.
+        return null;
+    }
+
     public int GetStoredKeyPackageCount()
     {
         // Rust MDK stores KeyPackages internally in MdkMemoryStorage.

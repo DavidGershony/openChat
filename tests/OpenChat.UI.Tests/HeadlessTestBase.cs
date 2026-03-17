@@ -105,6 +105,8 @@ public abstract class HeadlessTestBase : IDisposable
             .ReturnsAsync(() => "fakewelcome_" + Guid.NewGuid().ToString("N"));
         mockNostr.Setup(n => n.PublishGroupMessageAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync(() => "fakemsg_" + Guid.NewGuid().ToString("N"));
+        mockNostr.Setup(n => n.PublishRawEventJsonAsync(It.IsAny<byte[]>()))
+            .ReturnsAsync(() => "fakemsg_" + Guid.NewGuid().ToString("N"));
         mockNostr.Setup(n => n.PublishCommitAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync(() => "fakecommit_" + Guid.NewGuid().ToString("N"));
         mockNostr.Setup(n => n.GenerateKeyPair())

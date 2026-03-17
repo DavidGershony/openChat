@@ -97,6 +97,12 @@ public interface INostrService
     Task<string> PublishGroupMessageAsync(byte[] encryptedData, string groupId, string? privateKeyHex);
 
     /// <summary>
+    /// Publish a pre-built signed Nostr event JSON directly to all connected relays.
+    /// Returns the event ID extracted from the JSON.
+    /// </summary>
+    Task<string> PublishRawEventJsonAsync(byte[] eventJsonBytes);
+
+    /// <summary>
     /// Fetch KeyPackages for a user.
     /// </summary>
     Task<IEnumerable<KeyPackage>> FetchKeyPackagesAsync(string publicKeyHex);

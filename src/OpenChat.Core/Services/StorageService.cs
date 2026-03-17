@@ -193,6 +193,18 @@ public class StorageService : IStorageService
                 // Column already exists — ignore
             }
 
+            // Migration: add NostrGroupId column for MIP-03 h-tag routing
+            try
+            {
+                var migrate = connection.CreateCommand();
+                migrate.CommandText = "ALTER TABLE Chats ADD COLUMN NostrGroupId BLOB";
+                await migrate.ExecuteNonQueryAsync();
+            }
+            catch (SqliteException)
+            {
+                // Column already exists — ignore
+            }
+
             // Migration: add Status column to KeyPackages
             try
             {
@@ -369,14 +381,15 @@ public class StorageService : IStorageService
         var command = connection.CreateCommand();
         command.CommandText = @"
             INSERT OR REPLACE INTO Chats
-            (Id, Name, Type, MlsGroupId, MlsEpoch, AvatarUrl, Description, UnreadCount, CreatedAt, LastActivityAt, IsMuted, IsPinned, IsArchived, WelcomeNostrEventId)
+            (Id, Name, Type, MlsGroupId, NostrGroupId, MlsEpoch, AvatarUrl, Description, UnreadCount, CreatedAt, LastActivityAt, IsMuted, IsPinned, IsArchived, WelcomeNostrEventId)
             VALUES
-            (@Id, @Name, @Type, @MlsGroupId, @MlsEpoch, @AvatarUrl, @Description, @UnreadCount, @CreatedAt, @LastActivityAt, @IsMuted, @IsPinned, @IsArchived, @WelcomeNostrEventId)";
+            (@Id, @Name, @Type, @MlsGroupId, @NostrGroupId, @MlsEpoch, @AvatarUrl, @Description, @UnreadCount, @CreatedAt, @LastActivityAt, @IsMuted, @IsPinned, @IsArchived, @WelcomeNostrEventId)";
 
         command.Parameters.AddWithValue("@Id", chat.Id);
         command.Parameters.AddWithValue("@Name", chat.Name);
         command.Parameters.AddWithValue("@Type", (int)chat.Type);
         command.Parameters.AddWithValue("@MlsGroupId", chat.MlsGroupId ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@NostrGroupId", chat.NostrGroupId ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("@MlsEpoch", (long)chat.MlsEpoch);
         command.Parameters.AddWithValue("@AvatarUrl", chat.AvatarUrl ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("@Description", chat.Description ?? (object)DBNull.Value);
@@ -947,12 +960,23 @@ public class StorageService : IStorageService
     private static Chat ReadChat(SqliteDataReader reader)
     {
         var welcomeOrdinal = reader.GetOrdinal("WelcomeNostrEventId");
+
+        // NostrGroupId column may not exist in older databases before migration
+        byte[]? nostrGroupId = null;
+        try
+        {
+            var nostrGroupIdOrdinal = reader.GetOrdinal("NostrGroupId");
+            nostrGroupId = reader.IsDBNull(nostrGroupIdOrdinal) ? null : (byte[])reader["NostrGroupId"];
+        }
+        catch (ArgumentOutOfRangeException) { /* Column doesn't exist yet */ }
+
         return new Chat
         {
             Id = reader.GetString(reader.GetOrdinal("Id")),
             Name = reader.GetString(reader.GetOrdinal("Name")),
             Type = (ChatType)reader.GetInt32(reader.GetOrdinal("Type")),
             MlsGroupId = reader.IsDBNull(reader.GetOrdinal("MlsGroupId")) ? null : (byte[])reader["MlsGroupId"],
+            NostrGroupId = nostrGroupId,
             MlsEpoch = (ulong)reader.GetInt64(reader.GetOrdinal("MlsEpoch")),
             AvatarUrl = reader.IsDBNull(reader.GetOrdinal("AvatarUrl")) ? null : reader.GetString(reader.GetOrdinal("AvatarUrl")),
             Description = reader.IsDBNull(reader.GetOrdinal("Description")) ? null : reader.GetString(reader.GetOrdinal("Description")),

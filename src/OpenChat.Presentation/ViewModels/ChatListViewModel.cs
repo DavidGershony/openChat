@@ -497,6 +497,7 @@ public class ChatListViewModel : ViewModelBase
             // Create MLS group (only after we've confirmed a KeyPackage exists)
             _logger.LogDebug("Creating MLS group for chat...");
             var groupInfo = await _mlsService.CreateGroupAsync(chatName);
+            var nostrGroupId = _mlsService.GetNostrGroupId(groupInfo.GroupId);
             var groupIdHex = Convert.ToHexString(groupInfo.GroupId).ToLowerInvariant();
 
             var chat = new Chat
@@ -506,6 +507,7 @@ public class ChatListViewModel : ViewModelBase
                 Type = ChatType.Group,
                 ParticipantPublicKeys = new List<string>(groupInfo.MemberPublicKeys),
                 MlsGroupId = groupInfo.GroupId,
+                NostrGroupId = nostrGroupId,
                 MlsEpoch = groupInfo.Epoch,
                 CreatedAt = DateTime.UtcNow,
                 LastActivityAt = DateTime.UtcNow
@@ -604,6 +606,7 @@ public class ChatListViewModel : ViewModelBase
             {
                 _logger.LogDebug("Creating MLS group...");
                 var groupInfo = await _mlsService.CreateGroupAsync(NewGroupName.Trim());
+                var nostrGroupId = _mlsService.GetNostrGroupId(groupInfo.GroupId);
 
                 chat = new Chat
                 {
@@ -613,6 +616,7 @@ public class ChatListViewModel : ViewModelBase
                     Type = ChatType.Group,
                     ParticipantPublicKeys = new List<string>(groupInfo.MemberPublicKeys),
                     MlsGroupId = groupInfo.GroupId,
+                    NostrGroupId = nostrGroupId,
                     MlsEpoch = groupInfo.Epoch,
                     CreatedAt = DateTime.UtcNow,
                     LastActivityAt = DateTime.UtcNow
@@ -735,9 +739,12 @@ public class ChatListViewModel : ViewModelBase
                 chat.Id, chat.Name, chat.ParticipantPublicKeys.Count);
 
             // Subscribe to group messages for the new group
+            // Use NostrGroupId for relay subscriptions when available
             if (chat.MlsGroupId != null && chat.MlsGroupId.Length > 0 && _nostrService != null)
             {
-                var subGroupIdHex = Convert.ToHexString(chat.MlsGroupId).ToLowerInvariant();
+                var subGroupIdHex = chat.NostrGroupId != null && chat.NostrGroupId.Length > 0
+                    ? Convert.ToHexString(chat.NostrGroupId).ToLowerInvariant()
+                    : Convert.ToHexString(chat.MlsGroupId).ToLowerInvariant();
                 await _nostrService.SubscribeToGroupMessagesAsync(new[] { subGroupIdHex });
             }
 
@@ -1000,10 +1007,13 @@ public class ChatListViewModel : ViewModelBase
             var chat = await _messageService.AcceptInviteAsync(inviteVm.Id);
 
             // Subscribe to group messages for the newly accepted group
+            // Use NostrGroupId for relay subscriptions when available
             if (chat.MlsGroupId != null && chat.MlsGroupId.Length > 0 && _nostrService != null)
             {
-                var groupIdHex = Convert.ToHexString(chat.MlsGroupId).ToLowerInvariant();
-                await _nostrService.SubscribeToGroupMessagesAsync(new[] { groupIdHex });
+                var subGroupId = chat.NostrGroupId != null && chat.NostrGroupId.Length > 0
+                    ? Convert.ToHexString(chat.NostrGroupId).ToLowerInvariant()
+                    : Convert.ToHexString(chat.MlsGroupId).ToLowerInvariant();
+                await _nostrService.SubscribeToGroupMessagesAsync(new[] { subGroupId });
             }
 
             PendingInvites.Remove(inviteVm);

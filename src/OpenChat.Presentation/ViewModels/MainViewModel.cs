@@ -461,10 +461,14 @@ public class MainViewModel : ViewModelBase
         await ChatListViewModel.LoadChatsAsync();
 
         // Subscribe to group messages for existing groups
+        // Use NostrGroupId (from 0xF2EE extension) for relay subscriptions when available,
+        // falling back to MlsGroupId for backward compatibility with older chats.
         var chats = await _messageService.GetChatsAsync();
         var groupIds = chats
             .Where(c => c.Type == ChatType.Group && c.MlsGroupId != null && c.MlsGroupId.Length > 0)
-            .Select(c => Convert.ToHexString(c.MlsGroupId!).ToLowerInvariant())
+            .Select(c => c.NostrGroupId != null && c.NostrGroupId.Length > 0
+                ? Convert.ToHexString(c.NostrGroupId).ToLowerInvariant()
+                : Convert.ToHexString(c.MlsGroupId!).ToLowerInvariant())
             .ToList();
 
         if (groupIds.Count > 0)

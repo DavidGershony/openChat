@@ -616,6 +616,12 @@ public class ManagedMlsService : IMlsService
         return Task.CompletedTask;
     }
 
+    public byte[]? GetNostrGroupId(byte[] groupId)
+    {
+        EnsureInitialized();
+        return _mdk!.GetNostrGroupId(groupId);
+    }
+
     public int GetStoredKeyPackageCount() => _storedKeyPackages.Count;
 
     public bool HasKeyMaterialForKeyPackage(byte[] keyPackageData)

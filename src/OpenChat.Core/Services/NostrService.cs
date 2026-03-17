@@ -1059,6 +1059,44 @@ public class NostrService : INostrService, IDisposable
         return eventId;
     }
 
+    public async Task<string> PublishRawEventJsonAsync(byte[] eventJsonBytes)
+    {
+        var eventJsonStr = Encoding.UTF8.GetString(eventJsonBytes);
+
+        // Parse the event ID from the JSON
+        using var doc = JsonDocument.Parse(eventJsonStr);
+        var eventId = doc.RootElement.GetProperty("id").GetString()
+            ?? throw new InvalidOperationException("Pre-built event JSON missing 'id' field");
+
+        _logger.LogInformation("Publishing pre-built event {EventId} to {Count} relays",
+            eventId[..Math.Min(16, eventId.Length)], _relayConnections.Count);
+
+        // Wrap in Nostr EVENT message: ["EVENT", {event}]
+        var eventMessage = $"[\"EVENT\",{eventJsonStr}]";
+        var messageBytes = Encoding.UTF8.GetBytes(eventMessage);
+
+        foreach (var (relayUrl, ws) in _relayConnections)
+        {
+            try
+            {
+                if (ws.State == System.Net.WebSockets.WebSocketState.Open)
+                {
+                    await ws.SendAsync(new ArraySegment<byte>(messageBytes),
+                        System.Net.WebSockets.WebSocketMessageType.Text, true, CancellationToken.None);
+                    _logger.LogDebug("Sent pre-built event to relay {Relay}", relayUrl);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to send pre-built event to relay {Relay}", relayUrl);
+            }
+        }
+
+        _logger.LogInformation("Pre-built event {EventId} published to {Count} relays",
+            eventId, _relayConnections.Count);
+        return eventId;
+    }
+
     public async Task<IEnumerable<KeyPackage>> FetchKeyPackagesAsync(string publicKeyHex)
     {
         _logger.LogInformation("Fetching KeyPackages for {PubKey}", publicKeyHex[..Math.Min(16, publicKeyHex.Length)] + "...");
