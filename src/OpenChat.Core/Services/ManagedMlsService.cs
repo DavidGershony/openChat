@@ -48,6 +48,9 @@ public class ManagedMlsService : IMlsService
     // All stored KeyPackages with their private keys (supports multiple)
     private readonly List<StoredKeyPackageMaterial> _storedKeyPackages = new();
 
+    // Prevents concurrent InitializeAsync calls from racing
+    private readonly SemaphoreSlim _initLock = new(1, 1);
+
     private const string ServiceStateKey = "__service__";
     private const byte ServiceStateVersion = 2;
     private const byte ServiceStateVersion1 = 1;
@@ -62,63 +65,72 @@ public class ManagedMlsService : IMlsService
 
     public async Task InitializeAsync(string privateKeyHex, string publicKeyHex)
     {
-        // Guard against double-initialization clobbering restored state
-        if (_mdk != null)
+        await _initLock.WaitAsync();
+        try
         {
-            _logger.LogDebug("ManagedMlsService already initialized, skipping");
-            return;
-        }
-
-        _logger.LogInformation("Initializing managed MLS service");
-        _publicKeyHex = publicKeyHex;
-        _privateKeyHex = privateKeyHex;
-        _identity = Convert.FromHexString(publicKeyHex);
-
-        // Try to restore signing keys from persisted service state first
-        bool restoredKeys = false;
-        if (_storageService != null)
-        {
-            try
+            // Guard against double-initialization clobbering restored state
+            if (_mdk != null)
             {
-                var serviceState = await _storageService.GetMlsStateAsync(ServiceStateKey);
-                if (serviceState != null)
+                _logger.LogDebug("ManagedMlsService already initialized, skipping");
+                return;
+            }
+
+            _logger.LogInformation("Initializing managed MLS service");
+            _publicKeyHex = publicKeyHex;
+            _privateKeyHex = privateKeyHex;
+            _identity = Convert.FromHexString(publicKeyHex);
+
+            // Try to restore signing keys and KeyPackages from persisted service state first
+            bool restoredKeys = false;
+            if (_storageService != null)
+            {
+                try
                 {
-                    await ImportServiceStateAsync(serviceState);
-                    restoredKeys = _signingPrivateKey != null && _signingPublicKey != null;
-                    _logger.LogInformation("Restored MLS signing keys from persistence");
+                    var serviceState = await _storageService.GetMlsStateAsync(ServiceStateKey);
+                    if (serviceState != null)
+                    {
+                        await ImportServiceStateAsync(serviceState);
+                        restoredKeys = _signingPrivateKey != null && _signingPublicKey != null;
+                        _logger.LogInformation("Restored MLS service state from persistence (signingKey={HasKey}, storedKeyPackages={Count})",
+                            restoredKeys, _storedKeyPackages.Count);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to restore MLS service state, will generate new keys");
                 }
             }
-            catch (Exception ex)
+
+            // Generate new Ed25519 signing keys only if we couldn't restore them
+            if (!restoredKeys)
             {
-                _logger.LogWarning(ex, "Failed to restore MLS service state, will generate new keys");
+                (_signingPrivateKey, _signingPublicKey) = _cipherSuite.GenerateSignatureKeyPair();
+                _logger.LogInformation("Generated new MLS signing keys");
+            }
+
+            var storage = new MemoryStorageProvider();
+            _mdk = new MdkBuilder<MemoryStorageProvider>()
+                .WithStorage(storage)
+                .WithConfig(MdkConfig.Default)
+                .Build();
+
+            // Restore group states from persistence
+            if (_storageService != null)
+            {
+                await RestoreGroupStatesAsync();
+            }
+
+            _logger.LogInformation("Managed MLS service initialized successfully");
+
+            // Save service state (only writes new keys if we generated them)
+            if (!restoredKeys)
+            {
+                await SaveServiceStateAsync();
             }
         }
-
-        // Generate new Ed25519 signing keys only if we couldn't restore them
-        if (!restoredKeys)
+        finally
         {
-            (_signingPrivateKey, _signingPublicKey) = _cipherSuite.GenerateSignatureKeyPair();
-            _logger.LogInformation("Generated new MLS signing keys");
-        }
-
-        var storage = new MemoryStorageProvider();
-        _mdk = new MdkBuilder<MemoryStorageProvider>()
-            .WithStorage(storage)
-            .WithConfig(MdkConfig.Default)
-            .Build();
-
-        // Restore group states from persistence
-        if (_storageService != null)
-        {
-            await RestoreGroupStatesAsync();
-        }
-
-        _logger.LogInformation("Managed MLS service initialized successfully");
-
-        // Save service state (only writes new keys if we generated them)
-        if (!restoredKeys)
-        {
-            await SaveServiceStateAsync();
+            _initLock.Release();
         }
     }
 
