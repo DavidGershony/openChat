@@ -7,11 +7,9 @@
              x:Class="OpenChat.UI.Views.SettingsView"
              x:DataType="vm:SettingsViewModel">
 
-    <Grid>
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Spacing="24" Margin="24">
-
-            <!-- Header -->
+    <Grid RowDefinitions="Auto,*">
+        <!-- Fixed Header -->
+        <Border Grid.Row="0" Padding="24,16" Background="{StaticResource BackgroundDarkBrush}">
             <Grid ColumnDefinitions="Auto,*">
                 <Button Grid.Column="0" Classes="icon" Margin="0,0,12,0"
                         Command="{Binding $parent[Window].DataContext.ShowChatsCommand}"
@@ -21,6 +19,10 @@
                 </Button>
                 <TextBlock Grid.Column="1" Text="Settings" Classes="header" FontSize="24" FontWeight="Bold" VerticalAlignment="Center" />
             </Grid>
+        </Border>
+
+    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="24" Margin="24">
 
             <!-- Profile Section -->
             <Border Classes="card">
