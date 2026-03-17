@@ -76,13 +76,34 @@
         <ScrollViewer Grid.Row="1" x:Name="MessageScrollViewer"
                       VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled">
-            <ItemsControl ItemsSource="{Binding Messages}" Margin="16">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="vm:MessageViewModel">
-                        <controls:MessageBubble DataContext="{Binding}" Margin="0,4" />
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
+            <StackPanel Margin="16">
+                <!-- Load Older Messages Button -->
+                <Button Command="{Binding LoadOlderMessagesCommand}"
+                        HorizontalAlignment="Center"
+                        Margin="0,0,0,8"
+                        IsVisible="{Binding CanLoadOlder}"
+                        Classes="secondary">
+                    <Panel>
+                        <StackPanel Orientation="Horizontal" Spacing="6"
+                                    IsVisible="{Binding !IsLoadingOlder}">
+                            <PathIcon Data="M7 14l5-5 5 5z"
+                                      Width="16" Height="16" />
+                            <TextBlock Text="Load older messages" FontSize="13" />
+                        </StackPanel>
+                        <TextBlock Text="Loading..."
+                                   FontSize="13" Classes="muted"
+                                   IsVisible="{Binding IsLoadingOlder}" />
+                    </Panel>
+                </Button>
+
+                <ItemsControl ItemsSource="{Binding Messages}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:MessageViewModel">
+                            <controls:MessageBubble DataContext="{Binding}" Margin="0,4" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
         </ScrollViewer>
 
         <!-- Loading Indicator -->

@@ -140,6 +140,13 @@ public interface INostrService
     IObservable<MarmotGroupMessageEvent> GroupMessages { get; }
 
     /// <summary>
+    /// Fetch historical group message events (kind 445) for a group from relays.
+    /// Uses a time window with since/until and a limit.
+    /// </summary>
+    Task<IEnumerable<NostrEventReceived>> FetchGroupHistoryAsync(
+        string nostrGroupIdHex, DateTimeOffset since, DateTimeOffset until, int limit = 50);
+
+    /// <summary>
     /// Fetch a user's NIP-65 relay list (kind 10002) from discovery relays.
     /// </summary>
     Task<List<RelayPreference>> FetchRelayListAsync(string publicKeyHex);

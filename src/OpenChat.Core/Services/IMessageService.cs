@@ -148,6 +148,12 @@ public interface IMessageService
     /// Returns (total on relays, active with keys, lost without keys).
     /// </summary>
     Task<KeyPackageAuditResult> AuditKeyPackagesAsync();
+
+    /// <summary>
+    /// Load older messages from relays for the given chat, going back from the fetchBoundary.
+    /// Uses a 2-day sliding window with retry. Returns decrypted messages and the new boundary.
+    /// </summary>
+    Task<LoadOlderMessagesResult> LoadOlderMessagesAsync(string chatId, DateTimeOffset fetchBoundary);
 }
 
 public class KeyPackageAuditResult
@@ -157,4 +163,11 @@ public class KeyPackageAuditResult
     public int Lost { get; set; }
     public int Expired { get; set; }
     public List<string> LostEventIds { get; set; } = new();
+}
+
+public class LoadOlderMessagesResult
+{
+    public List<Message> Messages { get; set; } = new();
+    public DateTimeOffset NewBoundary { get; set; }
+    public bool HasMore { get; set; } = true;
 }

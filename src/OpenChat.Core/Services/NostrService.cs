@@ -1454,6 +1454,131 @@ public class NostrService : INostrService, IDisposable
         return events;
     }
 
+    public async Task<IEnumerable<NostrEventReceived>> FetchGroupHistoryAsync(
+        string nostrGroupIdHex, DateTimeOffset since, DateTimeOffset until, int limit = 50)
+    {
+        _logger.LogInformation(
+            "Fetching group history for {GroupId}, since={Since}, until={Until}, limit={Limit}",
+            nostrGroupIdHex[..Math.Min(16, nostrGroupIdHex.Length)],
+            since, until, limit);
+
+        var allEvents = new List<NostrEventReceived>();
+
+        var relaysToTry = _connectedRelays.Count > 0
+            ? _connectedRelays.ToList()
+            : NostrConstants.DefaultRelays.ToList();
+
+        foreach (var relayUrl in relaysToTry)
+        {
+            try
+            {
+                var events = await FetchGroupHistoryFromRelayAsync(relayUrl, nostrGroupIdHex, since, until, limit);
+                _logger.LogInformation("Found {Count} group history event(s) from {Relay}",
+                    events.Count, relayUrl);
+                allEvents.AddRange(events);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to fetch group history from relay {Relay}", relayUrl);
+            }
+        }
+
+        // Deduplicate by EventId
+        var unique = allEvents.GroupBy(e => e.EventId).Select(g => g.First()).ToList();
+        _logger.LogInformation("Total unique group history events found: {Count}", unique.Count);
+        return unique;
+    }
+
+    private async Task<List<NostrEventReceived>> FetchGroupHistoryFromRelayAsync(
+        string relayUrl, string nostrGroupIdHex, DateTimeOffset since, DateTimeOffset until, int limit)
+    {
+        var events = new List<NostrEventReceived>();
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var ws = new ClientWebSocket();
+
+        _logger.LogDebug("Connecting to relay {Relay} for group history fetch", relayUrl);
+        await ws.ConnectAsync(new Uri(relayUrl), cts.Token);
+
+        var subId = $"gh_{Guid.NewGuid():N}"[..16];
+
+        var filter = new Dictionary<string, object>
+        {
+            { "kinds", new[] { 445 } },
+            { "#h", new[] { nostrGroupIdHex } },
+            { "since", since.ToUnixTimeSeconds() },
+            { "until", until.ToUnixTimeSeconds() },
+            { "limit", limit }
+        };
+        var reqMessage = JsonSerializer.Serialize(new object[] { "REQ", subId, filter });
+
+        _logger.LogDebug("Sending group history REQ: {Message}", reqMessage);
+        var reqBytes = Encoding.UTF8.GetBytes(reqMessage);
+        await ws.SendAsync(new ArraySegment<byte>(reqBytes), WebSocketMessageType.Text, true, cts.Token);
+
+        var buffer = new byte[65536];
+
+        while (ws.State == WebSocketState.Open)
+        {
+            var msg = await ReceiveFullMessageAsync(ws, buffer, cts.Token);
+            if (msg == null || msg.Value.Type == WebSocketMessageType.Close)
+                break;
+
+            var message = msg.Value.Text;
+
+            try
+            {
+                using var doc = JsonDocument.Parse(message);
+                var root = doc.RootElement;
+
+                if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() < 1)
+                    continue;
+
+                var messageType = root[0].GetString();
+
+                if (messageType == "EVENT" && root.GetArrayLength() >= 3)
+                {
+                    var eventData = root[2];
+                    var nostrEvent = ParseNostrEvent(eventData, relayUrl);
+                    if (nostrEvent != null && nostrEvent.Kind == 445)
+                    {
+                        events.Add(nostrEvent);
+                        _logger.LogDebug("Found group history event {EventId} from {Sender}",
+                            nostrEvent.EventId[..Math.Min(16, nostrEvent.EventId.Length)],
+                            nostrEvent.PublicKey[..Math.Min(16, nostrEvent.PublicKey.Length)]);
+                    }
+                }
+                else if (messageType == "EOSE")
+                {
+                    _logger.LogDebug("Received EOSE for group history subscription {SubId}", subId);
+                    break;
+                }
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "Failed to parse relay message during group history fetch");
+            }
+        }
+
+        // Close subscription
+        try
+        {
+            var closeMessage = JsonSerializer.Serialize(new object[] { "CLOSE", subId });
+            var closeBytes = Encoding.UTF8.GetBytes(closeMessage);
+            if (ws.State == WebSocketState.Open)
+            {
+                await ws.SendAsync(new ArraySegment<byte>(closeBytes), WebSocketMessageType.Text, true, cts.Token);
+                await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Done", cts.Token);
+            }
+        }
+        catch
+        {
+            // Ignore close errors
+        }
+
+        return events;
+    }
+
     public async Task<UserMetadata?> FetchUserMetadataAsync(string publicKeyHex)
     {
         _logger.LogInformation("Fetching metadata for public key: {PubKey}", publicKeyHex[..Math.Min(16, publicKeyHex.Length)] + "...");

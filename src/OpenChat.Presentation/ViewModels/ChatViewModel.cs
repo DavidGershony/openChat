@@ -24,6 +24,7 @@ public class ChatViewModel : ViewModelBase
     private Chat? _currentChat;
     private string? _currentUserPrivateKeyHex;
     private string? _currentUserPublicKeyHex;
+    private DateTimeOffset? _fetchBoundary;
 
     public ObservableCollection<MessageViewModel> Messages { get; } = new();
 
@@ -56,6 +57,10 @@ public class ChatViewModel : ViewModelBase
     [Reactive] public string? MetadataNpub { get; set; }
     [Reactive] public bool HasMetadata { get; set; }
 
+    // Load older messages
+    [Reactive] public bool IsLoadingOlder { get; set; }
+    [Reactive] public bool CanLoadOlder { get; set; } = true;
+
     // Invite to group
     [Reactive] public bool ShowInviteDialog { get; set; }
     [Reactive] public string InvitePublicKey { get; set; } = string.Empty;
@@ -65,6 +70,7 @@ public class ChatViewModel : ViewModelBase
 
     public ReactiveCommand<Unit, Unit> SendMessageCommand { get; }
     public ReactiveCommand<Unit, Unit> LoadMoreCommand { get; }
+    public ReactiveCommand<Unit, Unit> LoadOlderMessagesCommand { get; }
     public ReactiveCommand<Unit, Unit> ShowChatInfoCommand { get; }
     public ReactiveCommand<Unit, Unit> ToggleMetadataPanelCommand { get; }
     public ReactiveCommand<Unit, Unit> ShowInviteDialogCommand { get; }
@@ -89,6 +95,14 @@ public class ChatViewModel : ViewModelBase
 
         SendMessageCommand = ReactiveCommand.CreateFromTask(SendMessageAsync, canSend);
         LoadMoreCommand = ReactiveCommand.CreateFromTask(LoadMoreMessagesAsync);
+
+        var canLoadOlder = this.WhenAnyValue(
+            x => x.CanLoadOlder,
+            x => x.IsLoadingOlder,
+            x => x.HasChat,
+            (canLoad, loading, hasChat) => canLoad && !loading && hasChat);
+        LoadOlderMessagesCommand = ReactiveCommand.CreateFromTask(LoadOlderMessagesFromRelayAsync, canLoadOlder);
+
         ShowChatInfoCommand = ReactiveCommand.CreateFromTask(async () =>
         {
             ShowMetadataPanel = !ShowMetadataPanel;
@@ -170,6 +184,10 @@ public class ChatViewModel : ViewModelBase
         ParticipantCount = chat.ParticipantPublicKeys.Count;
         HasChat = true;
 
+        // Reset load-older state
+        _fetchBoundary = null;
+        CanLoadOlder = true;
+
         // Reset metadata panel state
         ShowMetadataPanel = false;
         ContactMetadata = null;
@@ -206,6 +224,8 @@ public class ChatViewModel : ViewModelBase
         IsGroup = false;
         ParticipantCount = 0;
         HasChat = false;
+        _fetchBoundary = null;
+        CanLoadOlder = true;
         ShowMetadataPanel = false;
         ContactMetadata = null;
         ContactPublicKey = null;
@@ -320,6 +340,61 @@ public class ChatViewModel : ViewModelBase
         MetadataLud16 = null;
         MetadataNpub = null;
         HasMetadata = false;
+    }
+
+    private async Task LoadOlderMessagesFromRelayAsync()
+    {
+        if (ChatId == null || _currentChat == null)
+            return;
+
+        _logger.LogInformation("Loading older messages for chat {ChatId}", ChatId);
+        IsLoadingOlder = true;
+
+        try
+        {
+            // Initialize boundary from the oldest currently displayed message
+            if (_fetchBoundary == null)
+            {
+                if (Messages.Count > 0)
+                {
+                    var oldestTimestamp = Messages.Min(m => m.Timestamp);
+                    _fetchBoundary = new DateTimeOffset(oldestTimestamp, TimeSpan.Zero);
+                }
+                else
+                {
+                    _fetchBoundary = DateTimeOffset.UtcNow;
+                }
+                _logger.LogDebug("Initialized fetch boundary to {Boundary}", _fetchBoundary);
+            }
+
+            var result = await _messageService.LoadOlderMessagesAsync(ChatId, _fetchBoundary.Value);
+
+            _logger.LogInformation("LoadOlderMessages returned {Count} messages, hasMore={HasMore}",
+                result.Messages.Count, result.HasMore);
+
+            // Prepend messages at the beginning of the list (oldest first)
+            for (var i = 0; i < result.Messages.Count; i++)
+            {
+                // Check for duplicates before inserting
+                var msg = result.Messages[i];
+                if (Messages.Any(m => m.Id == msg.Id
+                    || (!string.IsNullOrEmpty(msg.NostrEventId) && m.Message.NostrEventId == msg.NostrEventId)))
+                    continue;
+
+                Messages.Insert(i, new MessageViewModel(msg));
+            }
+
+            _fetchBoundary = result.NewBoundary;
+            CanLoadOlder = result.HasMore;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to load older messages for chat {ChatId}", ChatId);
+        }
+        finally
+        {
+            IsLoadingOlder = false;
+        }
     }
 
     private async Task SendInviteAsync()

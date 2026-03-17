@@ -828,6 +828,169 @@ public class MessageService : IMessageService, IDisposable
         return result;
     }
 
+    public async Task<LoadOlderMessagesResult> LoadOlderMessagesAsync(string chatId, DateTimeOffset fetchBoundary)
+    {
+        _logger.LogInformation("LoadOlderMessages: starting for chat {ChatId}, boundary={Boundary}",
+            chatId, fetchBoundary);
+
+        var result = new LoadOlderMessagesResult();
+
+        var chat = await _storageService.GetChatAsync(chatId);
+        if (chat == null)
+        {
+            _logger.LogWarning("LoadOlderMessages: chat {ChatId} not found", chatId);
+            result.HasMore = false;
+            result.NewBoundary = fetchBoundary;
+            return result;
+        }
+
+        if (chat.MlsGroupId == null)
+        {
+            _logger.LogWarning("LoadOlderMessages: chat {ChatId} has no MLS group, cannot load history", chatId);
+            result.HasMore = false;
+            result.NewBoundary = fetchBoundary;
+            return result;
+        }
+
+        // Use NostrGroupId for the relay query h-tag filter, fall back to MlsGroupId
+        var groupIdForQuery = chat.NostrGroupId ?? chat.MlsGroupId;
+        var groupIdHex = Convert.ToHexString(groupIdForQuery).ToLowerInvariant();
+
+        _logger.LogDebug("LoadOlderMessages: querying group {GroupId} (NostrGroupId={HasNostr})",
+            groupIdHex[..Math.Min(16, groupIdHex.Length)], chat.NostrGroupId != null);
+
+        var chatCreatedAt = new DateTimeOffset(chat.CreatedAt, TimeSpan.Zero);
+        var until = fetchBoundary;
+        var retries = 0;
+        const int maxRetries = 3;
+        var fetchedEvents = new List<NostrEventReceived>();
+
+        // 2-day sliding window with retry
+        while (retries < maxRetries)
+        {
+            var since = until.AddDays(-2);
+
+            // Clamp since to chat creation time
+            if (since < chatCreatedAt)
+            {
+                since = chatCreatedAt;
+            }
+
+            _logger.LogDebug("LoadOlderMessages: window attempt {Attempt}, since={Since}, until={Until}",
+                retries + 1, since, until);
+
+            var events = await _nostrService.FetchGroupHistoryAsync(groupIdHex, since, until, 50);
+            var eventList = events.ToList();
+
+            if (eventList.Count > 0)
+            {
+                fetchedEvents.AddRange(eventList);
+                result.NewBoundary = since;
+                _logger.LogInformation("LoadOlderMessages: found {Count} events in window", eventList.Count);
+                break;
+            }
+
+            // No results — move window back and retry
+            retries++;
+            until = since;
+
+            if (since <= chatCreatedAt)
+            {
+                _logger.LogInformation("LoadOlderMessages: reached chat creation time, no more history");
+                result.HasMore = false;
+                result.NewBoundary = chatCreatedAt;
+                return result;
+            }
+
+            _logger.LogDebug("LoadOlderMessages: no results, retrying (attempt {Attempt}/{Max})",
+                retries + 1, maxRetries);
+        }
+
+        if (fetchedEvents.Count == 0)
+        {
+            _logger.LogInformation("LoadOlderMessages: no events found after {Retries} retries", maxRetries);
+            result.HasMore = until > chatCreatedAt;
+            result.NewBoundary = until;
+            return result;
+        }
+
+        // Process fetched events: dedup, skip own, decrypt, build messages
+        var processedCount = 0;
+        var skipCount = 0;
+        var decryptFailCount = 0;
+
+        foreach (var nostrEvent in fetchedEvents)
+        {
+            // Dedup by NostrEventId — skip events already in the database
+            if (!string.IsNullOrEmpty(nostrEvent.EventId) &&
+                await _storageService.MessageExistsByNostrEventIdAsync(nostrEvent.EventId))
+            {
+                skipCount++;
+                continue;
+            }
+
+            // Skip own messages (already saved locally by SendMessageAsync)
+            if (nostrEvent.PublicKey == _currentUser?.PublicKeyHex)
+            {
+                skipCount++;
+                continue;
+            }
+
+            // Decrypt
+            var encryptedData = Convert.FromBase64String(nostrEvent.Content);
+
+            MlsDecryptedMessage decrypted;
+            try
+            {
+                // Use MlsGroupId for decrypt, NOT the NostrGroupId from the h-tag
+                decrypted = await _mlsService.DecryptMessageAsync(chat.MlsGroupId!, encryptedData);
+            }
+            catch (Exception ex)
+            {
+                decryptFailCount++;
+                _logger.LogWarning(ex, "LoadOlderMessages: decrypt failed for event {EventId}, skipping",
+                    nostrEvent.EventId[..Math.Min(16, nostrEvent.EventId.Length)]);
+                continue;
+            }
+
+            var message = new Message
+            {
+                Id = Guid.NewGuid().ToString(),
+                ChatId = chat.Id,
+                SenderPublicKey = decrypted.SenderPublicKey,
+                Type = MessageType.Text,
+                Content = decrypted.Plaintext,
+                NostrEventId = nostrEvent.EventId,
+                MlsEpoch = decrypted.Epoch,
+                Timestamp = nostrEvent.CreatedAt,
+                ReceivedAt = DateTime.UtcNow,
+                Status = MessageStatus.Delivered,
+                IsFromCurrentUser = decrypted.SenderPublicKey == _currentUser?.PublicKeyHex
+            };
+
+            message.Sender = await _storageService.GetUserByPublicKeyAsync(message.SenderPublicKey);
+
+            await _storageService.SaveMessageAsync(message);
+            result.Messages.Add(message);
+            processedCount++;
+        }
+
+        _logger.LogInformation(
+            "LoadOlderMessages: processed {Processed} messages, skipped {Skipped}, decrypt failures {DecryptFail}",
+            processedCount, skipCount, decryptFailCount);
+
+        // Sort by timestamp ascending (oldest first)
+        result.Messages.Sort((a, b) => a.Timestamp.CompareTo(b.Timestamp));
+
+        // Check if we've reached the beginning
+        if (result.NewBoundary <= chatCreatedAt)
+        {
+            result.HasMore = false;
+        }
+
+        return result;
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
