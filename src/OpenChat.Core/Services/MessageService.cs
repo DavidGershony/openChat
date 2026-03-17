@@ -560,14 +560,14 @@ public class MessageService : IMessageService, IDisposable
             return;
         }
 
-        // Decrypt message
+        // Decrypt message — must use the MLS group ID (not the NostrGroupId from the h-tag)
         var encryptedData = Convert.FromBase64String(nostrEvent.Content);
         _logger.LogInformation("HandleGroupMessage: decrypting {Len} bytes for chat {ChatName}", encryptedData.Length, chat.Name);
 
         MlsDecryptedMessage decrypted;
         try
         {
-            decrypted = await _mlsService.DecryptMessageAsync(groupId, encryptedData);
+            decrypted = await _mlsService.DecryptMessageAsync(chat.MlsGroupId!, encryptedData);
         }
         catch (Exception ex)
         {
