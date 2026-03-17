@@ -28,6 +28,11 @@ public class ChatViewModel : ViewModelBase
 
     public ObservableCollection<MessageViewModel> Messages { get; } = new();
 
+    /// <summary>
+    /// Raised when the view should scroll to the bottom of the message list.
+    /// </summary>
+    public event EventHandler? ScrollToBottomRequested;
+
     [Reactive] public string? ChatId { get; private set; }
     [Reactive] public string ChatName { get; set; } = string.Empty;
     [Reactive] public string? ChatAvatarUrl { get; set; }
@@ -527,6 +532,8 @@ public class ChatViewModel : ViewModelBase
             {
                 Messages.Add(new MessageViewModel(message));
             }
+
+            ScrollToBottomRequested?.Invoke(this, EventArgs.Empty);
         }
         finally
         {
@@ -575,6 +582,7 @@ public class ChatViewModel : ViewModelBase
             return;
 
         Messages.Add(new MessageViewModel(message));
+        ScrollToBottomRequested?.Invoke(this, EventArgs.Empty);
 
         if (!message.IsFromCurrentUser)
         {

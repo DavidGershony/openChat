@@ -156,7 +156,11 @@
                     <!-- Add Relay -->
                     <Grid ColumnDefinitions="*,Auto">
                         <TextBox Grid.Column="0" Text="{Binding NewRelayUrl}"
-                                 Watermark="wss://relay.example.com" />
+                                 Watermark="wss://relay.example.com">
+                            <TextBox.KeyBindings>
+                                <KeyBinding Gesture="Enter" Command="{Binding AddRelayCommand}" />
+                            </TextBox.KeyBindings>
+                        </TextBox>
                         <Button Grid.Column="1" Classes="primary" Content="Add"
                                 Command="{Binding AddRelayCommand}" Margin="8,0,0,0" />
                     </Grid>
