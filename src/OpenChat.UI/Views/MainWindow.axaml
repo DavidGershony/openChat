@@ -59,7 +59,7 @@
 
     <Grid Grid.Row="1">
         <!-- Main Chat View (shown when logged in) -->
-        <Grid IsVisible="{Binding IsLoggedIn}" ColumnDefinitions="380,*">
+        <Grid IsVisible="{Binding IsLoggedIn}" ColumnDefinitions="350,*">
 
             <!-- Left Sidebar -->
             <Border Grid.Column="0" Classes="sidebar">
