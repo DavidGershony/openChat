@@ -113,6 +113,11 @@ public interface INostrService
     Task<UserMetadata?> FetchUserMetadataAsync(string publicKeyHex);
 
     /// <summary>
+    /// Publish user metadata (kind 0) to all connected relays.
+    /// </summary>
+    Task<string> PublishMetadataAsync(string name, string? displayName, string? about, string? picture, string? privateKeyHex);
+
+    /// <summary>
     /// Subscribe to Welcome messages (NIP-59 gift-wrapped kind 1059) for a user.
     /// The private key is needed to decrypt the gift wrap.
     /// </summary>

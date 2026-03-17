@@ -46,9 +46,16 @@ public class SettingsViewModel : ViewModelBase
     [Reactive] public string? AuditStatus { get; set; }
     [Reactive] public KeyPackageAuditResult? LastAuditResult { get; set; }
 
+    // Profile publish confirmation
+    [Reactive] public bool ShowPublishConfirmation { get; set; }
+    [Reactive] public bool IsPublishingProfile { get; set; }
+    [Reactive] public string? PublishProfileStatus { get; set; }
+
     public ObservableCollection<RelayViewModel> Relays { get; } = new();
 
     public ReactiveCommand<Unit, Unit> SaveProfileCommand { get; }
+    public ReactiveCommand<Unit, Unit> ConfirmPublishProfileCommand { get; }
+    public ReactiveCommand<Unit, Unit> CancelPublishProfileCommand { get; }
     public ReactiveCommand<Unit, Unit> AddRelayCommand { get; }
     public ReactiveCommand<RelayViewModel, Unit> RemoveRelayCommand { get; }
     public ReactiveCommand<Unit, Unit> CopyPublicKeyCommand { get; }
@@ -72,6 +79,8 @@ public class SettingsViewModel : ViewModelBase
         _launcher = launcher;
 
         SaveProfileCommand = ReactiveCommand.CreateFromTask(SaveProfileAsync);
+        ConfirmPublishProfileCommand = ReactiveCommand.CreateFromTask(PublishProfileAsync);
+        CancelPublishProfileCommand = ReactiveCommand.Create(() => { ShowPublishConfirmation = false; });
 
         var canAddRelay = this.WhenAnyValue(x => x.NewRelayUrl,
             url => !string.IsNullOrWhiteSpace(url) && Uri.TryCreate(url, UriKind.Absolute, out _));
@@ -173,6 +182,46 @@ public class SettingsViewModel : ViewModelBase
             user.LastUpdatedAt = DateTime.UtcNow;
 
             await _storageService.SaveCurrentUserAsync(user);
+            _logger.LogInformation("Profile saved locally");
+        }
+
+        // Show confirmation dialog for publishing to relays
+        ShowPublishConfirmation = true;
+    }
+
+    private async Task PublishProfileAsync()
+    {
+        ShowPublishConfirmation = false;
+        IsPublishingProfile = true;
+        PublishProfileStatus = null;
+
+        try
+        {
+            var user = await _storageService.GetCurrentUserAsync();
+            if (user == null)
+            {
+                PublishProfileStatus = "No user found";
+                return;
+            }
+
+            var eventId = await _nostrService.PublishMetadataAsync(
+                user.Username ?? user.DisplayName ?? "",
+                user.DisplayName,
+                user.About,
+                user.AvatarUrl,
+                user.PrivateKeyHex);
+
+            PublishProfileStatus = "Profile published to relays";
+            _logger.LogInformation("Published profile metadata, event ID: {EventId}", eventId);
+        }
+        catch (Exception ex)
+        {
+            PublishProfileStatus = $"Failed to publish: {ex.Message}";
+            _logger.LogError(ex, "Failed to publish profile metadata");
+        }
+        finally
+        {
+            IsPublishingProfile = false;
         }
     }
 

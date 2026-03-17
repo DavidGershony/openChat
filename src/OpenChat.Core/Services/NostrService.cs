@@ -1909,6 +1909,25 @@ public class NostrService : INostrService, IDisposable
         return (relays, createdAt);
     }
 
+    public async Task<string> PublishMetadataAsync(string name, string? displayName, string? about, string? picture, string? privateKeyHex)
+    {
+        _logger.LogInformation("Publishing metadata (kind 0) for {Name}", name);
+
+        // NIP-01 kind 0: content is a JSON string with metadata fields
+        var metadata = new Dictionary<string, string?>();
+        if (!string.IsNullOrEmpty(name)) metadata["name"] = name;
+        if (!string.IsNullOrEmpty(displayName)) metadata["display_name"] = displayName;
+        if (!string.IsNullOrEmpty(about)) metadata["about"] = about;
+        if (!string.IsNullOrEmpty(picture)) metadata["picture"] = picture;
+
+        var content = JsonSerializer.Serialize(metadata);
+
+        // Kind 0 is replaceable — no tags needed
+        var eventId = await PublishEventAsync(0, content, new List<List<string>>(), privateKeyHex);
+        _logger.LogInformation("Published metadata, event ID: {EventId}", eventId);
+        return eventId;
+    }
+
     public async Task<string> PublishRelayListAsync(List<RelayPreference> relays, string? privateKeyHex)
     {
         _logger.LogInformation("Publishing NIP-65 relay list with {Count} relays", relays.Count);
