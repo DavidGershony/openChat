@@ -85,6 +85,13 @@ public class MainViewModel : ViewModelBase
 
             // Sync relay statuses with any changes made in settings
             RefreshRelayStatusesFromSettings();
+
+            // Update header name from settings if changed
+            var name = SettingsViewModel.DisplayName ?? SettingsViewModel.Username;
+            if (!string.IsNullOrEmpty(name))
+            {
+                HeaderDisplayName = name;
+            }
         });
 
         LogoutCommand = ReactiveCommand.CreateFromTask(LogoutAsync);
