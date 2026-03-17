@@ -638,6 +638,89 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
     }
 
     // ═══════════════════════════════════════════════════════════════════
+    // Test 5: MIP-03 Protocol Compliance — event structure and group ID
+    // ═══════════════════════════════════════════════════════════════════
+
+    [Theory]
+    [InlineData("managed")]
+    public async Task EncryptedEvent_HasCorrectNostrGroupId_NotMlsGroupId(string backend)
+    {
+        await SetupUsers(backend);
+
+        // ── Setup: Create group and add member ──
+        var keyPackageB = await _mlsServiceB.GenerateKeyPackageAsync();
+        var groupInfo = await _mlsServiceA.CreateGroupAsync("Protocol Test");
+        var groupIdHex = Convert.ToHexString(groupInfo.GroupId).ToLowerInvariant();
+
+        var fakeKpJson = CreateFakeKeyPackageEventJson(_pubKeyB, keyPackageB.Data, keyPackageB.NostrTags);
+        keyPackageB.EventJson = fakeKpJson;
+        keyPackageB.NostrEventId = "fake443_" + Guid.NewGuid().ToString("N");
+
+        var welcome = await _mlsServiceA.AddMemberAsync(groupInfo.GroupId, keyPackageB);
+        var fakeWelcomeEventId = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        await _mlsServiceB.ProcessWelcomeAsync(welcome.WelcomeData, fakeWelcomeEventId);
+
+        // ── Get the NostrGroupId (0xF2EE extension value) ──
+        var nostrGroupIdBytes = _mlsServiceA.GetNostrGroupId(groupInfo.GroupId);
+        Assert.NotNull(nostrGroupIdBytes); // managed backend must set the 0xF2EE extension
+        var nostrGroupIdHex = Convert.ToHexString(nostrGroupIdBytes).ToLowerInvariant();
+
+        // Verify NostrGroupId differs from MLS group ID
+        Assert.NotEqual(groupIdHex, nostrGroupIdHex);
+
+        // ── Encrypt a message ──
+        var eventJsonBytes = await _mlsServiceA.EncryptMessageAsync(groupInfo.GroupId, "Hello from MIP-03!");
+
+        // ── Assert: returned bytes are valid JSON, not raw binary ──
+        var eventJsonStr = Encoding.UTF8.GetString(eventJsonBytes);
+        using var doc = JsonDocument.Parse(eventJsonStr);
+        var root = doc.RootElement;
+
+        // ── Assert: it's a kind 445 event ──
+        Assert.Equal(445, root.GetProperty("kind").GetInt32());
+
+        // ── Assert: has required NIP-01 fields ──
+        Assert.True(root.TryGetProperty("id", out _), "Event must have 'id' field");
+        Assert.True(root.TryGetProperty("pubkey", out _), "Event must have 'pubkey' field");
+        Assert.True(root.TryGetProperty("sig", out _), "Event must have 'sig' field");
+        Assert.True(root.TryGetProperty("created_at", out _), "Event must have 'created_at' field");
+        Assert.True(root.TryGetProperty("tags", out _), "Event must have 'tags' field");
+        Assert.True(root.TryGetProperty("content", out _), "Event must have 'content' field");
+
+        // ── Assert: pubkey matches sender ──
+        Assert.Equal(_pubKeyA, root.GetProperty("pubkey").GetString());
+
+        // ── Assert: h-tag uses NostrGroupId, NOT MLS group ID ──
+        var tags = root.GetProperty("tags");
+        string? hTagValue = null;
+        foreach (var tag in tags.EnumerateArray())
+        {
+            if (tag.GetArrayLength() >= 2 && tag[0].GetString() == "h")
+            {
+                hTagValue = tag[1].GetString();
+                break;
+            }
+        }
+        Assert.NotNull(hTagValue);
+        Assert.Equal(nostrGroupIdHex, hTagValue!.ToLowerInvariant()); // MUST use NostrGroupId
+        Assert.NotEqual(groupIdHex, hTagValue!.ToLowerInvariant());   // MUST NOT use MLS group ID
+
+        // ── Assert: content is base64 that decodes to binary (not another JSON event) ──
+        var contentBase64 = root.GetProperty("content").GetString()!;
+        var contentBytes = Convert.FromBase64String(contentBase64);
+        // Should be ChaCha20-Poly1305 ciphertext — NOT valid JSON (which would indicate double-wrapping)
+        Assert.True(contentBytes.Length > 0, "Content should be non-empty ciphertext");
+        Assert.NotEqual((byte)'{', contentBytes[0]); // Not JSON — it's encrypted binary
+        Assert.NotEqual((byte)'[', contentBytes[0]);
+
+        // ── Assert: User B can decrypt the content ──
+        // B decrypts the full event JSON (same as what would be received from relay)
+        var decrypted = await _mlsServiceB.DecryptMessageAsync(groupInfo.GroupId, eventJsonBytes);
+        Assert.Equal("Hello from MIP-03!", decrypted.Plaintext);
+        Assert.Equal(_pubKeyA, decrypted.SenderPublicKey.ToLowerInvariant());
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
     // Helpers
     // ═══════════════════════════════════════════════════════════════════
 
