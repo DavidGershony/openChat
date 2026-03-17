@@ -379,16 +379,23 @@ public class ManagedMlsService : IMlsService
         _logger.LogDebug("DecryptMessage: group={GroupId}, ciphertext={Len} bytes (managed)",
             groupIdHex[..Math.Min(16, groupIdHex.Length)], ciphertext.Length);
 
-        // Ciphertext may be a JSON Nostr event (from Rust/native MDK) with base64 content,
-        // or raw TLS bytes (from C# MDK). Extract the payload bytes if JSON.
+        // Ciphertext may be:
+        // 1. A JSON Nostr event (from our own EncryptMessageAsync) with base64 content
+        // 2. Raw MIP-03 ChaCha20-Poly1305 encrypted bytes (from web app / relay)
+        // 3. Raw MLS PrivateMessage bytes (internal tests)
         bool isFromNostrEvent = ciphertext.Length > 0 && (ciphertext[0] == (byte)'{' || ciphertext[0] == (byte)'[');
         var payloadBytes = ExtractMlsMessageBytes(ciphertext);
 
-        // MIP-03: If the message came from a Nostr event, the payload is
+        // MIP-03: All relay messages (both JSON events and raw bytes) are
         // ChaCha20-Poly1305 encrypted with the group's MLS exporter secret.
-        // Decrypt the outer layer to get the raw MLS PrivateMessage bytes.
+        // Always apply MIP-03 decryption unless the bytes are already a valid MLS message
+        // (starts with PrivateMessage header: version 0x0001, wire_format 0x0002).
+        bool isMlsPrivateMessage = payloadBytes.Length >= 4 &&
+            payloadBytes[0] == 0x00 && payloadBytes[1] == 0x01 &&
+            payloadBytes[2] == 0x00 && payloadBytes[3] == 0x02;
+
         byte[] mlsBytes;
-        if (isFromNostrEvent)
+        if (!isMlsPrivateMessage)
         {
             _logger.LogDebug("DecryptMessage: applying MIP-03 ChaCha20-Poly1305 decryption ({Len} bytes)",
                 payloadBytes.Length);
