@@ -605,6 +605,16 @@ public class MessageViewModel : ViewModelBase
     [Reactive] public bool IsFirstInGroup { get; set; }
     [Reactive] public bool IsLastInGroup { get; set; }
 
+    /// <summary>
+    /// True when this message is an image (MessageType.Image).
+    /// </summary>
+    public bool IsImage { get; }
+
+    /// <summary>
+    /// Display text for image messages, e.g. "[Encrypted image: photo.jpg]".
+    /// </summary>
+    public string? ImageDisplayText { get; }
+
     public Message Message { get; }
 
     public MessageViewModel(Message message)
@@ -618,5 +628,12 @@ public class MessageViewModel : ViewModelBase
         Timestamp = message.Timestamp;
         IsFromCurrentUser = message.IsFromCurrentUser;
         Status = message.Status;
+
+        IsImage = message.Type == MessageType.Image;
+        if (IsImage)
+        {
+            var displayName = !string.IsNullOrEmpty(message.FileName) ? message.FileName : "image";
+            ImageDisplayText = $"[Encrypted image: {displayName}]";
+        }
     }
 }

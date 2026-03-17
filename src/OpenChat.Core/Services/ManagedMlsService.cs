@@ -421,6 +421,11 @@ public class ManagedMlsService : IMlsService
 
             // The Rust MDK wraps messages as Nostr rumor events (JSON with "content" field).
             // Extract the actual message text from the rumor event if present.
+            // Also parse imeta tags for image messages (MIP-04).
+            string? imageUrl = null;
+            string? mediaType = null;
+            string? fileName = null;
+
             if (plaintext.Length > 0 && plaintext[0] == '{')
             {
                 try
@@ -434,6 +439,41 @@ public class ManagedMlsService : IMlsService
                             _logger.LogDebug("DecryptMessage: extracted content from rumor event ({RumorLen} bytes → {ContentLen} chars)",
                                 plaintext.Length, extracted.Length);
                             plaintext = extracted;
+                        }
+                    }
+
+                    // Parse imeta tags for image metadata (MIP-04)
+                    if (doc.RootElement.TryGetProperty("tags", out var tagsProp) && tagsProp.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    {
+                        foreach (var tag in tagsProp.EnumerateArray())
+                        {
+                            if (tag.GetArrayLength() < 2) continue;
+                            var tagName = tag[0].GetString();
+                            if (tagName != "imeta") continue;
+
+                            _logger.LogDebug("DecryptMessage: found imeta tag with {Count} entries", tag.GetArrayLength() - 1);
+
+                            // Parse imeta entries: each element after "imeta" is "key value"
+                            for (var i = 1; i < tag.GetArrayLength(); i++)
+                            {
+                                var entry = tag[i].GetString();
+                                if (string.IsNullOrEmpty(entry)) continue;
+
+                                if (entry.StartsWith("url "))
+                                    imageUrl = entry.Substring(4);
+                                else if (entry.StartsWith("m "))
+                                    mediaType = entry.Substring(2);
+                                else if (entry.StartsWith("filename "))
+                                    fileName = entry.Substring(9);
+                            }
+
+                            if (imageUrl != null)
+                            {
+                                _logger.LogInformation("DecryptMessage: extracted imeta - url={Url}, type={MediaType}, filename={FileName}",
+                                    imageUrl, mediaType ?? "(none)", fileName ?? "(none)");
+                            }
+
+                            break; // Only process the first imeta tag
                         }
                     }
                 }
@@ -452,7 +492,10 @@ public class ManagedMlsService : IMlsService
             {
                 SenderPublicKey = senderHex,
                 Plaintext = plaintext,
-                Epoch = appMsg.Message.Epoch
+                Epoch = appMsg.Message.Epoch,
+                ImageUrl = imageUrl,
+                MediaType = mediaType,
+                FileName = fileName
             };
         }
 

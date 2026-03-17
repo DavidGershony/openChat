@@ -20,10 +20,27 @@
                            FontSize="12" FontWeight="SemiBold"
                            IsVisible="{Binding IsFirstInGroup}" />
 
-                <!-- Message Content -->
+                <!-- Image Placeholder (for image messages) -->
+                <Border IsVisible="{Binding IsImage}"
+                        Background="{StaticResource SurfaceSecondaryBrush}"
+                        CornerRadius="8" Padding="12,8" Margin="0,2">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <PathIcon Data="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"
+                                  Width="18" Height="18"
+                                  Foreground="{StaticResource TextMutedBrush}" />
+                        <TextBlock Text="{Binding ImageDisplayText}"
+                                   Foreground="{StaticResource TextMutedBrush}"
+                                   FontSize="13" FontStyle="Italic"
+                                   TextWrapping="Wrap"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Text Content (for non-image messages or captions) -->
                 <TextBlock Text="{Binding Content}"
                            Foreground="{StaticResource BubbleReceivedText}"
-                           TextWrapping="Wrap" FontSize="14" />
+                           TextWrapping="Wrap" FontSize="14"
+                           IsVisible="{Binding !IsImage}" />
 
                 <!-- Timestamp -->
                 <TextBlock Text="{Binding Timestamp, StringFormat={}{0:HH:mm}}"
@@ -38,10 +55,27 @@
                 Background="{StaticResource BubbleSentBrush}"
                 CornerRadius="16,16,4,16" Padding="12,8">
             <StackPanel Spacing="4">
-                <!-- Message Content -->
+                <!-- Image Placeholder (for image messages) -->
+                <Border IsVisible="{Binding IsImage}"
+                        Background="{StaticResource SurfaceSecondaryBrush}"
+                        CornerRadius="8" Padding="12,8" Margin="0,2">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <PathIcon Data="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"
+                                  Width="18" Height="18"
+                                  Foreground="{StaticResource TextMutedBrush}" />
+                        <TextBlock Text="{Binding ImageDisplayText}"
+                                   Foreground="{StaticResource TextMutedBrush}"
+                                   FontSize="13" FontStyle="Italic"
+                                   TextWrapping="Wrap"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Text Content (for non-image messages) -->
                 <TextBlock Text="{Binding Content}"
                            Foreground="{StaticResource BubbleSentText}"
-                           TextWrapping="Wrap" FontSize="14" />
+                           TextWrapping="Wrap" FontSize="14"
+                           IsVisible="{Binding !IsImage}" />
 
                 <!-- Timestamp -->
                 <TextBlock Text="{Binding Timestamp, StringFormat={}{0:HH:mm}}"

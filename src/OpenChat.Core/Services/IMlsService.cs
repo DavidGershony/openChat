@@ -134,4 +134,19 @@ public class MlsDecryptedMessage
     public string SenderPublicKey { get; set; } = string.Empty;
     public string Plaintext { get; set; } = string.Empty;
     public ulong Epoch { get; set; }
+
+    /// <summary>
+    /// Image URL extracted from imeta tags (MIP-04).
+    /// </summary>
+    public string? ImageUrl { get; set; }
+
+    /// <summary>
+    /// MIME type from imeta tags (e.g. "image/jpeg").
+    /// </summary>
+    public string? MediaType { get; set; }
+
+    /// <summary>
+    /// Original filename from imeta tags.
+    /// </summary>
+    public string? FileName { get; set; }
 }

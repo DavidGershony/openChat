@@ -38,6 +38,16 @@ public class Message
     public string? EncryptedContent { get; set; }
 
     /// <summary>
+    /// Image URL for image messages (from imeta tags, MIP-04).
+    /// </summary>
+    public string? ImageUrl { get; set; }
+
+    /// <summary>
+    /// Original filename for image/file messages.
+    /// </summary>
+    public string? FileName { get; set; }
+
+    /// <summary>
     /// Nostr event ID for this message.
     /// </summary>
     public string? NostrEventId { get; set; }

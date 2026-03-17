@@ -585,16 +585,29 @@ public class MessageService : IMessageService, IDisposable
             return;
         }
 
-        _logger.LogInformation("HandleGroupMessage: decrypted message from {Sender}, epoch={Epoch}, content length={Len}",
-            decrypted.SenderPublicKey[..Math.Min(16, decrypted.SenderPublicKey.Length)], decrypted.Epoch, decrypted.Plaintext.Length);
+        _logger.LogInformation("HandleGroupMessage: decrypted message from {Sender}, epoch={Epoch}, content length={Len}, hasImage={HasImage}",
+            decrypted.SenderPublicKey[..Math.Min(16, decrypted.SenderPublicKey.Length)], decrypted.Epoch, decrypted.Plaintext.Length,
+            decrypted.ImageUrl != null);
+
+        // Determine message type and content based on imeta/image metadata
+        var messageType = MessageType.Text;
+        var content = decrypted.Plaintext;
+        if (!string.IsNullOrEmpty(decrypted.ImageUrl))
+        {
+            messageType = MessageType.Image;
+            if (string.IsNullOrEmpty(content))
+                content = "[Image]";
+        }
 
         var message = new Message
         {
             Id = Guid.NewGuid().ToString(),
             ChatId = chat.Id,
             SenderPublicKey = decrypted.SenderPublicKey,
-            Type = MessageType.Text,
-            Content = decrypted.Plaintext,
+            Type = messageType,
+            Content = content,
+            ImageUrl = decrypted.ImageUrl,
+            FileName = decrypted.FileName,
             NostrEventId = nostrEvent.EventId,
             MlsEpoch = decrypted.Epoch,
             Timestamp = nostrEvent.CreatedAt,
@@ -953,13 +966,25 @@ public class MessageService : IMessageService, IDisposable
                 continue;
             }
 
+            // Determine message type based on imeta/image metadata
+            var olderMsgType = MessageType.Text;
+            var olderContent = decrypted.Plaintext;
+            if (!string.IsNullOrEmpty(decrypted.ImageUrl))
+            {
+                olderMsgType = MessageType.Image;
+                if (string.IsNullOrEmpty(olderContent))
+                    olderContent = "[Image]";
+            }
+
             var message = new Message
             {
                 Id = Guid.NewGuid().ToString(),
                 ChatId = chat.Id,
                 SenderPublicKey = decrypted.SenderPublicKey,
-                Type = MessageType.Text,
-                Content = decrypted.Plaintext,
+                Type = olderMsgType,
+                Content = olderContent,
+                ImageUrl = decrypted.ImageUrl,
+                FileName = decrypted.FileName,
                 NostrEventId = nostrEvent.EventId,
                 MlsEpoch = decrypted.Epoch,
                 Timestamp = nostrEvent.CreatedAt,
