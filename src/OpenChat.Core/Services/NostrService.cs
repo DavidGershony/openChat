@@ -193,7 +193,7 @@ public class NostrService : INostrService, IDisposable
                     break;
                 }
 
-                ProcessRelayMessage(relayUrl, msg.Value.Text);
+                await ProcessRelayMessageAsync(relayUrl, msg.Value.Text);
             }
         }
         catch (OperationCanceledException)
@@ -214,7 +214,7 @@ public class NostrService : INostrService, IDisposable
         }
     }
 
-    private void ProcessRelayMessage(string relayUrl, string message)
+    private async Task ProcessRelayMessageAsync(string relayUrl, string message)
     {
         try
         {
@@ -236,10 +236,12 @@ public class NostrService : INostrService, IDisposable
                     _events.OnNext(nostrEvent);
 
                     // Route Marmot-specific events
-                    if (nostrEvent.Kind == 1059 && !string.IsNullOrEmpty(_subscribedUserPrivKey))
+                    // Allow unwrapping when either local private key OR external signer is available
+                    if (nostrEvent.Kind == 1059 &&
+                        (!string.IsNullOrEmpty(_subscribedUserPrivKey) || _externalSigner?.IsConnected == true))
                     {
                         // NIP-59 Gift Wrap — unwrap to find the inner rumor
-                        var rumor = UnwrapGiftWrap(nostrEvent, _subscribedUserPrivKey);
+                        var rumor = await UnwrapGiftWrapAsync(nostrEvent);
                         if (rumor != null && rumor.Kind == 444)
                         {
                             _logger.LogInformation("Unwrapped gift wrap → kind 444 Welcome from {Sender}",
@@ -808,7 +810,7 @@ public class NostrService : INostrService, IDisposable
         rumorTags.Add(relaysTag);
 
         // Determine sender pubkey
-        string senderPrivateKeyHex;
+        string? senderPrivateKeyHex = null;
         string senderPublicKeyHex;
         if (!string.IsNullOrEmpty(privateKeyHex))
         {
@@ -817,7 +819,9 @@ public class NostrService : INostrService, IDisposable
         }
         else if (_externalSigner?.IsConnected == true)
         {
-            throw new NotSupportedException("NIP-59 Gift Wrap with external signer is not yet supported for Welcome events");
+            senderPublicKeyHex = _externalSigner.PublicKeyHex
+                ?? throw new InvalidOperationException("External signer connected but public key not available.");
+            _logger.LogInformation("Using external signer for Welcome gift wrap creation");
         }
         else
         {
@@ -825,7 +829,7 @@ public class NostrService : INostrService, IDisposable
         }
 
         // Create gift-wrapped event
-        var giftWrapMessage = CreateGiftWrap(
+        var giftWrapMessage = await CreateGiftWrapAsync(
             kind: 444,
             content: Convert.ToBase64String(welcomeData),
             rumorTags: rumorTags,
@@ -859,30 +863,63 @@ public class NostrService : INostrService, IDisposable
 
     /// <summary>
     /// Creates a NIP-59 Gift Wrap: Rumor → Seal (kind 13) → Gift Wrap (kind 1059).
+    /// When senderPrivateKeyHex is null, delegates NIP-44 encrypt and seal signing to the external signer.
+    /// The outer gift wrap always uses an ephemeral key (per NIP-59 spec).
     /// </summary>
-    private (string EventMessage, string EventId) CreateGiftWrap(
+    private async Task<(string EventMessage, string EventId)> CreateGiftWrapAsync(
         int kind, string content, List<List<string>> rumorTags,
-        string senderPrivateKeyHex, string senderPublicKeyHex,
+        string? senderPrivateKeyHex, string senderPublicKeyHex,
         string recipientPublicKeyHex)
     {
-        // 1. Create unsigned rumor (kind 444)
+        // 1. Create unsigned rumor
         var rumorCreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var rumorJson = SerializeRumor(senderPublicKeyHex, rumorCreatedAt, kind, rumorTags, content);
 
         // 2. Create Seal (kind 13): encrypt rumor with NIP-44, sign with sender key
-        var sealConvKey = Nip44Encryption.DeriveConversationKey(
-            Convert.FromHexString(senderPrivateKeyHex), Convert.FromHexString(recipientPublicKeyHex));
-        var sealContent = Nip44Encryption.Encrypt(rumorJson, sealConvKey);
+        string sealContent;
+        string sealJson;
         var sealCreatedAt = RandomizeTimestamp(rumorCreatedAt);
         var sealTags = new List<List<string>>();
 
-        var sealSerializedForId = SerializeForEventId(senderPublicKeyHex, sealCreatedAt, 13, sealTags, sealContent);
-        var sealIdBytes = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(sealSerializedForId));
-        var sealId = Convert.ToHexString(sealIdBytes).ToLowerInvariant();
-        var sealSig = Convert.ToHexString(SignSchnorr(sealIdBytes, Convert.FromHexString(senderPrivateKeyHex))).ToLowerInvariant();
-        var sealJson = SerializeEventJson(sealId, senderPublicKeyHex, sealCreatedAt, 13, sealTags, sealContent, sealSig);
+        if (!string.IsNullOrEmpty(senderPrivateKeyHex))
+        {
+            // Local key path: encrypt and sign locally
+            var sealConvKey = Nip44Encryption.DeriveConversationKey(
+                Convert.FromHexString(senderPrivateKeyHex), Convert.FromHexString(recipientPublicKeyHex));
+            sealContent = Nip44Encryption.Encrypt(rumorJson, sealConvKey);
 
-        // 3. Create Gift Wrap (kind 1059): encrypt seal with NIP-44 using ephemeral key
+            var sealSerializedForId = SerializeForEventId(senderPublicKeyHex, sealCreatedAt, 13, sealTags, sealContent);
+            var sealIdBytes = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(sealSerializedForId));
+            var sealId = Convert.ToHexString(sealIdBytes).ToLowerInvariant();
+            var sealSig = Convert.ToHexString(SignSchnorr(sealIdBytes, Convert.FromHexString(senderPrivateKeyHex))).ToLowerInvariant();
+            sealJson = SerializeEventJson(sealId, senderPublicKeyHex, sealCreatedAt, 13, sealTags, sealContent, sealSig);
+
+            _logger.LogDebug("Created seal locally: id={SealId}", sealId[..16]);
+        }
+        else if (_externalSigner?.IsConnected == true)
+        {
+            // External signer path: delegate NIP-44 encrypt and event signing
+            _logger.LogDebug("Creating seal via external signer");
+            sealContent = await _externalSigner.Nip44EncryptAsync(rumorJson, recipientPublicKeyHex);
+
+            var unsignedSeal = new UnsignedNostrEvent
+            {
+                Kind = 13,
+                Content = sealContent,
+                Tags = sealTags,
+                CreatedAt = DateTimeOffset.FromUnixTimeSeconds(sealCreatedAt).UtcDateTime
+            };
+            sealJson = await _externalSigner.SignEventAsync(unsignedSeal);
+
+            _logger.LogDebug("Created seal via external signer");
+        }
+        else
+        {
+            throw new InvalidOperationException(
+                "Cannot create gift wrap: no private key and no external signer connected.");
+        }
+
+        // 3. Create Gift Wrap (kind 1059): encrypt seal with NIP-44 using ephemeral key (always local per NIP-59)
         var (ephemeralPrivHex, ephemeralPubHex, _, _) = GenerateKeyPair();
         var giftConvKey = Nip44Encryption.DeriveConversationKey(
             Convert.FromHexString(ephemeralPrivHex), Convert.FromHexString(recipientPublicKeyHex));
@@ -900,39 +937,65 @@ public class NostrService : INostrService, IDisposable
 
         var eventMessage = SerializeEventMessage(giftId, ephemeralPubHex, giftCreatedAt, 1059, giftTags, giftContent, giftSig);
 
-        _logger.LogDebug("Created gift wrap: rumor kind={Kind}, seal={SealId}, wrap={GiftId}",
-            kind, sealId[..16], giftId[..16]);
+        _logger.LogDebug("Created gift wrap: rumor kind={Kind}, wrap={GiftId}", kind, giftId[..16]);
 
         return (eventMessage, giftId);
     }
 
     /// <summary>
     /// Unwraps a NIP-59 Gift Wrap event into the original rumor.
+    /// Uses local private key when available, otherwise delegates NIP-44 decrypt to the external signer.
     /// Returns the parsed rumor as a NostrEventReceived, or null if unwrapping fails.
     /// </summary>
-    private NostrEventReceived? UnwrapGiftWrap(NostrEventReceived giftWrapEvent, string recipientPrivateKeyHex)
+    private async Task<NostrEventReceived?> UnwrapGiftWrapAsync(NostrEventReceived giftWrapEvent)
     {
         try
         {
-            // 1. Decrypt gift wrap content → Seal JSON
-            var unwrapConvKey = Nip44Encryption.DeriveConversationKey(
-                Convert.FromHexString(recipientPrivateKeyHex), Convert.FromHexString(giftWrapEvent.PublicKey));
-            var sealJson = Nip44Encryption.Decrypt(giftWrapEvent.Content, unwrapConvKey);
+            string sealJson;
+            string rumorJson;
 
-            using var sealDoc = JsonDocument.Parse(sealJson);
-            var seal = sealDoc.RootElement;
-            var sealPubkey = seal.GetProperty("pubkey").GetString() ?? "";
-            var sealContent = seal.GetProperty("content").GetString() ?? "";
+            if (!string.IsNullOrEmpty(_subscribedUserPrivKey))
+            {
+                // Local key path: decrypt both layers locally
+                var unwrapConvKey = Nip44Encryption.DeriveConversationKey(
+                    Convert.FromHexString(_subscribedUserPrivKey), Convert.FromHexString(giftWrapEvent.PublicKey));
+                sealJson = Nip44Encryption.Decrypt(giftWrapEvent.Content, unwrapConvKey);
 
-            // 2. Decrypt seal content → Rumor JSON
-            var sealConvKey2 = Nip44Encryption.DeriveConversationKey(
-                Convert.FromHexString(recipientPrivateKeyHex), Convert.FromHexString(sealPubkey));
-            var rumorJson = Nip44Encryption.Decrypt(sealContent, sealConvKey2);
+                using var sealDoc = JsonDocument.Parse(sealJson);
+                var seal = sealDoc.RootElement;
+                var sealPubkey = seal.GetProperty("pubkey").GetString() ?? "";
+                var sealContent = seal.GetProperty("content").GetString() ?? "";
 
+                var sealConvKey2 = Nip44Encryption.DeriveConversationKey(
+                    Convert.FromHexString(_subscribedUserPrivKey), Convert.FromHexString(sealPubkey));
+                rumorJson = Nip44Encryption.Decrypt(sealContent, sealConvKey2);
+            }
+            else if (_externalSigner?.IsConnected == true)
+            {
+                // External signer path: delegate NIP-44 decrypt
+                _logger.LogDebug("Unwrapping gift wrap via external signer");
+
+                // 1. Decrypt gift wrap content → Seal JSON (counterparty is the ephemeral GW pubkey)
+                sealJson = await _externalSigner.Nip44DecryptAsync(giftWrapEvent.Content, giftWrapEvent.PublicKey);
+
+                using var sealDoc = JsonDocument.Parse(sealJson);
+                var seal = sealDoc.RootElement;
+                var sealPubkey = seal.GetProperty("pubkey").GetString() ?? "";
+                var sealContent = seal.GetProperty("content").GetString() ?? "";
+
+                // 2. Decrypt seal content → Rumor JSON (counterparty is the seal sender)
+                rumorJson = await _externalSigner.Nip44DecryptAsync(sealContent, sealPubkey);
+            }
+            else
+            {
+                _logger.LogWarning("Cannot unwrap gift wrap: no private key and no external signer");
+                return null;
+            }
+
+            // 3. Parse rumor into NostrEventReceived
             using var rumorDoc = JsonDocument.Parse(rumorJson);
             var rumor = rumorDoc.RootElement;
 
-            // 3. Parse rumor into NostrEventReceived
             var rumorKind = rumor.GetProperty("kind").GetInt32();
             var rumorContent = rumor.GetProperty("content").GetString() ?? "";
             var rumorPubkey = rumor.GetProperty("pubkey").GetString() ?? "";
@@ -1410,10 +1473,11 @@ public class NostrService : INostrService, IDisposable
                 {
                     var eventData = root[2];
                     var nostrEvent = ParseNostrEvent(eventData, relayUrl);
-                    if (nostrEvent != null && nostrEvent.Kind == 1059 && !string.IsNullOrEmpty(_subscribedUserPrivKey))
+                    if (nostrEvent != null && nostrEvent.Kind == 1059 &&
+                        (!string.IsNullOrEmpty(_subscribedUserPrivKey) || _externalSigner?.IsConnected == true))
                     {
                         // Unwrap gift wrap to get the inner rumor
-                        var rumor = UnwrapGiftWrap(nostrEvent, _subscribedUserPrivKey);
+                        var rumor = await UnwrapGiftWrapAsync(nostrEvent);
                         if (rumor != null && rumor.Kind == 444)
                         {
                             _logger.LogDebug("Unwrapped Welcome event {EventId} from {Sender}",
@@ -1992,6 +2056,50 @@ public class NostrService : INostrService, IDisposable
         // TODO: Implement NIP-44 decryption
         // For now, use a placeholder that will be replaced with Blockcore implementation
         return Encoding.UTF8.GetString(ciphertext); // Placeholder - NOT SECURE
+    }
+
+    public async Task<string> Nip44EncryptAsync(string plaintext, string recipientPubKey)
+    {
+        if (_externalSigner?.IsConnected == true)
+        {
+            _logger.LogDebug("Delegating NIP-44 encrypt to external signer for recipient {Recipient}",
+                recipientPubKey[..Math.Min(16, recipientPubKey.Length)]);
+            return await _externalSigner.Nip44EncryptAsync(plaintext, recipientPubKey);
+        }
+
+        if (string.IsNullOrEmpty(_subscribedUserPrivKey))
+        {
+            throw new InvalidOperationException(
+                "Cannot NIP-44 encrypt: no private key and no external signer connected.");
+        }
+
+        _logger.LogDebug("NIP-44 encrypting locally for recipient {Recipient}",
+            recipientPubKey[..Math.Min(16, recipientPubKey.Length)]);
+        var convKey = Nip44Encryption.DeriveConversationKey(
+            Convert.FromHexString(_subscribedUserPrivKey), Convert.FromHexString(recipientPubKey));
+        return Nip44Encryption.Encrypt(plaintext, convKey);
+    }
+
+    public async Task<string> Nip44DecryptAsync(string ciphertext, string senderPubKey)
+    {
+        if (_externalSigner?.IsConnected == true)
+        {
+            _logger.LogDebug("Delegating NIP-44 decrypt to external signer for sender {Sender}",
+                senderPubKey[..Math.Min(16, senderPubKey.Length)]);
+            return await _externalSigner.Nip44DecryptAsync(ciphertext, senderPubKey);
+        }
+
+        if (string.IsNullOrEmpty(_subscribedUserPrivKey))
+        {
+            throw new InvalidOperationException(
+                "Cannot NIP-44 decrypt: no private key and no external signer connected.");
+        }
+
+        _logger.LogDebug("NIP-44 decrypting locally for sender {Sender}",
+            senderPubKey[..Math.Min(16, senderPubKey.Length)]);
+        var convKey = Nip44Encryption.DeriveConversationKey(
+            Convert.FromHexString(_subscribedUserPrivKey), Convert.FromHexString(senderPubKey));
+        return Nip44Encryption.Decrypt(ciphertext, convKey);
     }
 
     private async Task<string> PublishEventAsync(int kind, string content, List<List<string>> tags, string? privateKeyHex)

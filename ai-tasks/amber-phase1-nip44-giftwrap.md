@@ -6,39 +6,43 @@ Enable Welcome message send/receive with Amber (NIP-46 remote signer) by adding 
 ## Steps
 
 ### Step 1: Add async NIP-44 methods to INostrService and NostrService
-- [ ] Add `Task<string> Nip44EncryptAsync(string plaintext, string recipientPubKey)` to `INostrService`
-- [ ] Add `Task<string> Nip44DecryptAsync(string ciphertext, string senderPubKey)` to `INostrService`
-- [ ] Implement in `NostrService`: if `_externalSigner?.IsConnected == true`, delegate to signer; otherwise use local private key
-- [ ] Store local private key as field in NostrService (use existing `_subscribedUserPrivKey`)
+- [x] Add `Task<string> Nip44EncryptAsync(string plaintext, string recipientPubKey)` to `INostrService`
+- [x] Add `Task<string> Nip44DecryptAsync(string ciphertext, string senderPubKey)` to `INostrService`
+- [x] Implement in `NostrService`: if `_externalSigner?.IsConnected == true`, delegate to signer; otherwise use local private key
+- [x] Store local private key as field in NostrService (use existing `_subscribedUserPrivKey`)
 
 ### Step 2: Make CreateGiftWrap async and signer-aware
-- [ ] Rename `CreateGiftWrap` → `CreateGiftWrapAsync`
-- [ ] Seal NIP-44 encryption: if signer connected, call `_externalSigner.Nip44EncryptAsync`; otherwise use local crypto
-- [ ] Seal signing: if signer connected, call `_externalSigner.SignEventAsync` for the kind 13 seal; otherwise sign locally
-- [ ] Outer gift wrap: always use ephemeral key (stays local per NIP-59 spec)
-- [ ] Remove `NotSupportedException` in `PublishWelcomeAsync`
-- [ ] Update `PublishWelcomeAsync` to call `CreateGiftWrapAsync`
+- [x] Rename `CreateGiftWrap` → `CreateGiftWrapAsync`
+- [x] Seal NIP-44 encryption: if signer connected, call `_externalSigner.Nip44EncryptAsync`; otherwise use local crypto
+- [x] Seal signing: if signer connected, call `_externalSigner.SignEventAsync` for the kind 13 seal; otherwise sign locally
+- [x] Outer gift wrap: always use ephemeral key (stays local per NIP-59 spec)
+- [x] Remove `NotSupportedException` in `PublishWelcomeAsync`
+- [x] Update `PublishWelcomeAsync` to call `CreateGiftWrapAsync`
 
 ### Step 3: Make UnwrapGiftWrap async and signer-aware
-- [ ] Rename `UnwrapGiftWrap` → `UnwrapGiftWrapAsync`
-- [ ] If signer connected and no local private key: call `_externalSigner.Nip44DecryptAsync` for both layers (gift wrap → seal, seal → rumor)
-- [ ] Otherwise use local crypto as today
-- [ ] Update guard condition: allow unwrap when either `_subscribedUserPrivKey != null` OR `_externalSigner?.IsConnected == true`
-- [ ] Update callers in `ListenToRelayAsync` and `FetchWelcomeEventsAsync`
+- [x] Rename `UnwrapGiftWrap` → `UnwrapGiftWrapAsync`
+- [x] If signer connected and no local private key: call `_externalSigner.Nip44DecryptAsync` for both layers (gift wrap → seal, seal → rumor)
+- [x] Otherwise use local crypto as today
+- [x] Update guard condition: allow unwrap when either `_subscribedUserPrivKey != null` OR `_externalSigner?.IsConnected == true`
+- [x] Update callers in `ListenToRelayAsync` and `FetchWelcomeEventsAsync`
 
 ### Step 4: Fix SubscribeToWelcomesAsync for signer users
-- [ ] Allow subscription even when `privateKeyHex` is null (the REQ doesn't need it, only unwrapping does)
-- [ ] Update `MainViewModel.InitializeAfterLoginAsync` to call `SubscribeToWelcomesAsync` for signer users too
+- [x] Allow subscription even when `privateKeyHex` is null (the REQ doesn't need it, only unwrapping does)
+- [x] Update `MainViewModel.InitializeAfterLoginAsync` to call `SubscribeToWelcomesAsync` for signer users too
+
+Note: Step 4 required no code changes. The existing `SubscribeToWelcomesAsync` already accepts null `privateKeyHex`
+and sends the REQ using only the public key. `MainViewModel.InitializeAfterLoginAsync` already calls it for
+signer users (the guard checks `PublicKeyHex`, not `PrivateKeyHex`). The Step 3 guard condition changes ensure
+that incoming gift wraps are unwrapped via the external signer when no local private key is available.
 
 ## Testing
-- [ ] Verify existing local-key tests still pass (run full test suite)
+- [x] Verify existing local-key tests still pass (run full test suite)
 - [ ] Run real relay integration tests to confirm no regression
-- [ ] All existing Welcome/invite flows work with local keys
+- [x] All existing Welcome/invite flows work with local keys
 
-## Files to modify
+## Files modified
 - `src/OpenChat.Core/Services/INostrService.cs`
 - `src/OpenChat.Core/Services/NostrService.cs`
-- `src/OpenChat.Presentation/ViewModels/MainViewModel.cs`
 
 ## Status
-- [ ] Not started
+- [x] Completed

@@ -175,6 +175,18 @@ public interface INostrService
     /// Decrypt content using NIP-44.
     /// </summary>
     string DecryptNip44(byte[] ciphertext, string recipientPrivateKeyHex, string senderPublicKeyHex);
+
+    /// <summary>
+    /// Async NIP-44 encryption. Delegates to external signer when connected,
+    /// otherwise uses local private key.
+    /// </summary>
+    Task<string> Nip44EncryptAsync(string plaintext, string recipientPubKey);
+
+    /// <summary>
+    /// Async NIP-44 decryption. Delegates to external signer when connected,
+    /// otherwise uses local private key.
+    /// </summary>
+    Task<string> Nip44DecryptAsync(string ciphertext, string senderPubKey);
 }
 
 public class NostrConnectionStatus
