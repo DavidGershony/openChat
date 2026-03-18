@@ -263,7 +263,9 @@ public class LoginViewModel : ViewModelBase
                 // Persist signer session details for auto-reconnect on app restart
                 SignerRelayUrl = ExternalSigner.RelayUrl,
                 SignerRemotePubKey = ExternalSigner.RemotePubKey,
-                SignerSecret = ExternalSigner.Secret
+                SignerSecret = ExternalSigner.Secret,
+                SignerLocalPrivateKeyHex = ExternalSigner.LocalPrivateKeyHex,
+                SignerLocalPublicKeyHex = ExternalSigner.LocalPublicKeyHex
             };
 
             _logger.LogInformation("Persisting signer session: relay={Relay}, remotePubKey={RemotePubKey}",

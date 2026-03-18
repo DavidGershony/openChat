@@ -82,6 +82,17 @@ public class User
     /// </summary>
     public string? SignerSecret { get; set; }
 
+    /// <summary>
+    /// Ephemeral local private key for NIP-46 communication (persisted for auto-reconnect).
+    /// Must reuse the same keypair — Amber authorized this specific pubkey.
+    /// </summary>
+    public string? SignerLocalPrivateKeyHex { get; set; }
+
+    /// <summary>
+    /// Ephemeral local public key for NIP-46 communication (persisted for auto-reconnect).
+    /// </summary>
+    public string? SignerLocalPublicKeyHex { get; set; }
+
     public string GetDisplayNameOrNpub()
     {
         if (!string.IsNullOrEmpty(DisplayName))

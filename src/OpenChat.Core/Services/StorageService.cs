@@ -218,7 +218,7 @@ public class StorageService : IStorageService
             }
 
             // Migration: add signer session columns to Users for NIP-46 auto-reconnect
-            foreach (var col in new[] { "SignerRelayUrl", "SignerRemotePubKey", "SignerSecret" })
+            foreach (var col in new[] { "SignerRelayUrl", "SignerRemotePubKey", "SignerSecret", "SignerLocalPrivateKeyHex", "SignerLocalPublicKeyHex" })
             {
                 try
                 {
@@ -305,9 +305,9 @@ public class StorageService : IStorageService
         var command = connection.CreateCommand();
         command.CommandText = @"
             INSERT OR REPLACE INTO Users
-            (Id, PublicKeyHex, Npub, PrivateKeyHex, Nsec, DisplayName, Username, AvatarUrl, About, Nip05, CreatedAt, LastUpdatedAt, IsCurrentUser, SignerRelayUrl, SignerRemotePubKey, SignerSecret)
+            (Id, PublicKeyHex, Npub, PrivateKeyHex, Nsec, DisplayName, Username, AvatarUrl, About, Nip05, CreatedAt, LastUpdatedAt, IsCurrentUser, SignerRelayUrl, SignerRemotePubKey, SignerSecret, SignerLocalPrivateKeyHex, SignerLocalPublicKeyHex)
             VALUES
-            (@Id, @PublicKeyHex, @Npub, @PrivateKeyHex, @Nsec, @DisplayName, @Username, @AvatarUrl, @About, @Nip05, @CreatedAt, @LastUpdatedAt, @IsCurrentUser, @SignerRelayUrl, @SignerRemotePubKey, @SignerSecret)";
+            (@Id, @PublicKeyHex, @Npub, @PrivateKeyHex, @Nsec, @DisplayName, @Username, @AvatarUrl, @About, @Nip05, @CreatedAt, @LastUpdatedAt, @IsCurrentUser, @SignerRelayUrl, @SignerRemotePubKey, @SignerSecret, @SignerLocalPrivateKeyHex, @SignerLocalPublicKeyHex)";
 
         command.Parameters.AddWithValue("@Id", user.Id);
         command.Parameters.AddWithValue("@PublicKeyHex", user.PublicKeyHex);
@@ -325,6 +325,8 @@ public class StorageService : IStorageService
         command.Parameters.AddWithValue("@SignerRelayUrl", user.SignerRelayUrl ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("@SignerRemotePubKey", user.SignerRemotePubKey ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("@SignerSecret", user.SignerSecret ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@SignerLocalPrivateKeyHex", user.SignerLocalPrivateKeyHex ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@SignerLocalPublicKeyHex", user.SignerLocalPublicKeyHex ?? (object)DBNull.Value);
 
         await command.ExecuteNonQueryAsync();
     }
@@ -993,6 +995,20 @@ public class StorageService : IStorageService
         {
             var ordinal = reader.GetOrdinal("SignerSecret");
             user.SignerSecret = reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
+        }
+        catch (ArgumentOutOfRangeException) { /* Column doesn't exist yet */ }
+
+        try
+        {
+            var ordinal = reader.GetOrdinal("SignerLocalPrivateKeyHex");
+            user.SignerLocalPrivateKeyHex = reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
+        }
+        catch (ArgumentOutOfRangeException) { /* Column doesn't exist yet */ }
+
+        try
+        {
+            var ordinal = reader.GetOrdinal("SignerLocalPublicKeyHex");
+            user.SignerLocalPublicKeyHex = reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
         }
         catch (ArgumentOutOfRangeException) { /* Column doesn't exist yet */ }
 

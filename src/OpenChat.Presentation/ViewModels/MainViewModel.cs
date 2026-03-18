@@ -286,34 +286,39 @@ public class MainViewModel : ViewModelBase
         if (string.IsNullOrEmpty(CurrentUser.PrivateKeyHex) && LoginViewModel.ExternalSigner?.IsConnected != true)
         {
             if (!string.IsNullOrEmpty(CurrentUser.SignerRelayUrl) &&
-                !string.IsNullOrEmpty(CurrentUser.SignerRemotePubKey))
+                !string.IsNullOrEmpty(CurrentUser.SignerRemotePubKey) &&
+                !string.IsNullOrEmpty(CurrentUser.SignerLocalPrivateKeyHex) &&
+                !string.IsNullOrEmpty(CurrentUser.SignerLocalPublicKeyHex))
             {
-                _logger.LogInformation("Auto-reconnecting to signer: relay={Relay}, remotePubKey={PubKey}",
+                _logger.LogInformation("Restoring signer session: relay={Relay}, remotePubKey={PubKey}",
                     CurrentUser.SignerRelayUrl,
                     CurrentUser.SignerRemotePubKey[..Math.Min(16, CurrentUser.SignerRemotePubKey.Length)]);
 
                 try
                 {
-                    // Reconstruct a bunker URL from persisted session details
-                    var bunkerUrl = $"bunker://{CurrentUser.SignerRemotePubKey}?relay={Uri.EscapeDataString(CurrentUser.SignerRelayUrl)}";
-                    if (!string.IsNullOrEmpty(CurrentUser.SignerSecret))
-                        bunkerUrl += $"&secret={CurrentUser.SignerSecret}";
+                    // Restore session using persisted ephemeral keypair — no connect request needed,
+                    // Amber already authorized this keypair during initial login
+                    var connected = await LoginViewModel.ExternalSigner!.RestoreSessionAsync(
+                        CurrentUser.SignerRelayUrl,
+                        CurrentUser.SignerRemotePubKey,
+                        CurrentUser.SignerLocalPrivateKeyHex,
+                        CurrentUser.SignerLocalPublicKeyHex,
+                        CurrentUser.SignerSecret);
 
-                    var connected = await LoginViewModel.ExternalSigner!.ConnectWithStringAsync(bunkerUrl);
                     if (connected)
                     {
-                        _logger.LogInformation("Signer auto-reconnect succeeded");
+                        _logger.LogInformation("Signer session restored successfully");
                     }
                     else
                     {
-                        _logger.LogWarning("Signer auto-reconnect failed — signer may be offline. Continuing without signer.");
-                        ChatListViewModel.StatusMessage = "Signer disconnected. Reconnect in Settings or restart your signer app.";
+                        _logger.LogWarning("Signer session restore failed — signer may be offline. Continuing without signer.");
+                        ChatListViewModel.StatusMessage = "Signer disconnected. Restart your signer app.";
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Signer auto-reconnect failed");
-                    ChatListViewModel.StatusMessage = "Signer reconnect failed. Restart your signer app and try again.";
+                    _logger.LogError(ex, "Signer session restore failed");
+                    ChatListViewModel.StatusMessage = "Signer restore failed. Restart your signer app.";
                 }
             }
             else

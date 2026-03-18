@@ -97,6 +97,25 @@ public interface IExternalSigner
     /// No-op if already connected or if no prior connection was initiated.
     /// </summary>
     Task ReconnectAsync();
+
+    /// <summary>
+    /// Restore a previously authorized session using persisted keypair and session details.
+    /// Reuses the original ephemeral keypair (Amber remembers this authorization).
+    /// Does NOT send a connect request — just connects WebSocket and subscribes.
+    /// </summary>
+    Task<bool> RestoreSessionAsync(string relayUrl, string remotePubKey, string localPrivateKeyHex, string localPublicKeyHex, string? secret = null);
+
+    /// <summary>
+    /// The ephemeral local private key used for NIP-46 communication.
+    /// Needed for session persistence.
+    /// </summary>
+    string? LocalPrivateKeyHex { get; }
+
+    /// <summary>
+    /// The ephemeral local public key used for NIP-46 communication.
+    /// Needed for session persistence.
+    /// </summary>
+    string? LocalPublicKeyHex { get; }
 }
 
 public class ExternalSignerStatus

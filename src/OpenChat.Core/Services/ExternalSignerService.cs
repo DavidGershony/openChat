@@ -47,6 +47,8 @@ public class ExternalSignerService : IExternalSigner, IDisposable
     public string? RelayUrl => _relayUrl;
     public string? RemotePubKey => _remotePubKey;
     public string? Secret => _secret;
+    public string? LocalPrivateKeyHex => _localPrivateKeyHex;
+    public string? LocalPublicKeyHex => _localPublicKeyHex;
     public IObservable<ExternalSignerStatus> Status => _status.AsObservable();
 
     public async Task<bool> ConnectAsync(string bunkerUrl)
@@ -136,6 +138,59 @@ public class ExternalSignerService : IExternalSigner, IDisposable
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to connect to external signer");
+            _status.OnNext(new ExternalSignerStatus
+            {
+                State = ExternalSignerState.Error,
+                Error = ex.Message
+            });
+            return false;
+        }
+    }
+
+    public async Task<bool> RestoreSessionAsync(string relayUrl, string remotePubKey, string localPrivateKeyHex, string localPublicKeyHex, string? secret = null)
+    {
+        _logger.LogInformation("Restoring NIP-46 session: relay={Relay}, remotePubKey={PubKey}, localPubKey={LocalPub}",
+            relayUrl, remotePubKey[..Math.Min(16, remotePubKey.Length)], localPublicKeyHex[..Math.Min(16, localPublicKeyHex.Length)]);
+
+        try
+        {
+            _status.OnNext(new ExternalSignerStatus { State = ExternalSignerState.Connecting });
+
+            _relayUrl = relayUrl;
+            _remotePubKey = remotePubKey;
+            _secret = secret;
+            _localPrivateKeyHex = localPrivateKeyHex;
+            _localPublicKeyHex = localPublicKeyHex;
+
+            // The signer's public key is the remote pubkey (what Amber uses as its identity)
+            PublicKeyHex = remotePubKey;
+
+            // Connect WebSocket to relay
+            _subscriptionSince = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 5;
+            _cts = new CancellationTokenSource();
+            _webSocket = new ClientWebSocket();
+            await _webSocket.ConnectAsync(new Uri(_relayUrl), _cts.Token);
+            _logger.LogInformation("WebSocket connected to {Relay} for session restore", _relayUrl);
+
+            // Start listening
+            _ = Task.Run(() => ListenForMessagesAsync(_cts.Token));
+
+            // Subscribe to signer responses — no connect request needed
+            await SubscribeToSignerAsync();
+
+            IsConnected = true;
+            _logger.LogInformation("NIP-46 session restored successfully. Ready to send requests.");
+            _status.OnNext(new ExternalSignerStatus
+            {
+                State = ExternalSignerState.Connected,
+                IsConnected = true,
+                PublicKeyHex = PublicKeyHex
+            });
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to restore NIP-46 session");
             _status.OnNext(new ExternalSignerStatus
             {
                 State = ExternalSignerState.Error,
