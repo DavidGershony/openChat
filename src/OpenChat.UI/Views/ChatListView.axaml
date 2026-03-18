@@ -420,17 +420,14 @@
                                  AcceptsReturn="True"
                                  Height="60"
                                  TextWrapping="Wrap" />
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="You can also invite members later"
-                                       Classes="muted" FontSize="11" VerticalAlignment="Center" />
-                            <StackPanel Orientation="Horizontal" Spacing="4"
-                                        IsVisible="{Binding IsLookingUpGroupKeyPackages}">
-                                <ProgressBar IsIndeterminate="True" Width="60" Height="3"
-                                             Foreground="{StaticResource NostrPurpleBrush}"
-                                             VerticalAlignment="Center" />
-                                <TextBlock Text="Checking..."
-                                           Classes="muted" FontSize="11" VerticalAlignment="Center" />
-                            </StackPanel>
+                        <TextBlock Text="You can also invite members later"
+                                   Classes="muted" FontSize="11" />
+                        <StackPanel Spacing="6" IsVisible="{Binding IsLookingUpGroupKeyPackages}"
+                                    HorizontalAlignment="Center">
+                            <TextBlock Text="Checking KeyPackages..."
+                                       Classes="muted" FontSize="11" HorizontalAlignment="Center" />
+                            <ProgressBar IsIndeterminate="True" Width="120" Height="3"
+                                         Foreground="{StaticResource NostrPurpleBrush}" />
                         </StackPanel>
                     </StackPanel>
 
