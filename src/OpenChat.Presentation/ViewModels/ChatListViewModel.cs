@@ -36,6 +36,7 @@ public class ChatListViewModel : ViewModelBase
     [Reactive] public string NewChatPublicKey { get; set; } = string.Empty;
     [Reactive] public string NewChatName { get; set; } = string.Empty;
     [Reactive] public string? NewChatError { get; set; }
+    [Reactive] public bool IsNpubInvalid { get; set; }
     [Reactive] public bool IsLookingUpKeyPackage { get; set; }
     [Reactive] public string? KeyPackageStatus { get; set; }
     [Reactive] public bool HasKeyPackage { get; set; }
@@ -105,6 +106,7 @@ public class ChatListViewModel : ViewModelBase
             NewChatPublicKey = string.Empty;
             NewChatName = string.Empty;
             NewChatError = null;
+            IsNpubInvalid = false;
             KeyPackageStatus = null;
             HasKeyPackage = false;
             KeyPackageCreatedAt = null;
@@ -193,13 +195,27 @@ public class ChatListViewModel : ViewModelBase
 
         LookupKeyPackageCommand = ReactiveCommand.CreateFromTask(LookupKeyPackageAsync, canLookupKeyPackage);
 
-        // Auto-trigger KeyPackage lookup when a valid npub is entered (debounced)
+        // Auto-trigger KeyPackage lookup when a valid npub is entered
         _autoLookupSubscription = this.WhenAnyValue(x => x.NewChatPublicKey)
-            .Throttle(TimeSpan.FromMilliseconds(500))
             .ObserveOn(RxApp.MainThreadScheduler)
-            .Where(key => !string.IsNullOrWhiteSpace(key) && key.Length >= 63 && key.StartsWith("npub1"))
-            .Subscribe(_ =>
+            .Subscribe(key =>
             {
+                if (string.IsNullOrWhiteSpace(key) || key.Length < 63)
+                {
+                    // Not long enough yet — no validation, no lookup
+                    IsNpubInvalid = false;
+                    return;
+                }
+
+                // Length is right — validate format
+                if (!key.StartsWith("npub1") || key.Trim().Length != 63)
+                {
+                    IsNpubInvalid = true;
+                    return;
+                }
+
+                // Valid npub — trigger lookup immediately
+                IsNpubInvalid = false;
                 if (!IsLookingUpKeyPackage)
                 {
                     LookupKeyPackageCommand.Execute().Subscribe();
@@ -213,11 +229,11 @@ public class ChatListViewModel : ViewModelBase
 
         LookupGroupKeyPackagesCommand = ReactiveCommand.CreateFromTask(LookupGroupKeyPackagesAsync, canLookupGroupKeyPackages);
 
-        // Auto-trigger group KeyPackage lookup when members field changes (debounced)
+        // Auto-trigger group KeyPackage lookup when members field contains valid npubs
         _autoGroupLookupSubscription = this.WhenAnyValue(x => x.NewGroupMembers)
-            .Throttle(TimeSpan.FromMilliseconds(800))
+            .Throttle(TimeSpan.FromMilliseconds(300))
             .ObserveOn(RxApp.MainThreadScheduler)
-            .Where(members => !string.IsNullOrWhiteSpace(members) && members.Contains("npub1"))
+            .Where(members => !string.IsNullOrWhiteSpace(members) && members.Contains("npub1") && members.Length >= 63)
             .Subscribe(_ =>
             {
                 if (!IsLookingUpGroupKeyPackages)

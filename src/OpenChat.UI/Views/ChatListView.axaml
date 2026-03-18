@@ -272,12 +272,14 @@
 
                     <!-- Public Key Input -->
                     <StackPanel Spacing="6">
-                        <TextBlock Text="Public Key (npub or hex)" Classes="secondary" FontSize="13" />
+                        <TextBlock Text="Public Key" Classes="secondary" FontSize="13" />
                         <TextBox Text="{Binding NewChatPublicKey}"
-                                 Watermark="npub1... or hex public key"
+                                 Watermark="npub1..."
                                  AcceptsReturn="False" />
-                        <TextBlock Text="KeyPackages are looked up automatically"
-                                   Classes="muted" FontSize="11" />
+                        <TextBlock Text="Invalid npub format"
+                                   Foreground="{StaticResource StatusErrorBrush}"
+                                   FontSize="11"
+                                   IsVisible="{Binding IsNpubInvalid}" />
                     </StackPanel>
 
                     <!-- Loading Indicator -->
