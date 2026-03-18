@@ -473,8 +473,12 @@ public class ManagedMlsService : IMlsService
                                     fileName = entry.Substring(9);
                                 else if (entry.StartsWith("x "))
                                     fileSha256 = entry.Substring(2);
+                                else if (entry.StartsWith("n ") && entry.Length <= 26)
+                                    encryptionNonce = entry.Substring(2); // MIP-04 v2: "n <24hex>"
                                 else if (entry.StartsWith("nonce "))
                                     encryptionNonce = entry.Substring(6);
+                                else if (entry.StartsWith("v "))
+                                    encryptionVersion = entry.Substring(2); // MIP-04 v2: "v mip04-v2"
                                 else if (entry.StartsWith("encryption-version "))
                                     encryptionVersion = entry.Substring(19);
                             }
