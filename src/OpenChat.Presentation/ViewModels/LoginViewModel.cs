@@ -145,7 +145,7 @@ public class LoginViewModel : ViewModelBase
     {
         try
         {
-            var uri = await ExternalSigner!.GenerateAndListenForConnectionAsync("wss://relay.damus.io");
+            var uri = await ExternalSigner!.GenerateAndListenForConnectionAsync("wss://relay.nsec.app");
             NostrConnectUri = uri;
             NostrConnectQrPngBytes = _qrCodeGenerator.GeneratePng(uri);
             _logger.LogInformation("Generated nostrconnect QR. URI: {Uri}", uri);
