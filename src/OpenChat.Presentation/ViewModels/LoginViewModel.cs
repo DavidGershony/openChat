@@ -259,8 +259,15 @@ public class LoginViewModel : ViewModelBase
                 CreatedAt = DateTime.UtcNow,
                 IsCurrentUser = true,
                 PrivateKeyHex = null,
-                Nsec = null
+                Nsec = null,
+                // Persist signer session details for auto-reconnect on app restart
+                SignerRelayUrl = ExternalSigner.RelayUrl,
+                SignerRemotePubKey = ExternalSigner.RemotePubKey,
+                SignerSecret = ExternalSigner.Secret
             };
+
+            _logger.LogInformation("Persisting signer session: relay={Relay}, remotePubKey={RemotePubKey}",
+                user.SignerRelayUrl, user.SignerRemotePubKey?[..Math.Min(16, user.SignerRemotePubKey?.Length ?? 0)]);
 
             await _storageService.InitializeAsync();
             await _storageService.SaveCurrentUserAsync(user);

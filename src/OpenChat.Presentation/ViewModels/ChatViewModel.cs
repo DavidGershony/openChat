@@ -240,12 +240,14 @@ public class ChatViewModel : ViewModelBase
 
     /// <summary>
     /// Sets the current user's keys for signing Nostr events and identifying self.
+    /// For signer users, privateKeyHex may be null — the public key is still needed for contact resolution.
     /// </summary>
-    public void SetUserContext(string privateKeyHex, string? publicKeyHex = null)
+    public void SetUserContext(string? privateKeyHex, string? publicKeyHex = null)
     {
         _currentUserPrivateKeyHex = privateKeyHex;
         _currentUserPublicKeyHex = publicKeyHex;
-        _logger.LogDebug("User context set for ChatViewModel");
+        _logger.LogDebug("User context set for ChatViewModel (hasPrivKey={HasPrivKey}, hasPubKey={HasPubKey})",
+            privateKeyHex != null, publicKeyHex != null);
     }
 
     public async Task LoadContactMetadataAsync()

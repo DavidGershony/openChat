@@ -44,6 +44,9 @@ public class ExternalSignerService : IExternalSigner, IDisposable
     public bool IsConnected { get; private set; }
     public string? PublicKeyHex { get; private set; }
     public string? Npub => PublicKeyHex != null ? Bech32.Encode("npub", Convert.FromHexString(PublicKeyHex)) : null;
+    public string? RelayUrl => _relayUrl;
+    public string? RemotePubKey => _remotePubKey;
+    public string? Secret => _secret;
     public IObservable<ExternalSignerStatus> Status => _status.AsObservable();
 
     public async Task<bool> ConnectAsync(string bunkerUrl)

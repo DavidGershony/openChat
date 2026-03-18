@@ -277,13 +277,51 @@ public class MainViewModel : ViewModelBase
         _logger.LogDebug("Initializing message service");
         await _messageService.InitializeAsync();
 
-        // Set user context on ChatViewModel for signing events
-        if (!string.IsNullOrEmpty(CurrentUser.PrivateKeyHex))
+        // Set user context on ChatViewModel for signing events and contact resolution.
+        // For signer users, PrivateKeyHex is null but PublicKeyHex is still needed.
+        ChatViewModel.SetUserContext(CurrentUser.PrivateKeyHex, CurrentUser.PublicKeyHex);
+
+        // If using external signer (no private key), wire it into NostrService.
+        // First, try auto-reconnect from persisted signer session if not already connected.
+        if (string.IsNullOrEmpty(CurrentUser.PrivateKeyHex) && LoginViewModel.ExternalSigner?.IsConnected != true)
         {
-            ChatViewModel.SetUserContext(CurrentUser.PrivateKeyHex, CurrentUser.PublicKeyHex);
+            if (!string.IsNullOrEmpty(CurrentUser.SignerRelayUrl) &&
+                !string.IsNullOrEmpty(CurrentUser.SignerRemotePubKey))
+            {
+                _logger.LogInformation("Auto-reconnecting to signer: relay={Relay}, remotePubKey={PubKey}",
+                    CurrentUser.SignerRelayUrl,
+                    CurrentUser.SignerRemotePubKey[..Math.Min(16, CurrentUser.SignerRemotePubKey.Length)]);
+
+                try
+                {
+                    // Reconstruct a bunker URL from persisted session details
+                    var bunkerUrl = $"bunker://{CurrentUser.SignerRemotePubKey}?relay={Uri.EscapeDataString(CurrentUser.SignerRelayUrl)}";
+                    if (!string.IsNullOrEmpty(CurrentUser.SignerSecret))
+                        bunkerUrl += $"&secret={CurrentUser.SignerSecret}";
+
+                    var connected = await LoginViewModel.ExternalSigner!.ConnectWithStringAsync(bunkerUrl);
+                    if (connected)
+                    {
+                        _logger.LogInformation("Signer auto-reconnect succeeded");
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Signer auto-reconnect failed — signer may be offline. Continuing without signer.");
+                        ChatListViewModel.StatusMessage = "Signer disconnected. Reconnect in Settings or restart your signer app.";
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Signer auto-reconnect failed");
+                    ChatListViewModel.StatusMessage = "Signer reconnect failed. Restart your signer app and try again.";
+                }
+            }
+            else
+            {
+                _logger.LogWarning("Signer user has no persisted session details — cannot auto-reconnect");
+            }
         }
 
-        // If using external signer (no private key), wire it into NostrService
         if (string.IsNullOrEmpty(CurrentUser.PrivateKeyHex) && LoginViewModel.ExternalSigner?.IsConnected == true)
         {
             _nostrService.SetExternalSigner(LoginViewModel.ExternalSigner);

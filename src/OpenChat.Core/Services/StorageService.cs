@@ -217,6 +217,21 @@ public class StorageService : IStorageService
                 // Column already exists — ignore
             }
 
+            // Migration: add signer session columns to Users for NIP-46 auto-reconnect
+            foreach (var col in new[] { "SignerRelayUrl", "SignerRemotePubKey", "SignerSecret" })
+            {
+                try
+                {
+                    var migrate = connection.CreateCommand();
+                    migrate.CommandText = $"ALTER TABLE Users ADD COLUMN {col} TEXT";
+                    await migrate.ExecuteNonQueryAsync();
+                }
+                catch (SqliteException)
+                {
+                    // Column already exists — ignore
+                }
+            }
+
             _initialized = true;
             _logger.LogInformation("Database schema initialized successfully");
         }
@@ -290,9 +305,9 @@ public class StorageService : IStorageService
         var command = connection.CreateCommand();
         command.CommandText = @"
             INSERT OR REPLACE INTO Users
-            (Id, PublicKeyHex, Npub, PrivateKeyHex, Nsec, DisplayName, Username, AvatarUrl, About, Nip05, CreatedAt, LastUpdatedAt, IsCurrentUser)
+            (Id, PublicKeyHex, Npub, PrivateKeyHex, Nsec, DisplayName, Username, AvatarUrl, About, Nip05, CreatedAt, LastUpdatedAt, IsCurrentUser, SignerRelayUrl, SignerRemotePubKey, SignerSecret)
             VALUES
-            (@Id, @PublicKeyHex, @Npub, @PrivateKeyHex, @Nsec, @DisplayName, @Username, @AvatarUrl, @About, @Nip05, @CreatedAt, @LastUpdatedAt, @IsCurrentUser)";
+            (@Id, @PublicKeyHex, @Npub, @PrivateKeyHex, @Nsec, @DisplayName, @Username, @AvatarUrl, @About, @Nip05, @CreatedAt, @LastUpdatedAt, @IsCurrentUser, @SignerRelayUrl, @SignerRemotePubKey, @SignerSecret)";
 
         command.Parameters.AddWithValue("@Id", user.Id);
         command.Parameters.AddWithValue("@PublicKeyHex", user.PublicKeyHex);
@@ -307,6 +322,9 @@ public class StorageService : IStorageService
         command.Parameters.AddWithValue("@CreatedAt", user.CreatedAt.ToString("O"));
         command.Parameters.AddWithValue("@LastUpdatedAt", user.LastUpdatedAt?.ToString("O") ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("@IsCurrentUser", user.IsCurrentUser ? 1 : 0);
+        command.Parameters.AddWithValue("@SignerRelayUrl", user.SignerRelayUrl ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@SignerRemotePubKey", user.SignerRemotePubKey ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@SignerSecret", user.SignerSecret ?? (object)DBNull.Value);
 
         await command.ExecuteNonQueryAsync();
     }
@@ -939,7 +957,7 @@ public class StorageService : IStorageService
 
     private static User ReadUser(SqliteDataReader reader)
     {
-        return new User
+        var user = new User
         {
             Id = reader.GetString(reader.GetOrdinal("Id")),
             PublicKeyHex = reader.GetString(reader.GetOrdinal("PublicKeyHex")),
@@ -955,6 +973,30 @@ public class StorageService : IStorageService
             LastUpdatedAt = reader.IsDBNull(reader.GetOrdinal("LastUpdatedAt")) ? null : DateTime.Parse(reader.GetString(reader.GetOrdinal("LastUpdatedAt"))),
             IsCurrentUser = reader.GetInt32(reader.GetOrdinal("IsCurrentUser")) == 1
         };
+
+        // Signer session columns may not exist in older databases before migration
+        try
+        {
+            var ordinal = reader.GetOrdinal("SignerRelayUrl");
+            user.SignerRelayUrl = reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
+        }
+        catch (ArgumentOutOfRangeException) { /* Column doesn't exist yet */ }
+
+        try
+        {
+            var ordinal = reader.GetOrdinal("SignerRemotePubKey");
+            user.SignerRemotePubKey = reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
+        }
+        catch (ArgumentOutOfRangeException) { /* Column doesn't exist yet */ }
+
+        try
+        {
+            var ordinal = reader.GetOrdinal("SignerSecret");
+            user.SignerSecret = reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
+        }
+        catch (ArgumentOutOfRangeException) { /* Column doesn't exist yet */ }
+
+        return user;
     }
 
     private static Chat ReadChat(SqliteDataReader reader)

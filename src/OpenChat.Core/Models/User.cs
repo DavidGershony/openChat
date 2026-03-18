@@ -67,6 +67,21 @@ public class User
     /// </summary>
     public bool IsCurrentUser { get; set; }
 
+    /// <summary>
+    /// Relay URL for NIP-46 external signer session (persisted for auto-reconnect on restart).
+    /// </summary>
+    public string? SignerRelayUrl { get; set; }
+
+    /// <summary>
+    /// Remote public key of the NIP-46 signer (persisted for auto-reconnect on restart).
+    /// </summary>
+    public string? SignerRemotePubKey { get; set; }
+
+    /// <summary>
+    /// Shared secret for the NIP-46 signer session (persisted for auto-reconnect on restart).
+    /// </summary>
+    public string? SignerSecret { get; set; }
+
     public string GetDisplayNameOrNpub()
     {
         if (!string.IsNullOrEmpty(DisplayName))

@@ -22,6 +22,21 @@ public interface IExternalSigner
     string? Npub { get; }
 
     /// <summary>
+    /// Relay URL used for the NIP-46 connection (for session persistence).
+    /// </summary>
+    string? RelayUrl { get; }
+
+    /// <summary>
+    /// Remote signer's public key (for session persistence).
+    /// </summary>
+    string? RemotePubKey { get; }
+
+    /// <summary>
+    /// Shared secret for the NIP-46 session (for session persistence).
+    /// </summary>
+    string? Secret { get; }
+
+    /// <summary>
     /// Observable for connection status changes.
     /// </summary>
     IObservable<ExternalSignerStatus> Status { get; }

@@ -149,9 +149,8 @@ public class MessageService : IMessageService, IDisposable
                 {
                     _logger.LogInformation("SendMessage: encrypting DM for {Recipient}",
                         recipientPublicKey[..Math.Min(16, recipientPublicKey.Length)]);
-                    var encryptedData = _nostrService.EncryptNip44(
-                        content, _currentUser.PrivateKeyHex!, recipientPublicKey);
-                    message.EncryptedContent = Convert.ToBase64String(encryptedData);
+                    var encryptedContent = await _nostrService.Nip44EncryptAsync(content, recipientPublicKey);
+                    message.EncryptedContent = encryptedContent;
                 }
             }
 
