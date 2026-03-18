@@ -323,11 +323,15 @@
                     HorizontalAlignment="Center"
                     MinWidth="400" MaxWidth="480">
                 <StackPanel Spacing="20">
-                    <!-- Header -->
+                    <!-- Header: group name + ID -->
                     <Grid ColumnDefinitions="*,Auto">
-                        <TextBlock Text="Invite to Group"
-                                   FontSize="22" FontWeight="Bold"
-                                   VerticalAlignment="Center" />
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="{Binding ChatName}"
+                                       FontSize="22" FontWeight="Bold" />
+                            <TextBlock Text="{Binding GroupInviteLink}"
+                                       Classes="muted" FontSize="11" FontFamily="Consolas, Courier New"
+                                       TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
                         <Button Grid.Column="1" Classes="icon"
                                 Command="{Binding CloseInviteDialogCommand}"
                                 ToolTip.Tip="Close">
@@ -336,35 +340,14 @@
                         </Button>
                     </Grid>
 
-                    <!-- Group ID Section -->
-                    <StackPanel Spacing="8">
-                        <TextBlock Text="Group ID (share this to invite others)"
-                                   Classes="secondary" FontSize="13" FontWeight="SemiBold" />
-                        <Grid ColumnDefinitions="*,Auto">
-                            <Border Grid.Column="0" Background="{StaticResource SurfaceSecondaryBrush}"
-                                    CornerRadius="8" Padding="12">
-                                <SelectableTextBlock Text="{Binding GroupInviteLink}"
-                                                     FontSize="11" FontFamily="Consolas, Courier New"
-                                                     TextWrapping="Wrap"
-                                                     Foreground="{StaticResource TextSecondaryBrush}" />
-                            </Border>
-                            <Button Grid.Column="1" Classes="icon" Margin="8,0,0,0"
-                                    Command="{Binding CopyGroupLinkCommand}"
-                                    ToolTip.Tip="Copy">
-                                <PathIcon Data="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"
-                                          Width="18" Height="18" />
-                            </Button>
-                        </Grid>
-                    </StackPanel>
+                    <Border Height="1" Background="{StaticResource BorderDefaultBrush}" />
 
-                    <Border Height="1" Background="{StaticResource BorderDefaultBrush}" Margin="0,4" />
-
-                    <!-- Direct Invite Section -->
+                    <!-- Invite by npub -->
                     <StackPanel Spacing="8">
-                        <TextBlock Text="Or invite by public key"
-                                   Classes="secondary" FontSize="13" FontWeight="SemiBold" />
+                        <TextBlock Text="Enter the npub of the person you want to invite"
+                                   Classes="secondary" FontSize="13" />
                         <TextBox Text="{Binding InvitePublicKey}"
-                                 Watermark="npub1... or hex public key"
+                                 Watermark="npub1..."
                                  AcceptsReturn="False" />
                         <Button Classes="primary"
                                 Command="{Binding SendInviteCommand}"
