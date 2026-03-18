@@ -42,7 +42,8 @@ public class MainActivity : AppCompatActivity, IActivatableView
             "OpenChat", "openchat.db");
         System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(dbPath)!);
 
-        var storageService = new StorageService(dbPath);
+        var secureStorage = new AndroidSecureStorage();
+        var storageService = new StorageService(dbPath, secureStorage);
         var nostrService = new NostrService();
         IMlsService mlsService = new ManagedMlsService(storageService);
         var messageService = new MessageService(storageService, nostrService, mlsService);

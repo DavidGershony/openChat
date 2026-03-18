@@ -46,7 +46,8 @@ public partial class App : Application
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             {
                 _logger?.LogDebug("Creating services...");
-                var storageService = new StorageService(ProfileConfiguration.DatabasePath);
+                var secureStorage = new DesktopSecureStorage();
+                var storageService = new StorageService(ProfileConfiguration.DatabasePath, secureStorage);
                 var nostrService = new NostrService();
                 IMlsService mlsService = ProfileConfiguration.ActiveMdkBackend == MdkBackend.Managed
                     ? new ManagedMlsService(storageService)

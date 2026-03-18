@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using OpenChat.Core.Logging;
@@ -10,11 +11,13 @@ public class StorageService : IStorageService
     private readonly ILogger<StorageService> _logger;
     private readonly string _connectionString;
     private readonly string _databasePath;
+    private readonly ISecureStorage? _secureStorage;
     private bool _initialized;
 
-    public StorageService(string? databasePath = null)
+    public StorageService(string? databasePath = null, ISecureStorage? secureStorage = null)
     {
         _logger = LoggingConfiguration.CreateLogger<StorageService>();
+        _secureStorage = secureStorage;
 
         _databasePath = databasePath ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -29,7 +32,8 @@ public class StorageService : IStorageService
         }
 
         _connectionString = $"Data Source={_databasePath}";
-        _logger.LogInformation("StorageService initialized with database: {DatabasePath}", _databasePath);
+        _logger.LogInformation("StorageService initialized with database: {DatabasePath} (SecureStorage: {HasSecureStorage})",
+            _databasePath, _secureStorage != null);
     }
 
     public async Task InitializeAsync()
@@ -312,8 +316,8 @@ public class StorageService : IStorageService
         command.Parameters.AddWithValue("@Id", user.Id);
         command.Parameters.AddWithValue("@PublicKeyHex", user.PublicKeyHex);
         command.Parameters.AddWithValue("@Npub", user.Npub ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@PrivateKeyHex", user.PrivateKeyHex ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@Nsec", user.Nsec ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@PrivateKeyHex", ProtectString(user.PrivateKeyHex) ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@Nsec", ProtectString(user.Nsec) ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("@DisplayName", user.DisplayName);
         command.Parameters.AddWithValue("@Username", user.Username ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("@AvatarUrl", user.AvatarUrl ?? (object)DBNull.Value);
@@ -324,8 +328,8 @@ public class StorageService : IStorageService
         command.Parameters.AddWithValue("@IsCurrentUser", user.IsCurrentUser ? 1 : 0);
         command.Parameters.AddWithValue("@SignerRelayUrl", user.SignerRelayUrl ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("@SignerRemotePubKey", user.SignerRemotePubKey ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@SignerSecret", user.SignerSecret ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@SignerLocalPrivateKeyHex", user.SignerLocalPrivateKeyHex ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@SignerSecret", ProtectString(user.SignerSecret) ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@SignerLocalPrivateKeyHex", ProtectString(user.SignerLocalPrivateKeyHex) ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("@SignerLocalPublicKeyHex", user.SignerLocalPublicKeyHex ?? (object)DBNull.Value);
 
         await command.ExecuteNonQueryAsync();
@@ -817,7 +821,7 @@ public class StorageService : IStorageService
         var command = connection.CreateCommand();
         command.CommandText = "INSERT OR REPLACE INTO MlsStates (GroupId, State) VALUES (@GroupId, @State)";
         command.Parameters.AddWithValue("@GroupId", groupId);
-        command.Parameters.AddWithValue("@State", state);
+        command.Parameters.AddWithValue("@State", ProtectBlob(state));
 
         await command.ExecuteNonQueryAsync();
     }
@@ -832,7 +836,9 @@ public class StorageService : IStorageService
         command.Parameters.AddWithValue("@GroupId", groupId);
 
         var result = await command.ExecuteScalarAsync();
-        return result as byte[];
+        if (result is byte[] data)
+            return UnprotectBlob(data);
+        return null;
     }
 
     public async Task DeleteMlsStateAsync(string groupId)
@@ -957,15 +963,15 @@ public class StorageService : IStorageService
         };
     }
 
-    private static User ReadUser(SqliteDataReader reader)
+    private User ReadUser(SqliteDataReader reader)
     {
         var user = new User
         {
             Id = reader.GetString(reader.GetOrdinal("Id")),
             PublicKeyHex = reader.GetString(reader.GetOrdinal("PublicKeyHex")),
             Npub = reader.IsDBNull(reader.GetOrdinal("Npub")) ? string.Empty : reader.GetString(reader.GetOrdinal("Npub")),
-            PrivateKeyHex = reader.IsDBNull(reader.GetOrdinal("PrivateKeyHex")) ? null : reader.GetString(reader.GetOrdinal("PrivateKeyHex")),
-            Nsec = reader.IsDBNull(reader.GetOrdinal("Nsec")) ? null : reader.GetString(reader.GetOrdinal("Nsec")),
+            PrivateKeyHex = UnprotectString(reader.IsDBNull(reader.GetOrdinal("PrivateKeyHex")) ? null : reader.GetString(reader.GetOrdinal("PrivateKeyHex"))),
+            Nsec = UnprotectString(reader.IsDBNull(reader.GetOrdinal("Nsec")) ? null : reader.GetString(reader.GetOrdinal("Nsec"))),
             DisplayName = reader.GetString(reader.GetOrdinal("DisplayName")),
             Username = reader.IsDBNull(reader.GetOrdinal("Username")) ? null : reader.GetString(reader.GetOrdinal("Username")),
             AvatarUrl = reader.IsDBNull(reader.GetOrdinal("AvatarUrl")) ? null : reader.GetString(reader.GetOrdinal("AvatarUrl")),
@@ -994,14 +1000,14 @@ public class StorageService : IStorageService
         try
         {
             var ordinal = reader.GetOrdinal("SignerSecret");
-            user.SignerSecret = reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
+            user.SignerSecret = UnprotectString(reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal));
         }
         catch (ArgumentOutOfRangeException) { /* Column doesn't exist yet */ }
 
         try
         {
             var ordinal = reader.GetOrdinal("SignerLocalPrivateKeyHex");
-            user.SignerLocalPrivateKeyHex = reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
+            user.SignerLocalPrivateKeyHex = UnprotectString(reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal));
         }
         catch (ArgumentOutOfRangeException) { /* Column doesn't exist yet */ }
 
@@ -1172,5 +1178,94 @@ public class StorageService : IStorageService
         }
 
         return relays;
+    }
+
+    /// <summary>
+    /// Encrypts a string value for storage. Returns null if the input is null.
+    /// The encrypted bytes are returned as a base64 string.
+    /// </summary>
+    private string? ProtectString(string? value)
+    {
+        if (value == null || _secureStorage == null)
+            return value;
+
+        try
+        {
+            var plainBytes = Encoding.UTF8.GetBytes(value);
+            var protectedBytes = _secureStorage.Protect(plainBytes);
+            return Convert.ToBase64String(protectedBytes);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to protect string value, storing as plaintext");
+            return value;
+        }
+    }
+
+    /// <summary>
+    /// Decrypts a string value read from storage. Returns null if the input is null.
+    /// Handles both encrypted (base64) and plaintext (backward compat) values.
+    /// </summary>
+    private string? UnprotectString(string? value)
+    {
+        if (value == null || _secureStorage == null)
+            return value;
+
+        try
+        {
+            var protectedBytes = Convert.FromBase64String(value);
+            var plainBytes = _secureStorage.Unprotect(protectedBytes);
+            return Encoding.UTF8.GetString(plainBytes);
+        }
+        catch (FormatException)
+        {
+            // Not valid base64 — this is plaintext data from before encryption was enabled
+            _logger.LogInformation("Value is not base64-encoded, returning as plaintext (pre-encryption data)");
+            return value;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to unprotect string value, returning raw value");
+            return value;
+        }
+    }
+
+    /// <summary>
+    /// Encrypts a blob for storage. Returns the input unchanged if no secure storage is configured.
+    /// </summary>
+    private byte[] ProtectBlob(byte[] data)
+    {
+        if (_secureStorage == null)
+            return data;
+
+        try
+        {
+            return _secureStorage.Protect(data);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to protect blob ({Length} bytes), storing as plaintext", data.Length);
+            return data;
+        }
+    }
+
+    /// <summary>
+    /// Decrypts a blob read from storage. Returns the input unchanged if no secure storage is configured.
+    /// The Unprotect implementation handles the magic prefix check for backward compat.
+    /// </summary>
+    private byte[] UnprotectBlob(byte[] data)
+    {
+        if (_secureStorage == null)
+            return data;
+
+        try
+        {
+            return _secureStorage.Unprotect(data);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to unprotect blob ({Length} bytes), returning raw data", data.Length);
+            return data;
+        }
     }
 }
