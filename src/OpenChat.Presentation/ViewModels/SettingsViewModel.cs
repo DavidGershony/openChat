@@ -51,6 +51,9 @@ public class SettingsViewModel : ViewModelBase
     [Reactive] public bool IsPublishingProfile { get; set; }
     [Reactive] public string? PublishProfileStatus { get; set; }
 
+    // MIP-04 media loading
+    [Reactive] public bool IsMip04Enabled { get; set; }
+
     public ObservableCollection<RelayViewModel> Relays { get; } = new();
 
     public ReactiveCommand<Unit, Unit> SaveProfileCommand { get; }
@@ -143,6 +146,22 @@ public class SettingsViewModel : ViewModelBase
         foreach (var relay in NostrConstants.DefaultRelays)
             Relays.Add(new RelayViewModel { Url = relay, IsConnected = false });
 
+        // Persist MIP-04 toggle changes
+        this.WhenAnyValue(x => x.IsMip04Enabled)
+            .Skip(1) // Skip initial default value
+            .Subscribe(async enabled =>
+            {
+                try
+                {
+                    await _storageService.SaveSettingAsync("mip04_enabled", enabled ? "true" : "false");
+                    _logger.LogInformation("MIP-04 media loading {Status}", enabled ? "enabled" : "disabled");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to save MIP-04 setting");
+                }
+            });
+
         LoadSettingsAsync().ConfigureAwait(false);
     }
 
@@ -168,6 +187,11 @@ public class SettingsViewModel : ViewModelBase
                     Relays.Add(new RelayViewModel { Url = relay.Url, Usage = relay.Usage, IsConnected = false });
             }
         }
+
+        // Load MIP-04 setting
+        var mip04Setting = await _storageService.GetSettingAsync("mip04_enabled");
+        IsMip04Enabled = mip04Setting == "true";
+        _logger.LogInformation("Loaded MIP-04 setting: {Enabled}", IsMip04Enabled);
     }
 
     private async Task SaveProfileAsync()

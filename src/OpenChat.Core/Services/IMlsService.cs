@@ -108,6 +108,13 @@ public interface IMlsService
     /// When set, EncryptMessageAsync delegates signing to this signer instead of using the local private key.
     /// </summary>
     void SetNostrEventSigner(INostrEventSigner signer);
+
+    /// <summary>
+    /// Get the MIP-04 media exporter secret for a group.
+    /// This is MLS-Exporter("marmot", "encrypted-media", 32) from the current epoch.
+    /// Used for deriving per-file encryption keys for MIP-04 media.
+    /// </summary>
+    byte[] GetMediaExporterSecret(byte[] groupId);
 }
 
 public class MlsGroupInfo
@@ -155,4 +162,21 @@ public class MlsDecryptedMessage
     /// Original filename from imeta tags.
     /// </summary>
     public string? FileName { get; set; }
+
+    /// <summary>
+    /// SHA-256 hash of the original plaintext file (hex, from imeta tag).
+    /// Used for MIP-04 key derivation and integrity verification.
+    /// </summary>
+    public string? FileSha256 { get; set; }
+
+    /// <summary>
+    /// Encryption nonce (hex, from imeta tag).
+    /// Used for MIP-04 ChaCha20-Poly1305 decryption.
+    /// </summary>
+    public string? EncryptionNonce { get; set; }
+
+    /// <summary>
+    /// MIP-04 encryption version (from imeta tag, e.g. "2").
+    /// </summary>
+    public string? EncryptionVersion { get; set; }
 }

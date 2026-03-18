@@ -176,6 +176,11 @@ public class StorageService : IStorageService
                 PRIMARY KEY (PublicKeyHex, RelayUrl)
             );
 
+            CREATE TABLE IF NOT EXISTS AppSettings (
+                Key TEXT PRIMARY KEY,
+                Value TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS IX_Messages_ChatId ON Messages(ChatId);
             CREATE INDEX IF NOT EXISTS IX_Messages_Timestamp ON Messages(Timestamp);
             CREATE INDEX IF NOT EXISTS IX_Messages_NostrEventId ON Messages(NostrEventId);
@@ -1266,6 +1271,55 @@ public class StorageService : IStorageService
         {
             _logger.LogWarning(ex, "Failed to unprotect blob ({Length} bytes), returning raw data", data.Length);
             return data;
+        }
+    }
+
+    // ---- App Settings ----
+
+    public async Task<string?> GetSettingAsync(string key)
+    {
+        try
+        {
+            await using var connection = new SqliteConnection(_connectionString);
+            await connection.OpenAsync();
+
+            var command = connection.CreateCommand();
+            command.CommandText = "SELECT Value FROM AppSettings WHERE Key = @Key";
+            command.Parameters.AddWithValue("@Key", key);
+
+            var result = await command.ExecuteScalarAsync();
+            var value = result as string;
+            _logger.LogDebug("GetSetting: key={Key}, found={Found}", key, value != null);
+            return value;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get setting: {Key}", key);
+            return null;
+        }
+    }
+
+    public async Task SaveSettingAsync(string key, string value)
+    {
+        try
+        {
+            await using var connection = new SqliteConnection(_connectionString);
+            await connection.OpenAsync();
+
+            var command = connection.CreateCommand();
+            command.CommandText = @"
+                INSERT INTO AppSettings (Key, Value) VALUES (@Key, @Value)
+                ON CONFLICT(Key) DO UPDATE SET Value = @Value";
+            command.Parameters.AddWithValue("@Key", key);
+            command.Parameters.AddWithValue("@Value", value);
+
+            await command.ExecuteNonQueryAsync();
+            _logger.LogInformation("SaveSetting: key={Key}", key);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to save setting: {Key}", key);
+            throw;
         }
     }
 }

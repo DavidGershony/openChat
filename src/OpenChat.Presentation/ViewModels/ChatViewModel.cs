@@ -26,6 +26,9 @@ public class ChatViewModel : ViewModelBase
     private string? _currentUserPublicKeyHex;
     private DateTimeOffset? _fetchBoundary;
 
+    // MIP-04 media cache (messageId -> decrypted bytes)
+    private readonly Dictionary<string, byte[]> _mediaCache = new();
+
     public ObservableCollection<MessageViewModel> Messages { get; } = new();
 
     /// <summary>
@@ -83,7 +86,7 @@ public class ChatViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> SendInviteCommand { get; }
     public ReactiveCommand<Unit, Unit> CopyGroupLinkCommand { get; }
 
-    public ChatViewModel(IMessageService messageService, IStorageService storageService, INostrService nostrService, IMlsService mlsService, IPlatformClipboard clipboard)
+    public ChatViewModel(IMessageService messageService, IStorageService storageService, INostrService nostrService, IMlsService mlsService, IPlatformClipboard clipboard, IMediaDownloadService? mediaDownloadService = null)
     {
         _logger = LoggingConfiguration.CreateLogger<ChatViewModel>();
         _messageService = messageService;
@@ -91,6 +94,13 @@ public class ChatViewModel : ViewModelBase
         _nostrService = nostrService;
         _mlsService = mlsService;
         _clipboard = clipboard;
+
+        // Set static service references for MessageViewModel media loading
+        MessageViewModel.MediaDownloadService = mediaDownloadService ?? new MediaDownloadService();
+        MessageViewModel.MlsServiceRef = mlsService;
+        MessageViewModel.StorageServiceRef = storageService;
+        MessageViewModel.MediaCacheGet = id => _mediaCache.TryGetValue(id, out var bytes) ? bytes : null;
+        MessageViewModel.MediaCacheSet = (id, bytes) => _mediaCache[id] = bytes;
 
         var canSend = this.WhenAnyValue(
             x => x.MessageText,
@@ -236,6 +246,7 @@ public class ChatViewModel : ViewModelBase
         ContactPublicKey = null;
         ClearMetadataProperties();
         Messages.Clear();
+        _mediaCache.Clear();
     }
 
     /// <summary>
@@ -595,6 +606,15 @@ public class ChatViewModel : ViewModelBase
 
 public class MessageViewModel : ViewModelBase
 {
+    private static readonly ILogger<MessageViewModel> _logger = LoggingConfiguration.CreateLogger<MessageViewModel>();
+
+    // Static service references set by ChatViewModel
+    internal static IMediaDownloadService? MediaDownloadService { get; set; }
+    internal static IMlsService? MlsServiceRef { get; set; }
+    internal static IStorageService? StorageServiceRef { get; set; }
+    internal static Func<string, byte[]?>? MediaCacheGet { get; set; }
+    internal static Action<string, byte[]>? MediaCacheSet { get; set; }
+
     public string Id { get; }
     public string SenderPublicKey { get; }
 
@@ -607,6 +627,14 @@ public class MessageViewModel : ViewModelBase
     [Reactive] public bool IsFirstInGroup { get; set; }
     [Reactive] public bool IsLastInGroup { get; set; }
 
+    // Media loading state (MIP-04)
+    [Reactive] public bool IsLoadingMedia { get; set; }
+    [Reactive] public byte[]? DecryptedMediaBytes { get; set; }
+    [Reactive] public bool IsMediaLoaded { get; set; }
+    [Reactive] public string? MediaError { get; set; }
+    [Reactive] public string? MediaSizeDisplay { get; set; }
+    [Reactive] public bool IsMip04Enabled { get; set; }
+
     /// <summary>
     /// True when this message is an image (MessageType.Image).
     /// </summary>
@@ -617,7 +645,39 @@ public class MessageViewModel : ViewModelBase
     /// </summary>
     public string? ImageDisplayText { get; }
 
+    /// <summary>
+    /// True when the image URL points to an unknown (non-Blossom) server.
+    /// </summary>
+    public bool IsUnknownServer { get; }
+
+    /// <summary>
+    /// Hostname of the server for display in warnings.
+    /// </summary>
+    public string? ServerHostname { get; }
+
+    /// <summary>
+    /// True when MIP-04 is disabled and this is an image message.
+    /// </summary>
+    public bool ShowMediaDisabled => IsImage && !IsMip04Enabled;
+
+    /// <summary>
+    /// True when MIP-04 is enabled, this is an image, and it hasn't been loaded yet.
+    /// </summary>
+    public bool ShowTapToLoad => IsImage && IsMip04Enabled && !IsMediaLoaded && !IsLoadingMedia && MediaError == null;
+
+    public ReactiveCommand<Unit, Unit> LoadMediaCommand { get; }
+
     public Message Message { get; }
+
+    /// <summary>
+    /// Maximum download size in bytes (50 MB).
+    /// </summary>
+    private const long MaxDownloadSize = 50 * 1024 * 1024;
+
+    /// <summary>
+    /// Size threshold for warning (10 MB).
+    /// </summary>
+    private const long LargeFileThreshold = 10 * 1024 * 1024;
 
     public MessageViewModel(Message message)
     {
@@ -636,6 +696,201 @@ public class MessageViewModel : ViewModelBase
         {
             var displayName = !string.IsNullOrEmpty(message.FileName) ? message.FileName : "image";
             ImageDisplayText = $"[Encrypted image: {displayName}]";
+
+            // Determine server safety
+            if (!string.IsNullOrEmpty(message.ImageUrl))
+            {
+                IsUnknownServer = MediaDownloadService != null && !MediaDownloadService.IsKnownBlossomServer(message.ImageUrl);
+                if (Uri.TryCreate(message.ImageUrl, UriKind.Absolute, out var uri))
+                    ServerHostname = uri.Host;
+            }
         }
+
+        // Load MIP-04 setting
+        LoadMip04Setting();
+
+        // Check cache
+        if (IsImage && MediaCacheGet != null)
+        {
+            var cached = MediaCacheGet(Id);
+            if (cached != null)
+            {
+                DecryptedMediaBytes = cached;
+                IsMediaLoaded = true;
+            }
+        }
+
+        LoadMediaCommand = ReactiveCommand.CreateFromTask(LoadMediaAsync);
+    }
+
+    private async void LoadMip04Setting()
+    {
+        if (StorageServiceRef == null) return;
+        try
+        {
+            var setting = await StorageServiceRef.GetSettingAsync("mip04_enabled");
+            IsMip04Enabled = setting == "true";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to load MIP-04 setting for message {Id}", Id);
+        }
+    }
+
+    private async Task LoadMediaAsync()
+    {
+        if (!IsImage || string.IsNullOrEmpty(Message.ImageUrl))
+        {
+            MediaError = "No image URL available.";
+            return;
+        }
+
+        if (MediaDownloadService == null || MlsServiceRef == null)
+        {
+            MediaError = "Media services not available.";
+            _logger.LogWarning("LoadMedia: services not initialized for message {Id}", Id);
+            return;
+        }
+
+        if (string.IsNullOrEmpty(Message.FileSha256) || string.IsNullOrEmpty(Message.EncryptionNonce))
+        {
+            MediaError = "Missing encryption metadata (sha256/nonce).";
+            _logger.LogWarning("LoadMedia: missing crypto fields for message {Id}", Id);
+            return;
+        }
+
+        IsLoadingMedia = true;
+        MediaError = null;
+
+        try
+        {
+            _logger.LogInformation("LoadMedia: starting load for message {Id}, url={Url}",
+                Id, Message.ImageUrl);
+
+            // Step 1: Validate URL
+            var validationError = await MediaDownloadService.ValidateUrlAsync(Message.ImageUrl);
+            if (validationError != null)
+            {
+                MediaError = validationError;
+                _logger.LogWarning("LoadMedia: URL validation failed: {Error}", validationError);
+                return;
+            }
+
+            // Step 2: HEAD request to get size
+            var fileInfo = await MediaDownloadService.GetFileInfoAsync(Message.ImageUrl);
+            MediaSizeDisplay = fileInfo.SizeDisplay;
+
+            if (fileInfo.Size.HasValue && fileInfo.Size.Value > MaxDownloadSize)
+            {
+                MediaError = $"File too large ({fileInfo.SizeDisplay}). Maximum is {MaxDownloadSize / (1024 * 1024)} MB.";
+                _logger.LogWarning("LoadMedia: file too large: {Size}", fileInfo.SizeDisplay);
+                return;
+            }
+
+            if (fileInfo.Size.HasValue && fileInfo.Size.Value > LargeFileThreshold)
+            {
+                _logger.LogWarning("LoadMedia: large file detected ({Size}), proceeding anyway", fileInfo.SizeDisplay);
+            }
+
+            // Step 3: Download
+            MediaSizeDisplay = $"Downloading {fileInfo.SizeDisplay}...";
+            var encrypted = await MediaDownloadService.DownloadAsync(Message.ImageUrl, MaxDownloadSize);
+
+            // Step 4: Find the MLS group for this chat to get the exporter secret
+            var chat = await StorageServiceRef!.GetChatAsync(Message.ChatId);
+            if (chat?.MlsGroupId == null)
+            {
+                MediaError = "Cannot decrypt: no MLS group found for this chat.";
+                _logger.LogWarning("LoadMedia: no MLS group for chat {ChatId}", Message.ChatId);
+                return;
+            }
+
+            // Step 5: Derive key and decrypt
+            MediaSizeDisplay = "Decrypting...";
+            var exporterSecret = MlsServiceRef.GetMediaExporterSecret(chat.MlsGroupId);
+            var mimeType = Message.MediaType ?? "application/octet-stream";
+            var filename = Message.FileName ?? "unknown";
+
+            var fileKey = OpenChat.Core.Crypto.Mip04MediaCrypto.DeriveMediaEncryptionKey(
+                exporterSecret, Message.FileSha256, mimeType, filename);
+
+            var decrypted = OpenChat.Core.Crypto.Mip04MediaCrypto.DecryptMediaFile(
+                encrypted, fileKey, Message.FileSha256, mimeType, filename, Message.EncryptionNonce);
+
+            // Step 6: Validate image magic bytes
+            if (!ValidateImageMagicBytes(decrypted, mimeType))
+            {
+                MediaError = "File content does not match expected image format.";
+                _logger.LogWarning("LoadMedia: magic bytes mismatch for {Id}", Id);
+                return;
+            }
+
+            // Step 7: Success
+            DecryptedMediaBytes = decrypted;
+            IsMediaLoaded = true;
+            MediaSizeDisplay = fileInfo.SizeDisplay;
+
+            // Cache
+            MediaCacheSet?.Invoke(Id, decrypted);
+
+            _logger.LogInformation("LoadMedia: successfully loaded {Size} bytes for message {Id}",
+                decrypted.Length, Id);
+        }
+        catch (System.Security.Cryptography.CryptographicException ex)
+        {
+            MediaError = $"Decryption failed: {ex.Message}";
+            _logger.LogError(ex, "LoadMedia: decryption failed for message {Id}", Id);
+        }
+        catch (Exception ex)
+        {
+            MediaError = $"Failed to load: {ex.Message}";
+            _logger.LogError(ex, "LoadMedia: failed for message {Id}", Id);
+        }
+        finally
+        {
+            IsLoadingMedia = false;
+        }
+    }
+
+    /// <summary>
+    /// Validates that decrypted bytes match the expected image MIME type.
+    /// Rejects SVGs to prevent script injection.
+    /// </summary>
+    private static bool ValidateImageMagicBytes(byte[] data, string mimeType)
+    {
+        if (data.Length < 4) return false;
+
+        var mime = mimeType.ToLowerInvariant();
+
+        // Block SVGs (potential script injection)
+        if (mime.Contains("svg"))
+        {
+            _logger.LogWarning("ValidateImageMagicBytes: SVG files are blocked for security");
+            return false;
+        }
+
+        // JPEG: FF D8 FF
+        if (mime.Contains("jpeg") || mime.Contains("jpg"))
+            return data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF;
+
+        // PNG: 89 50 4E 47
+        if (mime.Contains("png"))
+            return data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47;
+
+        // GIF: 47 49 46 38
+        if (mime.Contains("gif"))
+            return data[0] == 0x47 && data[1] == 0x49 && data[2] == 0x46 && data[3] == 0x38;
+
+        // WebP: 52 49 46 46 ... 57 45 42 50
+        if (mime.Contains("webp"))
+            return data.Length >= 12 && data[0] == 0x52 && data[1] == 0x49 && data[2] == 0x46 && data[3] == 0x46
+                && data[8] == 0x57 && data[9] == 0x45 && data[10] == 0x42 && data[11] == 0x50;
+
+        // For other types, allow if mime starts with "image/"
+        if (mime.StartsWith("image/"))
+            return true;
+
+        _logger.LogWarning("ValidateImageMagicBytes: unknown MIME type {MimeType}", mimeType);
+        return false;
     }
 }

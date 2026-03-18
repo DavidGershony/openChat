@@ -428,6 +428,9 @@ public class ManagedMlsService : IMlsService
             string? imageUrl = null;
             string? mediaType = null;
             string? fileName = null;
+            string? fileSha256 = null;
+            string? encryptionNonce = null;
+            string? encryptionVersion = null;
 
             if (plaintext.Length > 0 && plaintext[0] == '{')
             {
@@ -468,12 +471,21 @@ public class ManagedMlsService : IMlsService
                                     mediaType = entry.Substring(2);
                                 else if (entry.StartsWith("filename "))
                                     fileName = entry.Substring(9);
+                                else if (entry.StartsWith("x "))
+                                    fileSha256 = entry.Substring(2);
+                                else if (entry.StartsWith("nonce "))
+                                    encryptionNonce = entry.Substring(6);
+                                else if (entry.StartsWith("encryption-version "))
+                                    encryptionVersion = entry.Substring(19);
                             }
 
                             if (imageUrl != null)
                             {
-                                _logger.LogInformation("DecryptMessage: extracted imeta - url={Url}, type={MediaType}, filename={FileName}",
-                                    imageUrl, mediaType ?? "(none)", fileName ?? "(none)");
+                                _logger.LogInformation("DecryptMessage: extracted imeta - url={Url}, type={MediaType}, filename={FileName}, sha256={Sha256}, nonce={Nonce}, version={Version}",
+                                    imageUrl, mediaType ?? "(none)", fileName ?? "(none)",
+                                    fileSha256?[..Math.Min(16, fileSha256?.Length ?? 0)] ?? "(none)",
+                                    encryptionNonce?[..Math.Min(16, encryptionNonce?.Length ?? 0)] ?? "(none)",
+                                    encryptionVersion ?? "(none)");
                             }
 
                             break; // Only process the first imeta tag
@@ -498,7 +510,10 @@ public class ManagedMlsService : IMlsService
                 Epoch = appMsg.Message.Epoch,
                 ImageUrl = imageUrl,
                 MediaType = mediaType,
-                FileName = fileName
+                FileName = fileName,
+                FileSha256 = fileSha256,
+                EncryptionNonce = encryptionNonce,
+                EncryptionVersion = encryptionVersion
             };
         }
 
@@ -687,6 +702,49 @@ public class ManagedMlsService : IMlsService
     {
         _nostrEventSigner = signer;
         _logger.LogInformation("Nostr event signer set: {SignerType}", signer.GetType().Name);
+    }
+
+    public byte[] GetMediaExporterSecret(byte[] groupId)
+    {
+        EnsureInitialized();
+
+        var groupIdHex = Convert.ToHexString(groupId).ToLowerInvariant();
+        _logger.LogDebug("GetMediaExporterSecret: group={GroupId}", groupIdHex[..Math.Min(16, groupIdHex.Length)]);
+
+        // Access the private _groups dictionary in Mdk via reflection to call ExportSecret
+        // with MIP-04 parameters (label="marmot", context="encrypted-media", length=32).
+        // The public GetExporterSecret only supports MIP-03 hardcoded parameters.
+        var groupsField = _mdk!.GetType().GetField("_groups",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+        if (groupsField == null)
+            throw new InvalidOperationException("Cannot access MLS group state for MIP-04 export (reflection failed)");
+
+        var groups = groupsField.GetValue(_mdk) as System.Collections.IDictionary;
+        if (groups == null)
+            throw new InvalidOperationException("MLS groups dictionary is null");
+
+        var groupHexKey = Convert.ToHexString(groupId);
+        if (!groups.Contains(groupHexKey))
+            throw new InvalidOperationException($"MLS group {groupIdHex[..Math.Min(16, groupIdHex.Length)]} not found");
+
+        var mlsGroup = groups[groupHexKey];
+        var exportMethod = mlsGroup!.GetType().GetMethod("ExportSecret",
+            new[] { typeof(string), typeof(byte[]), typeof(int) });
+
+        if (exportMethod == null)
+            throw new InvalidOperationException("Cannot find ExportSecret method on MlsGroup");
+
+        var mediaContext = Encoding.UTF8.GetBytes("encrypted-media");
+        var result = exportMethod.Invoke(mlsGroup, new object[] { "marmot", mediaContext, 32 }) as byte[];
+
+        if (result == null || result.Length != 32)
+            throw new InvalidOperationException("MIP-04 ExportSecret returned invalid result");
+
+        _logger.LogInformation("GetMediaExporterSecret: derived 32-byte secret for group {GroupId}",
+            groupIdHex[..Math.Min(16, groupIdHex.Length)]);
+
+        return result;
     }
 
     // ---- Persistence helpers ----

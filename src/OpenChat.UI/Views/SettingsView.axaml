@@ -240,6 +240,39 @@
                 </StackPanel>
             </Border>
 
+            <!-- Privacy Section -->
+            <Border Classes="card">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Privacy" FontWeight="SemiBold" FontSize="16" />
+
+                    <!-- MIP-04 Media Loading Toggle -->
+                    <StackPanel Spacing="8">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0" Spacing="4">
+                                <TextBlock Text="Enable media loading (MIP-04)" FontSize="14" />
+                                <TextBlock Text="Load and decrypt images shared in group chats"
+                                           Classes="muted" FontSize="12" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding IsMip04Enabled}"
+                                          VerticalAlignment="Center" />
+                        </Grid>
+
+                        <Border Background="#3DF59E0B" CornerRadius="8" Padding="12">
+                            <StackPanel Spacing="4">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <PathIcon Data="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"
+                                              Width="16" Height="16" Foreground="{StaticResource StatusWarningBrush}" />
+                                    <TextBlock Text="Risk: Medium" FontWeight="SemiBold" FontSize="13"
+                                               Foreground="{StaticResource StatusWarningBrush}" />
+                                </StackPanel>
+                                <TextBlock Text="Enabling media loading allows the app to download files from URLs in messages. This exposes your IP address to the hosting server and increases attack surface. Only enable if you trust your group members."
+                                           TextWrapping="Wrap" FontSize="12" Classes="muted" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
             <!-- Developer Section -->
             <Border Classes="card">
                 <StackPanel Spacing="16">

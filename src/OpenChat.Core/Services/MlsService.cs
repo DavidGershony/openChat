@@ -308,6 +308,13 @@ public class MlsService : IMlsService
         _logger.LogDebug("SetNostrEventSigner called on Rust MlsService (no-op, Rust backend signs internally)");
     }
 
+    public byte[] GetMediaExporterSecret(byte[] groupId)
+    {
+        // Rust MDK does not expose custom exporter secret derivation through FFI.
+        _logger.LogWarning("GetMediaExporterSecret called on Rust MlsService — not supported");
+        throw new NotSupportedException("MIP-04 media exporter secret is not available with the Rust MDK backend. Use the managed (C#) backend instead.");
+    }
+
     private async Task PersistGroupStateAsync(byte[] groupId)
     {
         if (_storageService == null) return;

@@ -48,6 +48,26 @@ public class Message
     public string? FileName { get; set; }
 
     /// <summary>
+    /// SHA-256 hash of the original file (hex, from imeta tag). Used for MIP-04 decryption.
+    /// </summary>
+    public string? FileSha256 { get; set; }
+
+    /// <summary>
+    /// Encryption nonce (hex, from imeta tag). Used for MIP-04 decryption.
+    /// </summary>
+    public string? EncryptionNonce { get; set; }
+
+    /// <summary>
+    /// MIME type (from imeta tag, e.g. "image/jpeg"). Used for MIP-04 decryption.
+    /// </summary>
+    public string? MediaType { get; set; }
+
+    /// <summary>
+    /// MIP-04 encryption version from imeta tag.
+    /// </summary>
+    public string? EncryptionVersion { get; set; }
+
+    /// <summary>
     /// Nostr event ID for this message.
     /// </summary>
     public string? NostrEventId { get; set; }

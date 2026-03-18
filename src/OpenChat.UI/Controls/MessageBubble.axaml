@@ -3,9 +3,14 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:OpenChat.Presentation.ViewModels"
+             xmlns:conv="using:OpenChat.UI.Converters"
              mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="80"
              x:Class="OpenChat.UI.Controls.MessageBubble"
              x:DataType="vm:MessageViewModel">
+
+    <UserControl.Resources>
+        <conv:PngBytesToBitmapConverter x:Key="BytesToBitmap" />
+    </UserControl.Resources>
 
     <Grid>
         <!-- Received Message (left aligned) -->
@@ -20,23 +25,92 @@
                            FontSize="12" FontWeight="SemiBold"
                            IsVisible="{Binding IsFirstInGroup}" />
 
-                <!-- Image Placeholder (for image messages) -->
+                <!-- Image Media Widget (for image messages) -->
                 <Border IsVisible="{Binding IsImage}"
-                        Background="{StaticResource SurfaceSecondaryBrush}"
-                        CornerRadius="8" Padding="12,8" Margin="0,2">
-                    <Grid ColumnDefinitions="Auto,*">
-                        <PathIcon Grid.Column="0"
-                                  Data="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"
-                                  Width="18" Height="18" Margin="0,0,8,0"
-                                  Foreground="{StaticResource TextMutedBrush}"
-                                  VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="1"
-                                   Text="{Binding ImageDisplayText}"
-                                   Foreground="{StaticResource TextMutedBrush}"
-                                   FontSize="13" FontStyle="Italic"
-                                   TextWrapping="Wrap"
-                                   VerticalAlignment="Center" />
-                    </Grid>
+                        CornerRadius="8" Margin="0,2" ClipToBounds="True">
+                    <StackPanel Spacing="4">
+
+                        <!-- State 1: MIP-04 Disabled -->
+                        <Border IsVisible="{Binding ShowMediaDisabled}"
+                                Background="{StaticResource SurfaceSecondaryBrush}"
+                                CornerRadius="8" Padding="12,8">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="Media loading disabled"
+                                           Foreground="{StaticResource TextMutedBrush}"
+                                           FontSize="13" FontStyle="Italic" />
+                                <TextBlock Text="Enable in Settings > Privacy"
+                                           Foreground="{StaticResource TextMutedBrush}"
+                                           FontSize="11" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- State 2: Tap to Load -->
+                        <Border IsVisible="{Binding ShowTapToLoad}"
+                                Background="{StaticResource SurfaceSecondaryBrush}"
+                                CornerRadius="8" Padding="12,8">
+                            <StackPanel Spacing="6">
+                                <Grid ColumnDefinitions="Auto,*">
+                                    <PathIcon Grid.Column="0"
+                                              Data="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"
+                                              Width="18" Height="18" Margin="0,0,8,0"
+                                              Foreground="{StaticResource TextMutedBrush}"
+                                              VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding ImageDisplayText}"
+                                               Foreground="{StaticResource TextMutedBrush}"
+                                               FontSize="13" FontStyle="Italic"
+                                               TextWrapping="Wrap"
+                                               VerticalAlignment="Center" />
+                                </Grid>
+                                <Button Classes="secondary" Content="Tap to load"
+                                        Command="{Binding LoadMediaCommand}"
+                                        HorizontalAlignment="Left"
+                                        Padding="12,4" FontSize="12" />
+                                <TextBlock Text="(your IP will be visible to the host)"
+                                           Foreground="{StaticResource TextMutedBrush}"
+                                           FontSize="10" />
+                                <!-- Unknown server warning -->
+                                <StackPanel Orientation="Horizontal" Spacing="4"
+                                            IsVisible="{Binding IsUnknownServer}">
+                                    <PathIcon Data="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"
+                                              Width="14" Height="14"
+                                              Foreground="{StaticResource StatusWarningBrush}" />
+                                    <TextBlock Text="{Binding ServerHostname, StringFormat='Unknown server: {0}'}"
+                                               Foreground="{StaticResource StatusWarningBrush}"
+                                               FontSize="11" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- State 3: Loading -->
+                        <Border IsVisible="{Binding IsLoadingMedia}"
+                                Background="{StaticResource SurfaceSecondaryBrush}"
+                                CornerRadius="8" Padding="12,8">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="Loading..." Classes="muted" FontSize="13" />
+                                <TextBlock Text="{Binding MediaSizeDisplay}"
+                                           Foreground="{StaticResource TextMutedBrush}"
+                                           FontSize="12" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- State 4: Loaded (show image) -->
+                        <Image IsVisible="{Binding IsMediaLoaded}"
+                               Source="{Binding DecryptedMediaBytes, Converter={StaticResource BytesToBitmap}}"
+                               MaxWidth="400" MaxHeight="400"
+                               Stretch="Uniform"
+                               HorizontalAlignment="Left" />
+
+                        <!-- State 5: Error -->
+                        <Border IsVisible="{Binding MediaError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                Background="{StaticResource SurfaceSecondaryBrush}"
+                                CornerRadius="8" Padding="12,8">
+                            <TextBlock Text="{Binding MediaError}"
+                                       Foreground="{StaticResource StatusErrorBrush}"
+                                       FontSize="12" TextWrapping="Wrap" />
+                        </Border>
+
+                    </StackPanel>
                 </Border>
 
                 <!-- Text Content (for non-image messages or captions) -->
@@ -58,23 +132,93 @@
                 Background="{StaticResource BubbleSentBrush}"
                 CornerRadius="16,16,4,16" Padding="12,8">
             <StackPanel Spacing="4">
-                <!-- Image Placeholder (for image messages) -->
+
+                <!-- Image Media Widget (for image messages) -->
                 <Border IsVisible="{Binding IsImage}"
-                        Background="{StaticResource SurfaceSecondaryBrush}"
-                        CornerRadius="8" Padding="12,8" Margin="0,2">
-                    <Grid ColumnDefinitions="Auto,*">
-                        <PathIcon Grid.Column="0"
-                                  Data="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"
-                                  Width="18" Height="18" Margin="0,0,8,0"
-                                  Foreground="{StaticResource TextMutedBrush}"
-                                  VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="1"
-                                   Text="{Binding ImageDisplayText}"
-                                   Foreground="{StaticResource TextMutedBrush}"
-                                   FontSize="13" FontStyle="Italic"
-                                   TextWrapping="Wrap"
-                                   VerticalAlignment="Center" />
-                    </Grid>
+                        CornerRadius="8" Margin="0,2" ClipToBounds="True">
+                    <StackPanel Spacing="4">
+
+                        <!-- State 1: MIP-04 Disabled -->
+                        <Border IsVisible="{Binding ShowMediaDisabled}"
+                                Background="{StaticResource SurfaceSecondaryBrush}"
+                                CornerRadius="8" Padding="12,8">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="Media loading disabled"
+                                           Foreground="{StaticResource TextMutedBrush}"
+                                           FontSize="13" FontStyle="Italic" />
+                                <TextBlock Text="Enable in Settings > Privacy"
+                                           Foreground="{StaticResource TextMutedBrush}"
+                                           FontSize="11" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- State 2: Tap to Load -->
+                        <Border IsVisible="{Binding ShowTapToLoad}"
+                                Background="{StaticResource SurfaceSecondaryBrush}"
+                                CornerRadius="8" Padding="12,8">
+                            <StackPanel Spacing="6">
+                                <Grid ColumnDefinitions="Auto,*">
+                                    <PathIcon Grid.Column="0"
+                                              Data="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"
+                                              Width="18" Height="18" Margin="0,0,8,0"
+                                              Foreground="{StaticResource TextMutedBrush}"
+                                              VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding ImageDisplayText}"
+                                               Foreground="{StaticResource TextMutedBrush}"
+                                               FontSize="13" FontStyle="Italic"
+                                               TextWrapping="Wrap"
+                                               VerticalAlignment="Center" />
+                                </Grid>
+                                <Button Classes="secondary" Content="Tap to load"
+                                        Command="{Binding LoadMediaCommand}"
+                                        HorizontalAlignment="Left"
+                                        Padding="12,4" FontSize="12" />
+                                <TextBlock Text="(your IP will be visible to the host)"
+                                           Foreground="{StaticResource TextMutedBrush}"
+                                           FontSize="10" />
+                                <!-- Unknown server warning -->
+                                <StackPanel Orientation="Horizontal" Spacing="4"
+                                            IsVisible="{Binding IsUnknownServer}">
+                                    <PathIcon Data="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"
+                                              Width="14" Height="14"
+                                              Foreground="{StaticResource StatusWarningBrush}" />
+                                    <TextBlock Text="{Binding ServerHostname, StringFormat='Unknown server: {0}'}"
+                                               Foreground="{StaticResource StatusWarningBrush}"
+                                               FontSize="11" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- State 3: Loading -->
+                        <Border IsVisible="{Binding IsLoadingMedia}"
+                                Background="{StaticResource SurfaceSecondaryBrush}"
+                                CornerRadius="8" Padding="12,8">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="Loading..." Classes="muted" FontSize="13" />
+                                <TextBlock Text="{Binding MediaSizeDisplay}"
+                                           Foreground="{StaticResource TextMutedBrush}"
+                                           FontSize="12" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- State 4: Loaded (show image) -->
+                        <Image IsVisible="{Binding IsMediaLoaded}"
+                               Source="{Binding DecryptedMediaBytes, Converter={StaticResource BytesToBitmap}}"
+                               MaxWidth="400" MaxHeight="400"
+                               Stretch="Uniform"
+                               HorizontalAlignment="Right" />
+
+                        <!-- State 5: Error -->
+                        <Border IsVisible="{Binding MediaError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                Background="{StaticResource SurfaceSecondaryBrush}"
+                                CornerRadius="8" Padding="12,8">
+                            <TextBlock Text="{Binding MediaError}"
+                                       Foreground="{StaticResource StatusErrorBrush}"
+                                       FontSize="12" TextWrapping="Wrap" />
+                        </Border>
+
+                    </StackPanel>
                 </Border>
 
                 <!-- Text Content (for non-image messages) -->

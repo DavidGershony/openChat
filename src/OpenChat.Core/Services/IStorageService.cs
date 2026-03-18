@@ -57,4 +57,8 @@ public interface IStorageService
 
     // Welcome event management
     Task UndismissWelcomeEventAsync(string nostrEventId);
+
+    // App settings (key-value store)
+    Task<string?> GetSettingAsync(string key);
+    Task SaveSettingAsync(string key, string value);
 }
