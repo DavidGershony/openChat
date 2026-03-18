@@ -284,7 +284,7 @@ public class MainViewModel : ViewModelBase
         }
 
         // If using external signer (no private key), wire it into NostrService
-        if (string.IsNullOrEmpty(CurrentUser.PrivateKeyHex))
+        if (string.IsNullOrEmpty(CurrentUser.PrivateKeyHex) && LoginViewModel.ExternalSigner?.IsConnected == true)
         {
             _nostrService.SetExternalSigner(LoginViewModel.ExternalSigner);
         }
