@@ -1,158 +1,115 @@
 # OpenChat
 
-A desktop messenger built on [Nostr](https://nostr.com/) with end-to-end encrypted group chat powered by the [Messaging Layer Security (MLS)](https://messaginglayersecurity.rocks/) protocol via [Marmot](https://github.com/marmot-protocol/mdk).
+A decentralized encrypted messenger built on [Nostr](https://nostr.com/) + [MLS](https://messaginglayersecurity.rocks/) via [Marmot](https://github.com/marmot-protocol/mdk). Talk to your friends without a server in the middle.
 
 ![.NET 9](https://img.shields.io/badge/.NET-9.0-512BD4)
 ![Avalonia UI](https://img.shields.io/badge/Avalonia-11.2-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-## What is this?
+> **Fair warning:** This entire app was vibe coded with AI. Every feature, every bug fix, every test. The humans mostly pointed and said "make it work" and "that's broken, fix it." It works surprisingly well, but you've been warned.
 
-OpenChat is an open-source, decentralized chat application that combines:
+## What does it do?
 
-- **Nostr** for relay-based message transport (no central server)
-- **MLS (RFC 9420)** for forward-secret, post-compromise-secure group encryption
-- **Avalonia UI** for a cross-platform native desktop experience
+End-to-end encrypted group chat over Nostr. Your messages are encrypted before they leave your machine. Relays just pass around blobs they can't read. No accounts, no phone numbers, no email signups. Just keys.
 
-Messages are encrypted client-side before being published to Nostr relays. Only group members holding the correct MLS keys can decrypt them.
+- **Group chats** with MLS encryption (forward secrecy, the works)
+- **Direct messages** with NIP-44 encryption
+- **Login with Amber** (NIP-46) or a local nsec &mdash; your choice
+- **Desktop** (Windows/Linux/macOS) and **Android**
+- **Talk to the web app** &mdash; interoperable with [Marmot web client](https://github.com/marmot-protocol/marmot-ts)
 
-## Features
-
-- **Direct Messages** &mdash; NIP-44 encrypted 1-on-1 conversations
-- **Group Chats** &mdash; MLS-encrypted group messaging via Marmot (kind 443/444/445 events)
-- **Multiple Login Methods** &mdash; Import an existing `nsec` key, generate a new keypair, or connect a remote signer via NIP-46 bunker URL (e.g. [Amber](https://github.com/greenart7c3/Amber))
-- **Profile Metadata** &mdash; Fetches display names, avatars, and bios from Nostr (kind 0)
-- **Multi-Relay Support** &mdash; Connect to multiple relays simultaneously with per-relay status indicators and individual reconnect controls
-- **Cross-Platform** &mdash; Runs on Windows, macOS, and Linux via Avalonia
-
-## Project Structure
-
-```
-OpenChat.sln
-src/
-  OpenChat.Core/          Core library: models, services, Nostr protocol, MLS integration
-  OpenChat.UI/            Avalonia views and view models (MVVM with ReactiveUI)
-  OpenChat.Desktop/       Desktop app entry point
-  OpenChat.Native/        Rust native library (MLS via Marmot MDK)
-tests/
-  OpenChat.Core.Tests/    Unit and integration tests for core services
-  OpenChat.UI.Tests/      View model and UI tests
-```
-
-## Prerequisites
-
-- [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
-- [Rust toolchain](https://rustup.rs/) (only if building the native MLS library)
-
-## Getting Started
-
-### 1. Clone the repo
+## Quick start
 
 ```bash
 git clone https://github.com/DavidGershony/openChat.git
 cd openChat
-```
-
-### 2. Build the native MLS library (optional)
-
-The native library provides real MLS encryption via the Marmot protocol. Without it, the app falls back to a mock MLS service.
-
-```bash
-cd src/OpenChat.Native
-cargo build --release
-```
-
-Copy the resulting library to the Desktop project:
-
-```bash
-# Windows
-cp target/release/openchat_native.dll ../OpenChat.Desktop/
-
-# macOS
-cp target/release/libopenchat_native.dylib ../OpenChat.Desktop/
-
-# Linux
-cp target/release/libopenchat_native.so ../OpenChat.Desktop/
-```
-
-### 3. Build and run
-
-```bash
-dotnet build
 dotnet run --project src/OpenChat.Desktop
 ```
 
-### 4. Log in
+That's it. Log in with an nsec, generate a fresh key, or scan a QR code with Amber.
 
-On first launch you'll see the login screen with three options:
+## Features
 
-| Method | Description |
+| Feature | Status |
 |---|---|
-| **Private Key** | Paste an existing `nsec` or hex private key |
-| **Generate New** | Creates a fresh Nostr keypair |
-| **Bunker (NIP-46)** | Connect a remote signer like Amber by pasting a `bunker://` URL |
+| MLS encrypted group chat (kind 443/444/445) | Working |
+| NIP-59 gift-wrapped invites | Working |
+| NIP-46 remote signer (Amber) | Working |
+| Auto-reconnect signer on restart | Working |
+| KeyPackage auto-lookup on invite | Working |
+| Load older messages from relays | Working |
+| Image message detection (MIP-04) | Placeholder |
+| NIP-65 relay discovery | Working |
+| Profile metadata publish (kind 0) | Working |
+| Secure key storage (DPAPI/Android Keystore) | Working |
+| Cross-MDK interop (Rust + C# MLS) | Working |
+| Direct messages (NIP-44) | Basic |
 
-After login, OpenChat connects to default relays (`relay.damus.io`, `nos.lol`, `relay.nostr.band`), publishes your MLS KeyPackage, and loads your conversations.
+## How it works
 
-## How It Works
+You publish encrypted blobs to Nostr relays. Other group members decrypt them with MLS keys. Nobody else can read them &mdash; not the relay operators, not us, not even the AI that wrote this code.
 
-### Nostr Events
-
-| Kind | Purpose |
+| Nostr Event Kind | What it does |
 |---|---|
-| **0** | User metadata (profile) |
-| **443** | MLS KeyPackage &mdash; published so others can invite you to groups |
-| **444** | MLS Welcome &mdash; sent to invite a user into an encrypted group |
-| **445** | MLS Group Message &mdash; encrypted application messages and commits |
+| **0** | Your profile (name, avatar) |
+| **443** | MLS KeyPackage &mdash; so people can invite you |
+| **444** | MLS Welcome &mdash; the invite itself (NIP-59 gift wrapped) |
+| **445** | Group messages &mdash; MIP-03 encrypted |
+| **1059** | Gift wrap envelope (NIP-59) |
+| **10002** | Your relay list (NIP-65) |
 
-### MLS Group Lifecycle
+## Project layout
 
-1. **Create group** &mdash; The creator initializes an MLS group and generates a Welcome message
-2. **Invite members** &mdash; The Welcome (kind 444) is published to Nostr, targeted at the invitee's public key
-3. **Join group** &mdash; The invitee processes the Welcome to obtain the group's encryption keys
-4. **Send messages** &mdash; Messages are MLS-encrypted and published as kind 445 events tagged with the group ID
-5. **Forward secrecy** &mdash; MLS ratchets the group key with every commit, providing forward secrecy and post-compromise security
-
-### Relay Communication
-
-OpenChat uses raw WebSocket connections to Nostr relays (NIP-01). It handles:
-- `REQ` subscriptions with filters (by kind, author, tags)
-- `EVENT` publishing with proper event ID computation and Schnorr signing
-- `OK` / `NOTICE` / `EOSE` relay responses
-- Automatic reconnection per relay
-
-## Running Tests
-
-```bash
-dotnet test
+```
+src/
+  OpenChat.Core/          Models, services, Nostr protocol, MLS integration
+  OpenChat.Presentation/  ViewModels (ReactiveUI + Fody)
+  OpenChat.UI/            Avalonia views and platform services
+  OpenChat.Desktop/       Desktop entry point
+  OpenChat.Android/       Android entry point
+  OpenChat.Native/        Rust native MLS library (Marmot MDK FFI)
+tests/
+  OpenChat.Core.Tests/    Unit, integration, and real-relay tests
+  OpenChat.UI.Tests/      ViewModel tests
 ```
 
-Some integration tests require a running Nostr relay (see `docker-compose.test.yml`):
+## Running tests
 
 ```bash
+# Unit tests (fast, no relay needed)
+dotnet test --filter "Category!=Relay&Category!=Integration"
+
+# Real relay integration tests (needs docker)
+docker compose -f docker-compose.test.yml up -d
+dotnet test --filter "Category=Integration"
+
+# Everything
 docker compose -f docker-compose.test.yml up -d
 dotnet test
 ```
 
-## Configuration
+## Building the native MLS library (optional)
 
-- **Relays** &mdash; Add or remove relays from the Settings page
-- **Profile** &mdash; Edit your display name, username, about, and avatar URL in Settings
-- **Logs** &mdash; View application logs from Settings > View Logs
+The C# MLS backend works out of the box. The Rust native backend is optional:
 
-Data is stored locally via LiteDB in your OS application data folder.
+```bash
+cd src/OpenChat.Native
+cargo build --release
+cp target/release/openchat_native.dll ../OpenChat.Desktop/  # Windows
+```
 
-## Tech Stack
+## Tech stack
 
-| Layer | Technology |
+| What | How |
 |---|---|
-| UI Framework | [Avalonia UI 11](https://avaloniaui.net/) |
-| MVVM | [ReactiveUI](https://www.reactiveui.net/) + [Fody](https://github.com/Fody/Fody) |
-| Nostr | Hand-rolled WebSocket client (NIP-01, NIP-04, NIP-44, NIP-46) |
-| MLS Encryption | [Marmot MDK](https://github.com/marmot-protocol/mdk) via Rust FFI |
-| Local Storage | [LiteDB](https://www.litedb.org/) |
-| Logging | [Serilog](https://serilog.net/) |
+| UI | [Avalonia 11](https://avaloniaui.net/) |
+| MVVM | [ReactiveUI](https://www.reactiveui.net/) + Fody |
+| Nostr | Raw WebSocket client (NIP-01, NIP-44, NIP-46, NIP-59, NIP-65) |
+| MLS | [Marmot MDK](https://github.com/marmot-protocol/mdk) (Rust FFI) + [marmot-cs](https://github.com/ArcaneLibs/marmot-cs) (pure C#) |
+| Storage | SQLite with DPAPI/Android Keystore encryption for keys |
+| Logging | Serilog (file-based, new file per session) |
 | Runtime | .NET 9 |
+| Vibes | Claude |
 
 ## License
 
