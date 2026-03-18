@@ -46,7 +46,19 @@ Currently OpenChat shows "[Encrypted image: filename]" placeholders. This task a
 - SHA-256 integrity check after decryption (MIP-04 spec requirement)
 - If either check fails, show error, don't render
 
-## User Flow
+## MIP-04 Toggle (Settings)
+
+- Toggle switch in Settings: **"Enable media loading (MIP-04)"** — default OFF
+- When OFF: image messages show "[Media disabled — enable in Settings]" in the chat bubble
+- When ON: image messages show the tap-to-load flow described below
+- Warning text next to the toggle in Settings:
+
+> **Risk: Medium** — Enabling media loading allows the app to download files from URLs embedded in messages. This exposes your IP address to the hosting server and increases attack surface through network requests and image decoding. Only enable if you trust your group members.
+
+- Store the setting in the user's local preferences (not synced to relays)
+- Property: `bool IsMip04Enabled` on SettingsViewModel, persisted via StorageService
+
+## User Flow (when MIP-04 enabled)
 
 1. Image message arrives → show placeholder: "[Encrypted image: photo.jpg]" (current behavior)
 2. Below placeholder, show: **"Tap to load (your IP will be visible to the host)"**
@@ -59,6 +71,14 @@ Currently OpenChat shows "[Encrypted image: filename]" placeholders. This task a
 9. Cache decrypted image in memory (don't re-download on scroll)
 
 ## Technical Implementation
+
+### Step 0: Add MIP-04 toggle to Settings
+- [ ] Add `IsMip04Enabled` boolean property to `SettingsViewModel` (default: false)
+- [ ] Persist in a `Settings` table in SQLite (or a simple key-value store)
+- [ ] Add toggle switch in `SettingsView.axaml` with risk warning text
+- [ ] Expose the setting to `MessageViewModel` so it can decide between "Media disabled" and "Tap to load"
+- [ ] When disabled: `MessageBubble` shows "[Media disabled — enable in Settings]" for image messages
+- [ ] When enabled: show the full tap-to-load flow
 
 ### Step 1: Add MIP-04 crypto utility
 - [ ] Create `src/OpenChat.Core/Crypto/Mip04MediaCrypto.cs`
