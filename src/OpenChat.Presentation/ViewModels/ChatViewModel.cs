@@ -420,6 +420,7 @@ public class ChatViewModel : ViewModelBase
         if (string.IsNullOrWhiteSpace(InvitePublicKey) || _currentChat == null)
         {
             InviteError = "Please enter a valid public key";
+            _logger.LogWarning("SendInvite: empty public key or no current chat");
             return;
         }
 
@@ -438,6 +439,7 @@ public class ChatViewModel : ViewModelBase
                 if (string.IsNullOrEmpty(pubKeyHex))
                 {
                     InviteError = "Invalid npub format. Please check the public key.";
+                    _logger.LogWarning("SendInvite: failed to convert npub to hex");
                     return;
                 }
             }
@@ -448,6 +450,7 @@ public class ChatViewModel : ViewModelBase
             else
             {
                 InviteError = "Invalid public key format. Use npub1... or 64-char hex.";
+                _logger.LogWarning("SendInvite: unrecognized key format (not npub, not 64-char hex)");
                 return;
             }
 
@@ -457,6 +460,7 @@ public class ChatViewModel : ViewModelBase
                 pk.Equals(pubKey, StringComparison.OrdinalIgnoreCase)))
             {
                 InviteError = "This user is already a member of the group";
+                _logger.LogWarning("SendInvite: user {PubKey} already a member", pubKeyHex[..Math.Min(16, pubKeyHex.Length)]);
                 return;
             }
 
@@ -742,6 +746,7 @@ public class MessageViewModel : ViewModelBase
         if (!IsImage || string.IsNullOrEmpty(Message.ImageUrl))
         {
             MediaError = "No image URL available.";
+            _logger.LogWarning("LoadMedia: no image URL for message {Id}", Id);
             return;
         }
 

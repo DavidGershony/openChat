@@ -223,6 +223,7 @@ public class ChatListViewModel : ViewModelBase
                 {
                     IsNpubInvalid = true;
                     NewChatError = "You can't invite yourself";
+                    _logger.LogWarning("Auto-lookup: user attempted to invite themselves");
                     return;
                 }
 
@@ -496,12 +497,14 @@ public class ChatListViewModel : ViewModelBase
         if (string.IsNullOrWhiteSpace(NewChatPublicKey))
         {
             NewChatError = "Please enter a public key (npub or hex)";
+            _logger.LogWarning("CreateNewChat: empty public key");
             return;
         }
 
         if (_mlsService == null || _nostrService == null)
         {
             NewChatError = "MLS or Nostr service not available";
+            _logger.LogWarning("CreateNewChat: MLS or Nostr service is null");
             return;
         }
 
@@ -522,9 +525,10 @@ public class ChatListViewModel : ViewModelBase
                         publicKeyHex = Convert.ToHexString(data).ToLowerInvariant();
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
                     NewChatError = "Invalid npub format";
+                    _logger.LogWarning(ex, "CreateNewChat: failed to decode npub");
                     return;
                 }
             }
@@ -553,6 +557,7 @@ public class ChatListViewModel : ViewModelBase
             if (currentUser == null || string.IsNullOrEmpty(currentUser.PublicKeyHex))
             {
                 NewChatError = "Not logged in";
+                _logger.LogWarning("CreateNewChat: no current user");
                 return;
             }
 
@@ -561,6 +566,7 @@ public class ChatListViewModel : ViewModelBase
             if (keyPackage == null)
             {
                 NewChatError = "No KeyPackage selected — look up the user's KeyPackages first";
+                _logger.LogWarning("CreateNewChat: no KeyPackage selected");
                 return;
             }
             _logger.LogDebug("Using pre-selected KeyPackage {EventId} for {PubKey}",
@@ -645,6 +651,7 @@ public class ChatListViewModel : ViewModelBase
         if (string.IsNullOrWhiteSpace(NewGroupName))
         {
             NewGroupError = "Please enter a group name";
+            _logger.LogWarning("CreateNewGroup: empty group name");
             return;
         }
 
@@ -855,6 +862,7 @@ public class ChatListViewModel : ViewModelBase
         if (string.IsNullOrWhiteSpace(JoinGroupId))
         {
             JoinGroupError = "Please enter a group ID or invite link";
+            _logger.LogWarning("JoinGroup: empty group ID");
             return;
         }
 
