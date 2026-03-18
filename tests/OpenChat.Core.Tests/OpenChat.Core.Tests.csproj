@@ -26,6 +26,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\OpenChat.Core\OpenChat.Core.csproj" />
+    <ProjectReference Include="..\..\src\OpenChat.UI\OpenChat.UI.csproj" />
   </ItemGroup>
 
   <!-- Copy native DLL to test output so integration tests exercise the real native lib -->
