@@ -273,20 +273,23 @@
                     <!-- Public Key Input -->
                     <StackPanel Spacing="6">
                         <TextBlock Text="Public Key (npub or hex)" Classes="secondary" FontSize="13" />
-                        <Grid ColumnDefinitions="*,Auto">
-                            <TextBox Grid.Column="0" Text="{Binding NewChatPublicKey}"
-                                     Watermark="npub1... or hex public key"
-                                     AcceptsReturn="False" />
-                            <Button Grid.Column="1" Classes="secondary"
-                                    Content="Lookup"
-                                    Command="{Binding LookupKeyPackageCommand}"
-                                    IsEnabled="{Binding !IsLookingUpKeyPackage}"
-                                    Margin="8,0,0,0"
-                                    ToolTip.Tip="Look up user's KeyPackage on relays" />
-                        </Grid>
+                        <TextBox Text="{Binding NewChatPublicKey}"
+                                 Watermark="npub1... or hex public key"
+                                 AcceptsReturn="False" />
+                        <TextBlock Text="KeyPackages are looked up automatically"
+                                   Classes="muted" FontSize="11" />
                     </StackPanel>
 
-                    <!-- KeyPackage Status -->
+                    <!-- Loading Indicator -->
+                    <StackPanel Orientation="Horizontal" Spacing="8"
+                                IsVisible="{Binding IsLookingUpKeyPackage}">
+                        <ProgressBar IsIndeterminate="True" Width="80" Height="3"
+                                     Foreground="{StaticResource NostrPurpleBrush}" />
+                        <TextBlock Text="Looking up KeyPackages..."
+                                   Classes="muted" FontSize="12" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <!-- KeyPackage Results -->
                     <Border Background="{StaticResource SurfaceSecondaryBrush}"
                             CornerRadius="8" Padding="12"
                             IsVisible="{Binding KeyPackageStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
@@ -302,17 +305,40 @@
                                 <TextBlock Text="{Binding KeyPackageStatus}"
                                            FontSize="13" VerticalAlignment="Center" />
                             </StackPanel>
-                            <!-- KeyPackage Details -->
-                            <StackPanel IsVisible="{Binding HasKeyPackage}" Spacing="2">
-                                <TextBlock Text="{Binding KeyPackageCreatedAt, StringFormat='Created: {0:g}'}"
-                                           Classes="muted" FontSize="11" />
-                                <TextBlock Text="{Binding KeyPackageRelays, StringFormat='Relays: {0}'}"
-                                           Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
-                            </StackPanel>
-                            <!-- Loading Indicator -->
-                            <TextBlock Text="Looking up..."
-                                       Classes="muted" FontSize="11"
-                                       IsVisible="{Binding IsLookingUpKeyPackage}" />
+
+                            <!-- KeyPackage List -->
+                            <ListBox ItemsSource="{Binding FoundKeyPackages}"
+                                     SelectedItem="{Binding SelectedKeyPackage}"
+                                     IsVisible="{Binding HasKeyPackage}"
+                                     MaxHeight="120"
+                                     Background="Transparent"
+                                     Padding="0">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:KeyPackageItemViewModel">
+                                        <Grid ColumnDefinitions="*,Auto" Margin="0,2">
+                                            <StackPanel Grid.Column="0" Spacing="1">
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <TextBlock Text="{Binding CreatedAtDisplay}"
+                                                               FontSize="12" FontWeight="SemiBold" />
+                                                    <Border Background="{StaticResource NostrPurpleBrush}"
+                                                            CornerRadius="4" Padding="4,1">
+                                                        <TextBlock Text="{Binding CiphersuiteDisplay}"
+                                                                   FontSize="10" Foreground="White" />
+                                                    </Border>
+                                                </StackPanel>
+                                                <TextBlock Text="{Binding KeyPackageRef}"
+                                                           Classes="muted" FontSize="10"
+                                                           FontFamily="Consolas" />
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="1" Text="{Binding RelaySource}"
+                                                       Classes="muted" FontSize="10"
+                                                       VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       MaxWidth="100" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
                         </StackPanel>
                     </Border>
 
@@ -392,16 +418,18 @@
                                  AcceptsReturn="True"
                                  Height="60"
                                  TextWrapping="Wrap" />
-                        <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
                             <TextBlock Text="You can also invite members later"
                                        Classes="muted" FontSize="11" VerticalAlignment="Center" />
-                            <Button Grid.Column="1" Classes="secondary"
-                                    Content="Check KeyPackages"
-                                    Command="{Binding LookupGroupKeyPackagesCommand}"
-                                    IsEnabled="{Binding !IsLookingUpGroupKeyPackages}"
-                                    Padding="8,4"
-                                    FontSize="11" />
-                        </Grid>
+                            <StackPanel Orientation="Horizontal" Spacing="4"
+                                        IsVisible="{Binding IsLookingUpGroupKeyPackages}">
+                                <ProgressBar IsIndeterminate="True" Width="60" Height="3"
+                                             Foreground="{StaticResource NostrPurpleBrush}"
+                                             VerticalAlignment="Center" />
+                                <TextBlock Text="Checking..."
+                                           Classes="muted" FontSize="11" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </StackPanel>
                     </StackPanel>
 
                     <!-- Group KeyPackage Status -->
@@ -413,9 +441,6 @@
                             <TextBlock Text="{Binding GroupKeyPackageStatus}"
                                        FontSize="11" FontFamily="Consolas"
                                        TextWrapping="Wrap" />
-                            <TextBlock Text="Checking..."
-                                       Classes="muted" FontSize="11"
-                                       IsVisible="{Binding IsLookingUpGroupKeyPackages}" />
                         </StackPanel>
                     </Border>
 

@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Reactive;
+using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using Microsoft.Extensions.Logging;
 using ReactiveUI;
@@ -40,6 +41,10 @@ public class ChatListViewModel : ViewModelBase
     [Reactive] public bool HasKeyPackage { get; set; }
     [Reactive] public DateTime? KeyPackageCreatedAt { get; set; }
     [Reactive] public string? KeyPackageRelays { get; set; }
+    public ObservableCollection<KeyPackageItemViewModel> FoundKeyPackages { get; } = new();
+    [Reactive] public KeyPackageItemViewModel? SelectedKeyPackage { get; set; }
+    private IDisposable? _autoLookupSubscription;
+    private IDisposable? _autoGroupLookupSubscription;
 
     // New Group Dialog
     [Reactive] public bool ShowNewGroupDialog { get; set; }
@@ -104,6 +109,8 @@ public class ChatListViewModel : ViewModelBase
             HasKeyPackage = false;
             KeyPackageCreatedAt = null;
             KeyPackageRelays = null;
+            FoundKeyPackages.Clear();
+            SelectedKeyPackage = null;
             ShowNewChatDialog = true;
         });
 
@@ -186,6 +193,19 @@ public class ChatListViewModel : ViewModelBase
 
         LookupKeyPackageCommand = ReactiveCommand.CreateFromTask(LookupKeyPackageAsync, canLookupKeyPackage);
 
+        // Auto-trigger KeyPackage lookup when a valid npub is entered (debounced)
+        _autoLookupSubscription = this.WhenAnyValue(x => x.NewChatPublicKey)
+            .Throttle(TimeSpan.FromMilliseconds(500))
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Where(key => !string.IsNullOrWhiteSpace(key) && key.Length >= 63 && key.StartsWith("npub1"))
+            .Subscribe(_ =>
+            {
+                if (!IsLookingUpKeyPackage)
+                {
+                    LookupKeyPackageCommand.Execute().Subscribe();
+                }
+            });
+
         var canLookupGroupKeyPackages = this.WhenAnyValue(
             x => x.NewGroupMembers,
             x => x.IsLookingUpGroupKeyPackages,
@@ -193,15 +213,27 @@ public class ChatListViewModel : ViewModelBase
 
         LookupGroupKeyPackagesCommand = ReactiveCommand.CreateFromTask(LookupGroupKeyPackagesAsync, canLookupGroupKeyPackages);
 
+        // Auto-trigger group KeyPackage lookup when members field changes (debounced)
+        _autoGroupLookupSubscription = this.WhenAnyValue(x => x.NewGroupMembers)
+            .Throttle(TimeSpan.FromMilliseconds(800))
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Where(members => !string.IsNullOrWhiteSpace(members) && members.Contains("npub1"))
+            .Subscribe(_ =>
+            {
+                if (!IsLookingUpGroupKeyPackages)
+                {
+                    LookupGroupKeyPackagesCommand.Execute().Subscribe();
+                }
+            });
+
         AcceptInviteCommand = ReactiveCommand.CreateFromTask<PendingInviteItemViewModel>(AcceptInviteAsync);
         DeclineInviteCommand = ReactiveCommand.CreateFromTask<PendingInviteItemViewModel>(DeclineInviteAsync);
 
         var canRescan = this.WhenAnyValue(x => x.IsRescanningInvites, scanning => !scanning);
         RescanInvitesCommand = ReactiveCommand.CreateFromTask(RescanInvitesAsync, canRescan);
 
-        var canCreateChat = this.WhenAnyValue(
-            x => x.NewChatPublicKey,
-            pubKey => !string.IsNullOrWhiteSpace(pubKey) && pubKey.Length >= 8);
+        var canCreateChat = this.WhenAnyValue(x => x.SelectedKeyPackage)
+            .Select(selected => selected != null);
 
         CreateChatCommand = ReactiveCommand.CreateFromTask(CreateNewChatAsync, canCreateChat);
 
@@ -284,10 +316,12 @@ public class ChatListViewModel : ViewModelBase
         _logger.LogInformation("Looking up KeyPackage for: {PubKey}", pubKey[..Math.Min(16, pubKey.Length)] + "...");
 
         IsLookingUpKeyPackage = true;
-        KeyPackageStatus = "Looking up KeyPackage...";
+        KeyPackageStatus = "Looking up KeyPackages...";
         HasKeyPackage = false;
         KeyPackageCreatedAt = null;
         KeyPackageRelays = null;
+        FoundKeyPackages.Clear();
+        SelectedKeyPackage = null;
 
         try
         {
@@ -311,12 +345,19 @@ public class ChatListViewModel : ViewModelBase
             }
 
             var keyPackages = await _nostrService.FetchKeyPackagesAsync(publicKeyHex);
-            var keyPackageList = keyPackages.ToList();
+            var keyPackageList = keyPackages.OrderByDescending(k => k.CreatedAt).ToList();
 
             if (keyPackageList.Count > 0)
             {
-                var latestPackage = keyPackageList.OrderByDescending(k => k.CreatedAt).First();
                 HasKeyPackage = true;
+                foreach (var kp in keyPackageList)
+                {
+                    FoundKeyPackages.Add(new KeyPackageItemViewModel(kp));
+                }
+                // Auto-select the most recent one
+                SelectedKeyPackage = FoundKeyPackages.First();
+
+                var latestPackage = keyPackageList.First();
                 KeyPackageCreatedAt = latestPackage.CreatedAt;
                 KeyPackageRelays = latestPackage.RelayUrls.Count > 0
                     ? string.Join(", ", latestPackage.RelayUrls.Take(3))
@@ -327,7 +368,7 @@ public class ChatListViewModel : ViewModelBase
             else
             {
                 HasKeyPackage = false;
-                KeyPackageStatus = "No KeyPackage found - user cannot join MLS groups";
+                KeyPackageStatus = "No KeyPackages found - user cannot join MLS groups";
                 _logger.LogWarning("No KeyPackage found for {PubKey}", pubKey[..Math.Min(16, pubKey.Length)]);
             }
         }
@@ -482,17 +523,16 @@ public class ChatListViewModel : ViewModelBase
                 return;
             }
 
-            // Fetch recipient's KeyPackage BEFORE creating the MLS group
-            // to avoid orphaned groups when no KeyPackage is found
-            _logger.LogDebug("Fetching KeyPackage for {PubKey}", publicKeyHex[..Math.Min(16, publicKeyHex.Length)]);
-            var keyPackages = await _nostrService.FetchKeyPackagesAsync(publicKeyHex);
-            var keyPackage = keyPackages.FirstOrDefault();
-
+            // Use the pre-selected KeyPackage from auto-lookup
+            var keyPackage = SelectedKeyPackage?.KeyPackage;
             if (keyPackage == null)
             {
-                NewChatError = "No KeyPackage found for this user — they cannot receive invites";
+                NewChatError = "No KeyPackage selected — look up the user's KeyPackages first";
                 return;
             }
+            _logger.LogDebug("Using pre-selected KeyPackage {EventId} for {PubKey}",
+                keyPackage.NostrEventId?[..Math.Min(16, keyPackage.NostrEventId?.Length ?? 0)] ?? "unknown",
+                publicKeyHex[..Math.Min(16, publicKeyHex.Length)]);
 
             // Create MLS group (only after we've confirmed a KeyPackage exists)
             _logger.LogDebug("Creating MLS group for chat...");
@@ -1181,5 +1221,44 @@ public class PendingInviteItemViewModel : ViewModelBase
             : elapsed.TotalMinutes < 60 ? $"{(int)elapsed.TotalMinutes}m ago"
             : elapsed.TotalHours < 24 ? $"{(int)elapsed.TotalHours}h ago"
             : $"{(int)elapsed.TotalDays}d ago";
+    }
+}
+
+public class KeyPackageItemViewModel : ViewModelBase
+{
+    /// <summary>The underlying KeyPackage model.</summary>
+    public KeyPackage KeyPackage { get; }
+
+    /// <summary>Relative time display, e.g. "2h ago".</summary>
+    public string CreatedAtDisplay { get; }
+
+    /// <summary>Ciphersuite as hex string, e.g. "0x0001".</summary>
+    public string CiphersuiteDisplay { get; }
+
+    /// <summary>First relay URL where this KeyPackage was found.</summary>
+    public string RelaySource { get; }
+
+    /// <summary>Truncated event ID for reference.</summary>
+    public string KeyPackageRef { get; }
+
+    public KeyPackageItemViewModel(KeyPackage keyPackage)
+    {
+        KeyPackage = keyPackage;
+
+        var elapsed = DateTime.UtcNow - keyPackage.CreatedAt;
+        CreatedAtDisplay = elapsed.TotalMinutes < 1 ? "just now"
+            : elapsed.TotalMinutes < 60 ? $"{(int)elapsed.TotalMinutes}m ago"
+            : elapsed.TotalHours < 24 ? $"{(int)elapsed.TotalHours}h ago"
+            : $"{(int)elapsed.TotalDays}d ago";
+
+        CiphersuiteDisplay = $"0x{keyPackage.CiphersuiteId:x4}";
+
+        RelaySource = keyPackage.RelayUrls.Count > 0
+            ? keyPackage.RelayUrls[0]
+            : "Unknown";
+
+        KeyPackageRef = !string.IsNullOrEmpty(keyPackage.NostrEventId) && keyPackage.NostrEventId.Length > 12
+            ? keyPackage.NostrEventId[..12] + "..."
+            : keyPackage.NostrEventId ?? "N/A";
     }
 }

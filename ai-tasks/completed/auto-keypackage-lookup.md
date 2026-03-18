@@ -22,17 +22,17 @@ Remove the manual "Look up KeyPackage" button and automatically fetch KeyPackage
 6. "Create" button enabled once a KeyPackage is selected
 
 ## Requirements
-- [ ] Remove "Look up KeyPackage" button from both New Chat and New Group dialogs
-- [ ] Auto-trigger lookup when npub input changes (debounce 500ms, validate npub format first)
-- [ ] Show loading spinner during lookup
-- [ ] Display found KeyPackages in a compact list:
+- [x] Remove "Look up KeyPackage" button from both New Chat and New Group dialogs
+- [x] Auto-trigger lookup when npub input changes (debounce 500ms, validate npub format first)
+- [x] Show loading spinner during lookup
+- [x] Display found KeyPackages in a compact list:
   - Each item: relay icon + created time + ciphersuite badge
   - Selected item highlighted
   - Most recent auto-selected
-- [ ] Show "No KeyPackages found" if none available
-- [ ] Show error if npub is invalid
-- [ ] For New Group: auto-lookup per member line (comma-separated npubs)
-- [ ] KeyPackage model may need `CreatedAt` and `RelaySource` fields if not already present
+- [x] Show "No KeyPackages found" if none available
+- [x] Show error if npub is invalid
+- [x] For New Group: auto-lookup per member line (comma-separated npubs)
+- [x] KeyPackage model may need `CreatedAt` and `RelaySource` fields if not already present (already had them)
 
 ## Technical Notes
 - Use `WhenAnyValue` + `Throttle(500ms)` on the npub input for auto-trigger
@@ -47,4 +47,4 @@ Remove the manual "Look up KeyPackage" button and automatically fetch KeyPackage
 - `src/OpenChat.Core/Services/NostrService.cs` (may need to return more metadata from fetch)
 
 ## Status
-- [ ] Not started
+- [x] Complete
