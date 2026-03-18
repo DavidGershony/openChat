@@ -705,13 +705,12 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
         Assert.Equal(nostrGroupIdHex, hTagValue!.ToLowerInvariant()); // MUST use NostrGroupId
         Assert.NotEqual(groupIdHex, hTagValue!.ToLowerInvariant());   // MUST NOT use MLS group ID
 
-        // ── Assert: content is base64 that decodes to binary (not another JSON event) ──
+        // ── Assert: content is base64 that decodes to non-empty ciphertext ──
         var contentBase64 = root.GetProperty("content").GetString()!;
         var contentBytes = Convert.FromBase64String(contentBase64);
-        // Should be ChaCha20-Poly1305 ciphertext — NOT valid JSON (which would indicate double-wrapping)
         Assert.True(contentBytes.Length > 0, "Content should be non-empty ciphertext");
-        Assert.NotEqual((byte)'{', contentBytes[0]); // Not JSON — it's encrypted binary
-        Assert.NotEqual((byte)'[', contentBytes[0]);
+        // Note: we don't check first-byte values — random ciphertext can start with any byte.
+        // The real validation is that User B can decrypt it below.
 
         // ── Assert: User B can decrypt the content ──
         // B decrypts the full event JSON (same as what would be received from relay)
