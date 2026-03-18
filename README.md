@@ -23,7 +23,7 @@ OpenChat is a Marmot client. It implements the [Marmot Improvement Proposals (MI
 | **MIP-03** | Group messages (kind 445) with ChaCha20-Poly1305 | Implemented |
 | **MIP-04** | Encrypted media attachments via Blossom | Detection only |
 
-OpenChat interoperates with the [Marmot web client](https://github.com/marmot-protocol/marmot-ts) &mdash; you can chat between the desktop app and the web app using different MLS implementations (Rust MDK and pure C#).
+Any Marmot-compatible client can join the same groups and exchange messages with OpenChat.
 
 ## What does it do?
 
@@ -34,6 +34,7 @@ Encrypted group chat over Nostr. Your messages are encrypted before they leave y
 - **Login with Amber** (NIP-46) or a local nsec &mdash; your choice
 - **Desktop** (Windows/Linux/macOS) and **Android**
 - **Two MLS backends** &mdash; Rust ([Marmot MDK](https://github.com/marmot-protocol/mdk)) or pure C# ([marmot-cs](https://github.com/DavidGershony/marmot-cs))
+- **Interoperable** &mdash; works with any Marmot protocol implementation
 
 ## Quick start
 
@@ -50,7 +51,7 @@ Log in with an nsec, generate a fresh key, or scan a QR code with Amber.
 | Feature | Status |
 |---|---|
 | Marmot MLS encrypted group chat (MIP-00 to MIP-03) | Working |
-| Cross-client interop (OpenChat + Marmot web) | Working |
+| Cross-client interop (any Marmot implementation) | Working |
 | NIP-59 gift-wrapped Welcome invites | Working |
 | NIP-46 remote signer (Amber) with auto-reconnect | Working |
 | KeyPackage auto-lookup on invite | Working |
