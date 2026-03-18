@@ -18,6 +18,7 @@ public class ChatListViewModel : ViewModelBase
     private readonly IStorageService _storageService;
     private readonly IMlsService? _mlsService;
     private readonly INostrService? _nostrService;
+    private string? _currentUserPubKeyHex;
     private IDisposable? _chatUpdateSubscription;
     private IDisposable? _inviteSubscription;
     private IDisposable? _decryptionErrorSubscription;
@@ -211,11 +212,23 @@ public class ChatListViewModel : ViewModelBase
                 if (!key.StartsWith("npub1") || key.Trim().Length != 63)
                 {
                     IsNpubInvalid = true;
+                    NewChatError = null;
+                    return;
+                }
+
+                // Check self-invite
+                var hex = _nostrService?.NpubToHex(key.Trim());
+                if (hex != null && _currentUserPubKeyHex != null &&
+                    hex.Equals(_currentUserPubKeyHex, StringComparison.OrdinalIgnoreCase))
+                {
+                    IsNpubInvalid = true;
+                    NewChatError = "You can't invite yourself";
                     return;
                 }
 
                 // Valid npub — trigger lookup immediately
                 IsNpubInvalid = false;
+                NewChatError = null;
                 if (!IsLookingUpKeyPackage)
                 {
                     LookupKeyPackageCommand.Execute().Subscribe();
@@ -292,6 +305,10 @@ public class ChatListViewModel : ViewModelBase
 
         try
         {
+            // Cache current user pubkey for self-invite validation
+            var currentUser = await _storageService.GetCurrentUserAsync();
+            _currentUserPubKeyHex = currentUser?.PublicKeyHex;
+
             var chats = await _messageService.GetChatsAsync();
 
             Chats.Clear();

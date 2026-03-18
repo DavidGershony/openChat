@@ -283,12 +283,12 @@
                     </StackPanel>
 
                     <!-- Loading Indicator -->
-                    <StackPanel Orientation="Horizontal" Spacing="8"
-                                IsVisible="{Binding IsLookingUpKeyPackage}">
-                        <ProgressBar IsIndeterminate="True" Width="80" Height="3"
-                                     Foreground="{StaticResource NostrPurpleBrush}" />
+                    <StackPanel Spacing="6" IsVisible="{Binding IsLookingUpKeyPackage}"
+                                HorizontalAlignment="Center">
                         <TextBlock Text="Looking up KeyPackages..."
-                                   Classes="muted" FontSize="12" VerticalAlignment="Center" />
+                                   Classes="muted" FontSize="12" HorizontalAlignment="Center" />
+                        <ProgressBar IsIndeterminate="True" Width="120" Height="3"
+                                     Foreground="{StaticResource NostrPurpleBrush}" />
                     </StackPanel>
 
                     <!-- KeyPackage Results -->
