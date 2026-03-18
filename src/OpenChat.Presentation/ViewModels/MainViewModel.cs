@@ -340,6 +340,23 @@ public class MainViewModel : ViewModelBase
                 {
                     _logger.LogWarning(ex, "Failed to enumerate chats for MLS state restoration");
                 }
+
+                // Wire up the Nostr event signer for kind 445 MLS group messages.
+                // Local key users sign with their private key; external signer users delegate to Amber/NIP-46.
+                if (!string.IsNullOrEmpty(CurrentUser.PrivateKeyHex))
+                {
+                    _mlsService.SetNostrEventSigner(new LocalNostrEventSigner(CurrentUser.PrivateKeyHex));
+                    _logger.LogInformation("MLS event signer set to LocalNostrEventSigner");
+                }
+                else if (LoginViewModel.ExternalSigner?.IsConnected == true)
+                {
+                    _mlsService.SetNostrEventSigner(new ExternalNostrEventSigner(LoginViewModel.ExternalSigner));
+                    _logger.LogInformation("MLS event signer set to ExternalNostrEventSigner");
+                }
+                else
+                {
+                    _logger.LogWarning("No Nostr event signer available — kind 445 signing will fall back to local key in ManagedMlsService");
+                }
             }
             catch (Exception ex)
             {

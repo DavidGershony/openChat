@@ -102,6 +102,12 @@ public interface IMlsService
     /// Used by the KeyPackage audit to determine if a relay-published KeyPackage can still be used.
     /// </summary>
     bool HasKeyMaterialForKeyPackage(byte[] keyPackageData);
+
+    /// <summary>
+    /// Set the Nostr event signer used for building signed kind 445 events.
+    /// When set, EncryptMessageAsync delegates signing to this signer instead of using the local private key.
+    /// </summary>
+    void SetNostrEventSigner(INostrEventSigner signer);
 }
 
 public class MlsGroupInfo

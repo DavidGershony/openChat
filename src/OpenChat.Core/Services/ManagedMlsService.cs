@@ -48,6 +48,9 @@ public class ManagedMlsService : IMlsService
     // All stored KeyPackages with their private keys (supports multiple)
     private readonly List<StoredKeyPackageMaterial> _storedKeyPackages = new();
 
+    // Optional external signer for kind 445 events (Amber / NIP-46)
+    private INostrEventSigner? _nostrEventSigner;
+
     // Prevents concurrent InitializeAsync calls from racing
     private readonly SemaphoreSlim _initLock = new(1, 1);
 
@@ -362,7 +365,7 @@ public class ManagedMlsService : IMlsService
             ? Convert.ToHexString(nostrGroupId).ToLowerInvariant()
             : groupIdHex;
         var tags = new List<List<string>> { new() { "h", hTagValue }, new() { "encoding", "base64" } };
-        var eventJson = BuildSignedNostrEvent(445, base64Content, tags);
+        var eventJson = await BuildSignedNostrEventAsync(445, base64Content, tags);
 
         _logger.LogDebug("EncryptMessage: produced {Len} bytes event JSON (managed)", eventJson.Length);
 
@@ -680,6 +683,12 @@ public class ManagedMlsService : IMlsService
             kp.KeyPackageBytes.AsSpan().SequenceEqual(keyPackageData.AsSpan()));
     }
 
+    public void SetNostrEventSigner(INostrEventSigner signer)
+    {
+        _nostrEventSigner = signer;
+        _logger.LogInformation("Nostr event signer set: {SignerType}", signer.GetType().Name);
+    }
+
     // ---- Persistence helpers ----
 
     private async Task RestoreGroupStatesAsync()
@@ -916,10 +925,21 @@ public class ManagedMlsService : IMlsService
 
     /// <summary>
     /// Builds a signed Nostr event JSON (as UTF-8 bytes) matching the Rust MDK output format.
-    /// NIP-01 event serialization, SHA-256 event ID, BIP-340 Schnorr signature.
+    /// Delegates to INostrEventSigner when available; otherwise falls back to local
+    /// NIP-01 serialization, SHA-256 event ID, BIP-340 Schnorr signature.
     /// </summary>
-    private byte[] BuildSignedNostrEvent(int kind, string content, List<List<string>> tags)
+    private async Task<byte[]> BuildSignedNostrEventAsync(int kind, string content, List<List<string>> tags)
     {
+        // Delegate to injected signer when available
+        if (_nostrEventSigner != null)
+        {
+            _logger.LogDebug("BuildSignedNostrEventAsync: delegating kind {Kind} signing to {SignerType}",
+                kind, _nostrEventSigner.GetType().Name);
+            return await _nostrEventSigner.SignEventAsync(kind, content, tags, _publicKeyHex!);
+        }
+
+        // Fallback: sign locally with private key (backward compatibility)
+        _logger.LogDebug("BuildSignedNostrEventAsync: no signer set, using local private key for kind {Kind}", kind);
         var privateKeyBytes = Convert.FromHexString(_privateKeyHex!);
         var createdAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 

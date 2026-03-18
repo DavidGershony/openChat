@@ -302,6 +302,12 @@ public class MlsService : IMlsService
         return false;
     }
 
+    public void SetNostrEventSigner(INostrEventSigner signer)
+    {
+        // Rust MDK signs events internally — external signer not applicable.
+        _logger.LogDebug("SetNostrEventSigner called on Rust MlsService (no-op, Rust backend signs internally)");
+    }
+
     private async Task PersistGroupStateAsync(byte[] groupId)
     {
         if (_storageService == null) return;
