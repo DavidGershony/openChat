@@ -99,8 +99,10 @@ public class NostrService : INostrService, IDisposable
 
             var ws = new ClientWebSocket();
             var cts = new CancellationTokenSource();
+            cts.CancelAfter(TimeSpan.FromSeconds(10));
 
             await ws.ConnectAsync(new Uri(relayUrl), cts.Token);
+            cts.CancelAfter(Timeout.InfiniteTimeSpan); // Connected — remove timeout for listener
 
             _relayConnections[relayUrl] = ws;
             _relayListeners[relayUrl] = cts;
@@ -1193,11 +1195,17 @@ public class NostrService : INostrService, IDisposable
     /// Only offsets into the past (0 to -2 days) to avoid relay rejection
     /// for future timestamps ("created_at too late").
     /// </summary>
+    /// <summary>
+    /// Randomizes a timestamp for NIP-59 unlinkability. Uses two independent uniform draws
+    /// summed together (triangular distribution) over a 5-day window to make correlation harder
+    /// than a single uniform draw.
+    /// </summary>
     private static long RandomizeTimestamp(long baseTimestamp)
     {
-        var twoDaysInSeconds = 2 * 24 * 60 * 60;
-        var offset = RandomNumberGenerator.GetInt32(-twoDaysInSeconds, 0);
-        return baseTimestamp + offset;
+        var halfWindow = (int)(2.5 * 24 * 60 * 60); // 2.5 days in seconds
+        var offset1 = RandomNumberGenerator.GetInt32(-halfWindow, 0);
+        var offset2 = RandomNumberGenerator.GetInt32(-halfWindow, 0);
+        return baseTimestamp + offset1 + offset2;
     }
 
     public async Task<string> PublishCommitAsync(byte[] commitData, string groupId, string? privateKeyHex)

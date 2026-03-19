@@ -18,4 +18,4 @@
 - **Fix:** Use non-uniform distribution or wider window
 
 ## Status
-- [ ] Not started
+- [x] All 3 issues fixed (#16 was already covered by event signature verification)
