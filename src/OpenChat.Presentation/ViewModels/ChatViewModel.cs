@@ -982,6 +982,14 @@ public class MessageViewModel : ViewModelBase
         }
 
         LoadMediaCommand = ReactiveCommand.CreateFromTask(LoadMediaAsync);
+
+        // Notify computed properties when their dependencies change
+        this.WhenAnyValue(x => x.IsMip04Enabled, x => x.IsMediaLoaded, x => x.IsLoadingMedia, x => x.MediaError)
+            .Subscribe(_ =>
+            {
+                this.RaisePropertyChanged(nameof(ShowTapToLoad));
+                this.RaisePropertyChanged(nameof(ShowMediaDisabled));
+            });
     }
 
     private async void LoadMip04Setting()
