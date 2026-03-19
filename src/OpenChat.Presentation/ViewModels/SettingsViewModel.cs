@@ -46,6 +46,9 @@ public class SettingsViewModel : ViewModelBase
     [Reactive] public string? AuditStatus { get; set; }
     [Reactive] public KeyPackageAuditResult? LastAuditResult { get; set; }
 
+    // Relay list publish
+    [Reactive] public string? PublishRelayListStatus { get; set; }
+
     // Profile publish confirmation
     [Reactive] public bool ShowPublishConfirmation { get; set; }
     [Reactive] public bool IsPublishingProfile { get; set; }
@@ -306,13 +309,16 @@ public class SettingsViewModel : ViewModelBase
 
         try
         {
+            PublishRelayListStatus = "Publishing...";
             var relayPrefs = Relays.Select(r => new RelayPreference { Url = r.Url, Usage = r.Usage }).ToList();
             await _nostrService.PublishRelayListAsync(relayPrefs, PrivateKeyHex);
             await _storageService.SaveUserRelayListAsync(PublicKeyHex, relayPrefs);
+            PublishRelayListStatus = $"Published {relayPrefs.Count} relays";
             _logger.LogInformation("Published and saved NIP-65 relay list");
         }
         catch (Exception ex)
         {
+            PublishRelayListStatus = "Failed to publish relay list";
             _logger.LogError(ex, "Failed to publish relay list");
         }
     }

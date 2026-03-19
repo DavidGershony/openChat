@@ -6,6 +6,7 @@ using AndroidX.RecyclerView.Widget;
 using Google.Android.Material.AppBar;
 using Google.Android.Material.Button;
 using Google.Android.Material.Dialog;
+using Google.Android.Material.MaterialSwitch;
 using Google.Android.Material.TextField;
 using OpenChat.Android.Adapters;
 using OpenChat.Presentation.ViewModels;
@@ -50,10 +51,18 @@ public class SettingsFragment : Fragment
         var newRelayInput = view.FindViewById<TextInputEditText>(Resource.Id.new_relay_input)!;
         var addRelayButton = view.FindViewById<MaterialButton>(Resource.Id.add_relay_button)!;
 
+        // NIP-65 relay list views
+        var publishRelayListButton = view.FindViewById<MaterialButton>(Resource.Id.publish_relay_list_button)!;
+        var relayListStatus = view.FindViewById<TextView>(Resource.Id.relay_list_status)!;
+
         // Key Package views
         var publishButton = view.FindViewById<MaterialButton>(Resource.Id.publish_keypackage_button)!;
+        var auditButton = view.FindViewById<MaterialButton>(Resource.Id.audit_keypackage_button)!;
         var keypackageProgress = view.FindViewById<ProgressBar>(Resource.Id.keypackage_progress)!;
         var keypackageStatus = view.FindViewById<TextView>(Resource.Id.keypackage_status)!;
+
+        // Privacy views
+        var mip04Toggle = view.FindViewById<MaterialSwitch>(Resource.Id.mip04_toggle)!;
 
         // Developer views
         var viewLogsButton = view.FindViewById<MaterialButton>(Resource.Id.view_logs_button)!;
@@ -96,10 +105,29 @@ public class SettingsFragment : Fragment
             newRelayInput.Text = string.Empty;
         };
 
+        // NIP-65 Publish Relay List
+        publishRelayListButton.Click += (s, e) =>
+        {
+            ViewModel.PublishRelayListCommand.Execute().Subscribe().DisposeWith(_disposables);
+        };
+
         // Key Package
         publishButton.Click += (s, e) =>
         {
             ViewModel.PublishKeyPackageCommand.Execute().Subscribe().DisposeWith(_disposables);
+        };
+
+        // Audit Key Packages
+        auditButton.Click += (s, e) =>
+        {
+            ViewModel.AuditKeyPackagesCommand.Execute().Subscribe().DisposeWith(_disposables);
+        };
+
+        // MIP-04 Toggle
+        mip04Toggle.Checked = ViewModel.IsMip04Enabled;
+        mip04Toggle.CheckedChange += (s, e) =>
+        {
+            ViewModel.IsMip04Enabled = e.IsChecked;
         };
 
         // View Logs
@@ -151,6 +179,48 @@ public class SettingsFragment : Fragment
                 _relayAdapter.UpdateItems(ViewModel.Relays.ToList());
             });
         };
+
+        // NIP-65 relay list status
+        ViewModel.WhenAnyValue(x => x.PublishRelayListStatus)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(status =>
+            {
+                relayListStatus.Text = status ?? "";
+                relayListStatus.Visibility = string.IsNullOrEmpty(status) ? ViewStates.Gone : ViewStates.Visible;
+            })
+            .DisposeWith(_disposables);
+
+        // Audit status (reuses keypackage status display)
+        ViewModel.WhenAnyValue(x => x.AuditStatus)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(status =>
+            {
+                if (!string.IsNullOrEmpty(status))
+                {
+                    keypackageStatus.Text = status;
+                    keypackageStatus.Visibility = ViewStates.Visible;
+                }
+            })
+            .DisposeWith(_disposables);
+
+        ViewModel.WhenAnyValue(x => x.IsAuditingKeyPackages)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(auditing =>
+            {
+                auditButton.Enabled = !auditing;
+                auditButton.Text = auditing ? "Auditing..." : "Audit Key Packages";
+            })
+            .DisposeWith(_disposables);
+
+        // MIP-04 toggle sync
+        ViewModel.WhenAnyValue(x => x.IsMip04Enabled)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(enabled =>
+            {
+                if (mip04Toggle.Checked != enabled)
+                    mip04Toggle.Checked = enabled;
+            })
+            .DisposeWith(_disposables);
 
         // Key Package state
         ViewModel.WhenAnyValue(x => x.IsPublishingKeyPackage)
