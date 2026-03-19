@@ -290,9 +290,7 @@ public class MainViewModel : ViewModelBase
                 !string.IsNullOrEmpty(CurrentUser.SignerLocalPrivateKeyHex) &&
                 !string.IsNullOrEmpty(CurrentUser.SignerLocalPublicKeyHex))
             {
-                _logger.LogInformation("Restoring signer session: relay={Relay}, remotePubKey={PubKey}",
-                    CurrentUser.SignerRelayUrl,
-                    CurrentUser.SignerRemotePubKey[..Math.Min(16, CurrentUser.SignerRemotePubKey.Length)]);
+                _logger.LogInformation("Restoring signer session (relay and keys redacted)");
 
                 try
                 {

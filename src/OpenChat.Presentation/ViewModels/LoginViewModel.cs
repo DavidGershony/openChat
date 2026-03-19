@@ -41,6 +41,7 @@ public class LoginViewModel : ViewModelBase
     [Reactive] public string? NostrConnectUri { get; set; }
     /// <summary>QR code as PNG bytes (platform-neutral). Views convert to their image type.</summary>
     [Reactive] public byte[]? NostrConnectQrPngBytes { get; set; }
+    [Reactive] public string SignerRelayInput { get; set; } = "wss://relay.nsec.app";
 
     // Login method selection
     [Reactive] public LoginMethod SelectedLoginMethod { get; set; } = LoginMethod.PrivateKey;
@@ -145,10 +146,11 @@ public class LoginViewModel : ViewModelBase
     {
         try
         {
-            var uri = await ExternalSigner!.GenerateAndListenForConnectionAsync("wss://relay.nsec.app");
+            var signerRelay = string.IsNullOrWhiteSpace(SignerRelayInput) ? "wss://relay.nsec.app" : SignerRelayInput.Trim();
+            var uri = await ExternalSigner!.GenerateAndListenForConnectionAsync(signerRelay);
             NostrConnectUri = uri;
             NostrConnectQrPngBytes = _qrCodeGenerator.GeneratePng(uri);
-            _logger.LogInformation("Generated nostrconnect QR. URI: {Uri}", uri);
+            _logger.LogInformation("Generated nostrconnect QR code (URI redacted — contains secret)");
         }
         catch (Exception ex)
         {
@@ -268,8 +270,7 @@ public class LoginViewModel : ViewModelBase
                 SignerLocalPublicKeyHex = ExternalSigner.LocalPublicKeyHex
             };
 
-            _logger.LogInformation("Persisting signer session: relay={Relay}, remotePubKey={RemotePubKey}",
-                user.SignerRelayUrl, user.SignerRemotePubKey?[..Math.Min(16, user.SignerRemotePubKey?.Length ?? 0)]);
+            _logger.LogInformation("Persisting signer session (relay and keys redacted)");
 
             await _storageService.InitializeAsync();
             await _storageService.SaveCurrentUserAsync(user);

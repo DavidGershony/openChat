@@ -428,12 +428,27 @@ public class NostrService : INostrService, IDisposable
             var tags = new List<List<string>>();
             if (eventData.TryGetProperty("tags", out var tagsElement))
             {
+                if (tagsElement.GetArrayLength() > 1000)
+                {
+                    _logger.LogWarning("Rejected event with excessive tags ({Count}) from {RelayUrl}",
+                        tagsElement.GetArrayLength(), relayUrl);
+                    return null;
+                }
                 foreach (var tag in tagsElement.EnumerateArray())
                 {
+                    if (tag.ValueKind != JsonValueKind.Array || tag.GetArrayLength() == 0)
+                        continue; // Skip malformed tags
                     var tagList = new List<string>();
                     foreach (var item in tag.EnumerateArray())
                     {
-                        tagList.Add(item.GetString() ?? "");
+                        var val = item.GetString() ?? "";
+                        if (val.Length > 100_000)
+                        {
+                            _logger.LogWarning("Rejected event with oversized tag value ({Len} chars) from {RelayUrl}",
+                                val.Length, relayUrl);
+                            return null;
+                        }
+                        tagList.Add(val);
                     }
                     tags.Add(tagList);
                 }
@@ -1110,7 +1125,8 @@ public class NostrService : INostrService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to unwrap gift wrap event {EventId}", giftWrapEvent.EventId[..Math.Min(16, giftWrapEvent.EventId.Length)]);
+            _logger.LogWarning("Failed to unwrap gift wrap event {EventId}: {ExceptionType}",
+                giftWrapEvent.EventId[..Math.Min(16, giftWrapEvent.EventId.Length)], ex.GetType().Name);
             return null;
         }
     }

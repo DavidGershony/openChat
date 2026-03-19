@@ -276,8 +276,11 @@ public class ManagedMlsService : IMlsService
 
         // Try each stored KeyPackage — the Welcome is encrypted to one specific KeyPackage.
         // MLS allows clients to publish multiple KeyPackages (RFC 9420 Section 16.8).
+        // Randomize attempt order to prevent timing side-channel leaking which index matched.
         Exception? lastError = null;
-        for (int i = 0; i < _storedKeyPackages.Count; i++)
+        var indices = Enumerable.Range(0, _storedKeyPackages.Count).ToList();
+        Random.Shared.Shuffle(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(indices));
+        foreach (var i in indices)
         {
             var kp = _storedKeyPackages[i];
             try

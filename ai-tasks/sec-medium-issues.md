@@ -33,4 +33,4 @@
 - **Fix:** Allow user-configurable signer relay, provide fallback list
 
 ## Status
-- [ ] Not started
+- [x] All 6 issues fixed, builds clean, 145 Core + 94 UI tests pass

@@ -197,6 +197,12 @@
                         <TextBlock Text="Use Amber, nsecBunker, or other NIP-46 compatible signers"
                                    Classes="secondary" FontSize="13" TextWrapping="Wrap" />
 
+                        <!-- Signer relay -->
+                        <TextBlock Text="Signer relay:" FontSize="12" Margin="0,4,0,0" />
+                        <TextBox Text="{Binding SignerRelayInput}"
+                                 Watermark="wss://relay.nsec.app"
+                                 FontSize="13" />
+
                         <!-- QR Code -->
                         <Border IsVisible="{Binding NostrConnectQrPngBytes, Converter={x:Static ObjectConverters.IsNotNull}}"
                                 HorizontalAlignment="Center"
@@ -205,6 +211,10 @@
                                    Width="200" Height="200"
                                    Stretch="Uniform" />
                         </Border>
+                        <TextBlock IsVisible="{Binding NostrConnectQrPngBytes, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                   Text="Do not screenshot — this QR code contains a secret"
+                                   HorizontalAlignment="Center" Margin="0,4,0,0"
+                                   FontSize="11" Foreground="#FF8800" />
 
                         <!-- Scanning for request label (visible when waiting for signer) -->
                         <TextBlock Text="Scanning for request..."
