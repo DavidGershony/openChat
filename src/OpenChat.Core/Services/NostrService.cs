@@ -25,11 +25,11 @@ public class NostrService : INostrService, IDisposable
     private readonly Subject<NostrEventReceived> _events = new();
     private readonly Subject<MarmotWelcomeEvent> _welcomeMessages = new();
     private readonly Subject<MarmotGroupMessageEvent> _groupMessages = new();
-    private readonly Dictionary<string, IDisposable> _subscriptions = new();
-    private readonly List<string> _connectedRelays = new();
+    private readonly ConcurrentDictionary<string, IDisposable> _subscriptions = new();
+    private readonly ConcurrentDictionary<string, byte> _connectedRelays = new();
     private readonly ConcurrentDictionary<string, ClientWebSocket> _relayConnections = new();
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _relayListeners = new();
-    private readonly HashSet<string> _subscribedGroupIds = new();
+    private readonly ConcurrentDictionary<string, byte> _subscribedGroupIds = new();
     private DateTimeOffset? _groupMessagesSince;
     private string? _subscribedUserPubKey;
     private string? _subscribedUserPrivKey;
@@ -76,14 +76,24 @@ public class NostrService : INostrService, IDisposable
             var validationError = await ValidateRelayUrlAsync(relayUrl);
             if (validationError != null)
             {
-                _logger.LogWarning("Rejected relay URL {RelayUrl}: {Reason}", relayUrl, validationError);
-                _connectionStatus.OnNext(new NostrConnectionStatus
+                if (validationError.Contains("private", StringComparison.OrdinalIgnoreCase) ||
+                    validationError.Contains("reserved", StringComparison.OrdinalIgnoreCase))
                 {
-                    RelayUrl = relayUrl,
-                    IsConnected = false,
-                    Error = validationError
-                });
-                return;
+                    // Private IPs: warn but allow (user may be running a local relay for development)
+                    _logger.LogWarning("Relay URL {RelayUrl} resolves to private/reserved IP — allowing for local use", relayUrl);
+                }
+                else
+                {
+                    // Non-WebSocket schemes, invalid URLs: reject
+                    _logger.LogWarning("Rejected relay URL {RelayUrl}: {Reason}", relayUrl, validationError);
+                    _connectionStatus.OnNext(new NostrConnectionStatus
+                    {
+                        RelayUrl = relayUrl,
+                        IsConnected = false,
+                        Error = validationError
+                    });
+                    return;
+                }
             }
 
             var ws = new ClientWebSocket();
@@ -93,7 +103,7 @@ public class NostrService : INostrService, IDisposable
 
             _relayConnections[relayUrl] = ws;
             _relayListeners[relayUrl] = cts;
-            _connectedRelays.Add(relayUrl);
+            _connectedRelays.TryAdd(relayUrl, 0);
 
             _connectionStatus.OnNext(new NostrConnectionStatus
             {
@@ -152,7 +162,7 @@ public class NostrService : INostrService, IDisposable
                 var filter = new Dictionary<string, object>
                 {
                     { "kinds", new[] { 445 } },
-                    { "#h", _subscribedGroupIds.ToArray() }
+                    { "#h", _subscribedGroupIds.Keys.ToArray() }
                 };
 
                 if (_groupMessagesSince.HasValue)
@@ -583,7 +593,7 @@ public class NostrService : INostrService, IDisposable
             }
             catch { }
         }
-        _connectedRelays.Remove(relayUrl);
+        _connectedRelays.TryRemove(relayUrl, out _);
     }
 
     public (string privateKeyHex, string publicKeyHex, string nsec, string npub) GenerateKeyPair()
@@ -684,7 +694,7 @@ public class NostrService : INostrService, IDisposable
         if (_subscriptions.TryGetValue(subscriptionId, out var subscription))
         {
             subscription.Dispose();
-            _subscriptions.Remove(subscriptionId);
+            _subscriptions.TryRemove(subscriptionId, out _);
         }
         await Task.CompletedTask;
     }
@@ -752,7 +762,7 @@ public class NostrService : INostrService, IDisposable
 
         foreach (var groupId in groupList)
         {
-            _subscribedGroupIds.Add(groupId);
+            _subscribedGroupIds.TryAdd(groupId, 0);
         }
 
         if (since.HasValue)
@@ -809,7 +819,7 @@ public class NostrService : INostrService, IDisposable
         // Only filter out the NIP-70 "-" tag (protected event marker) which relays reject without NIP-42 auth,
         // and populate empty relay tags with connected relay URLs.
         var relayUrls = _connectedRelays.Count > 0
-            ? _connectedRelays.ToList()
+            ? _connectedRelays.Keys.ToList()
             : NostrConstants.DefaultRelays.ToList();
 
         var tags = (mdkTags ?? new List<List<string>>())
@@ -841,7 +851,7 @@ public class NostrService : INostrService, IDisposable
     {
         // Create kind 444 Welcome rumor (unsigned) wrapped in NIP-59 Gift Wrap per MIP-02
         var relayUrls = _connectedRelays.Count > 0
-            ? _connectedRelays.ToList()
+            ? _connectedRelays.Keys.ToList()
             : NostrConstants.DefaultRelays.ToList();
 
         // Discover recipient's read relays via NIP-65 and publish there too
@@ -855,7 +865,7 @@ public class NostrService : INostrService, IDisposable
             if (readRelays.Count > 0)
             {
                 _logger.LogInformation("Adding {Count} NIP-65 read relays for Welcome delivery", readRelays.Count);
-                foreach (var readRelay in readRelays.Where(r => !_connectedRelays.Contains(r)))
+                foreach (var readRelay in readRelays.Where(r => !_connectedRelays.ContainsKey(r)))
                 {
                     try { await ConnectAsync(readRelay); }
                     catch { /* best-effort */ }
@@ -1263,7 +1273,7 @@ public class NostrService : INostrService, IDisposable
 
         // Also try connected/default relays (dedup later)
         if (_connectedRelays.Count > 0)
-            relaysToTry.AddRange(_connectedRelays);
+            relaysToTry.AddRange(_connectedRelays.Keys);
         else
             relaysToTry.AddRange(NostrConstants.DefaultRelays);
 
@@ -1473,7 +1483,7 @@ public class NostrService : INostrService, IDisposable
         var allEvents = new List<NostrEventReceived>();
 
         var relaysToTry = _connectedRelays.Count > 0
-            ? _connectedRelays.ToList()
+            ? _connectedRelays.Keys.ToList()
             : NostrConstants.DefaultRelays.ToList();
 
         foreach (var relayUrl in relaysToTry)
@@ -1601,7 +1611,7 @@ public class NostrService : INostrService, IDisposable
         var allEvents = new List<NostrEventReceived>();
 
         var relaysToTry = _connectedRelays.Count > 0
-            ? _connectedRelays.ToList()
+            ? _connectedRelays.Keys.ToList()
             : NostrConstants.DefaultRelays.ToList();
 
         foreach (var relayUrl in relaysToTry)
@@ -1725,7 +1735,7 @@ public class NostrService : INostrService, IDisposable
 
             // Try each connected relay until we get metadata
             var relaysToTry = _connectedRelays.Count > 0
-                ? _connectedRelays.ToList()
+                ? _connectedRelays.Keys.ToList()
                 : NostrConstants.DefaultRelays.ToList();
 
             foreach (var relayUrl in relaysToTry)
