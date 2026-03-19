@@ -68,6 +68,49 @@ public partial class App : Application
                 ChatViewModel.AudioPlaybackService = audioPlayback;
                 ChatViewModel.MediaUploadService = blossomUpload;
 
+                // File picker for image/media attach
+                ChatViewModel.FilePickerFunc = async () =>
+                {
+                    var topLevel = Avalonia.Controls.TopLevel.GetTopLevel(desktop.MainWindow);
+                    if (topLevel == null) return null;
+
+                    var files = await topLevel.StorageProvider.OpenFilePickerAsync(
+                        new Avalonia.Platform.Storage.FilePickerOpenOptions
+                        {
+                            Title = "Select image to send",
+                            AllowMultiple = false,
+                            FileTypeFilter = new[]
+                            {
+                                new Avalonia.Platform.Storage.FilePickerFileType("Images")
+                                {
+                                    Patterns = new[] { "*.png", "*.jpg", "*.jpeg", "*.gif", "*.webp" },
+                                    MimeTypes = new[] { "image/png", "image/jpeg", "image/gif", "image/webp" }
+                                },
+                                Avalonia.Platform.Storage.FilePickerFileTypes.All
+                            }
+                        });
+
+                    if (files.Count == 0) return null;
+
+                    var file = files[0];
+                    await using var stream = await file.OpenReadAsync();
+                    using var ms = new System.IO.MemoryStream();
+                    await stream.CopyToAsync(ms);
+                    var data = ms.ToArray();
+
+                    var ext = System.IO.Path.GetExtension(file.Name).ToLowerInvariant();
+                    var mime = ext switch
+                    {
+                        ".png" => "image/png",
+                        ".jpg" or ".jpeg" => "image/jpeg",
+                        ".gif" => "image/gif",
+                        ".webp" => "image/webp",
+                        _ => "application/octet-stream"
+                    };
+
+                    return (data, file.Name, mime);
+                };
+
                 _logger?.LogDebug("Creating MainViewModel...");
                 var mainViewModel = new MainViewModel(messageService, nostrService, storageService, mlsService, clipboard, qrCodeGenerator, launcher);
 

@@ -95,11 +95,21 @@ public class ChatViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> CopyGroupLinkCommand { get; }
     public ReactiveCommand<Unit, Unit> ToggleRecordingCommand { get; }
     public ReactiveCommand<Unit, Unit> CancelRecordingCommand { get; }
+    public ReactiveCommand<Unit, Unit> AttachFileCommand { get; }
 
-    // Static service references for voice message flow (set by platform startup)
+    // Sending image state
+    [Reactive] public bool IsSendingImage { get; set; }
+
+    // Static service references (set by platform startup)
     public static IAudioRecordingService? AudioRecordingService { get; set; }
     public static IAudioPlaybackService? AudioPlaybackService { get; set; }
     public static IMediaUploadService? MediaUploadService { get; set; }
+
+    /// <summary>
+    /// Platform-specific file picker. Returns (bytes, fileName, mimeType) or null if cancelled.
+    /// Set by Desktop App.axaml.cs or Android MainActivity.
+    /// </summary>
+    public static Func<Task<(byte[] Data, string FileName, string MimeType)?>>? FilePickerFunc { get; set; }
 
     public ChatViewModel(IMessageService messageService, IStorageService storageService, INostrService nostrService, IMlsService mlsService, IPlatformClipboard clipboard, IMediaDownloadService? mediaDownloadService = null)
     {
@@ -202,6 +212,12 @@ public class ChatViewModel : ViewModelBase
             (hasChat, sending) => hasChat && !sending);
         ToggleRecordingCommand = ReactiveCommand.CreateFromTask(ToggleRecordingAsync, canRecord);
         CancelRecordingCommand = ReactiveCommand.CreateFromTask(CancelRecordingAsync);
+
+        var canAttach = this.WhenAnyValue(
+            x => x.HasChat,
+            x => x.IsSendingImage,
+            (hasChat, sending) => hasChat && !sending);
+        AttachFileCommand = ReactiveCommand.CreateFromTask(AttachAndSendFileAsync, canAttach);
 
         // Subscribe to new messages
         _messageSubscription = _messageService.NewMessages
@@ -626,6 +642,67 @@ public class ChatViewModel : ViewModelBase
         if (!message.IsFromCurrentUser)
         {
             _messageService.MarkAsReadAsync(ChatId!).ConfigureAwait(false);
+        }
+    }
+
+    private async Task AttachAndSendFileAsync()
+    {
+        if (FilePickerFunc == null || _currentChat?.MlsGroupId == null)
+        {
+            _logger.LogWarning("AttachFile: file picker or MLS group not available");
+            return;
+        }
+
+        try
+        {
+            var result = await FilePickerFunc();
+            if (result == null) return; // User cancelled
+
+            var (fileData, fileName, mimeType) = result.Value;
+            IsSendingImage = true;
+
+            _logger.LogInformation("AttachFile: {FileName} ({MimeType}, {Size} bytes)",
+                fileName, mimeType, fileData.Length);
+
+            // Compute SHA-256 of plaintext
+            var sha256Hex = Convert.ToHexString(
+                System.Security.Cryptography.SHA256.HashData(fileData)).ToLowerInvariant();
+
+            // MIP-04 encrypt
+            var mediaKey = Mip04MediaCrypto.DeriveMediaEncryptionKey(
+                _mlsService.GetMediaExporterSecret(_currentChat.MlsGroupId!),
+                sha256Hex, mimeType, fileName);
+            var nonce = System.Security.Cryptography.RandomNumberGenerator.GetBytes(12);
+            var encrypted = Mip04MediaCrypto.EncryptMediaFile(fileData, mediaKey, sha256Hex, mimeType, fileName, nonce);
+
+            // Upload to Blossom
+            if (MediaUploadService == null)
+                throw new InvalidOperationException("Media upload service not configured");
+
+            var uploadResult = await MediaUploadService.UploadAsync(encrypted, _currentUserPrivateKeyHex);
+            var nonceHex = Convert.ToHexString(nonce).ToLowerInvariant();
+
+            // Determine message type from mime
+            var messageType = mimeType.StartsWith("image/") ? MessageType.Image : MessageType.File;
+
+            // Send via MessageService
+            var content = messageType == MessageType.Image
+                ? $"[Encrypted image: {fileName}]"
+                : $"[Encrypted file: {fileName}]";
+
+            await _messageService.SendMediaMessageAsync(
+                _currentChat.Id, content, uploadResult.Url, sha256Hex, nonceHex,
+                mimeType, fileName, messageType);
+
+            _logger.LogInformation("Media sent: {FileName}, {Size} bytes encrypted", fileName, encrypted.Length);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send media file");
+        }
+        finally
+        {
+            IsSendingImage = false;
         }
     }
 

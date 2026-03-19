@@ -64,6 +64,12 @@ public interface IMessageService
         string sha256Hex, string nonceHex, string mimeType, string filename, double durationSeconds);
 
     /// <summary>
+    /// Send a media message (image, file) with encrypted data uploaded to Blossom.
+    /// </summary>
+    Task SendMediaMessageAsync(string chatId, string content, string mediaUrl,
+        string sha256Hex, string nonceHex, string mimeType, string filename, MessageType messageType);
+
+    /// <summary>
     /// Send a reply to a message.
     /// </summary>
     Task<Message> SendReplyAsync(string chatId, string content, string replyToMessageId);
