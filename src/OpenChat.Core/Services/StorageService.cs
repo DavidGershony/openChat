@@ -227,8 +227,11 @@ public class StorageService : IStorageService
             }
 
             // Migration: add signer session columns to Users for NIP-46 auto-reconnect
+            // Column names are hardcoded — validated with regex to prevent SQL injection if this pattern is reused.
             foreach (var col in new[] { "SignerRelayUrl", "SignerRemotePubKey", "SignerSecret", "SignerLocalPrivateKeyHex", "SignerLocalPublicKeyHex" })
             {
+                ValidateMigrationColumnName(col);
+
                 try
                 {
                     var migrate = connection.CreateCommand();
@@ -1304,5 +1307,15 @@ public class StorageService : IStorageService
             _logger.LogError(ex, "Failed to save setting: {Key}", key);
             throw;
         }
+    }
+
+    /// <summary>
+    /// Validates that a column name is safe for use in DDL statements.
+    /// DDL column names cannot be parameterized in SQL, so we whitelist [a-zA-Z_] only.
+    /// </summary>
+    internal static void ValidateMigrationColumnName(string columnName)
+    {
+        if (!System.Text.RegularExpressions.Regex.IsMatch(columnName, @"^[a-zA-Z_]+$"))
+            throw new InvalidOperationException($"Invalid column name for migration: '{columnName}'");
     }
 }

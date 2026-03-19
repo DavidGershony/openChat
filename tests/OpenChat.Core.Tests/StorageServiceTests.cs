@@ -228,4 +228,27 @@ public class StorageServiceTests : IAsyncLifetime
         Assert.Equal(keyPackage.Data, retrieved.Data);
         Assert.Equal(2, retrieved.RelayUrls.Count);
     }
+
+    [Theory]
+    [InlineData("ValidColumn")]
+    [InlineData("Signer_Relay_Url")]
+    [InlineData("column_name")]
+    public void ValidateMigrationColumnName_ValidNames_DoesNotThrow(string name)
+    {
+        StorageService.ValidateMigrationColumnName(name);
+    }
+
+    [Theory]
+    [InlineData("col; DROP TABLE Users--")]
+    [InlineData("col' OR '1'='1")]
+    [InlineData("col)")]
+    [InlineData("col name")]
+    [InlineData("col123")]
+    [InlineData("")]
+    [InlineData("col-name")]
+    public void ValidateMigrationColumnName_SqlInjection_Throws(string name)
+    {
+        Assert.Throws<InvalidOperationException>(
+            () => StorageService.ValidateMigrationColumnName(name));
+    }
 }
