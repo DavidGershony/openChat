@@ -1,4 +1,6 @@
 using System.Linq;
+using System.Net;
+using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
@@ -70,6 +72,19 @@ public class NostrService : INostrService, IDisposable
         try
         {
             _logger.LogDebug("Attempting connection to relay: {RelayUrl}", relayUrl);
+
+            var validationError = await ValidateRelayUrlAsync(relayUrl);
+            if (validationError != null)
+            {
+                _logger.LogWarning("Rejected relay URL {RelayUrl}: {Reason}", relayUrl, validationError);
+                _connectionStatus.OnNext(new NostrConnectionStatus
+                {
+                    RelayUrl = relayUrl,
+                    IsConnected = false,
+                    Error = validationError
+                });
+                return;
+            }
 
             var ws = new ClientWebSocket();
             var cts = new CancellationTokenSource();
@@ -2341,6 +2356,67 @@ public class NostrService : INostrService, IDisposable
         var publicKeyBytes = new byte[32];
         pubKey.WriteToSpan(publicKeyBytes);
         return publicKeyBytes;
+    }
+
+    /// <summary>
+    /// Validates a relay URL for safe connection. Returns null if valid, or an error message if rejected.
+    /// Checks: valid URI, ws/wss scheme only, no private/reserved IP addresses.
+    /// </summary>
+    internal static async Task<string?> ValidateRelayUrlAsync(string relayUrl)
+    {
+        if (!Uri.TryCreate(relayUrl, UriKind.Absolute, out var uri))
+            return "Invalid URL format.";
+
+        if (uri.Scheme != "wss" && uri.Scheme != "ws")
+            return $"Relay URL must use ws:// or wss:// scheme, got: {uri.Scheme}://";
+
+        // Resolve DNS and check for private/reserved IPs
+        try
+        {
+            var addresses = await Dns.GetHostAddressesAsync(uri.Host);
+            foreach (var addr in addresses)
+            {
+                if (IsPrivateOrReservedIp(addr))
+                    return $"Relay URL resolves to private/reserved IP address ({addr}).";
+            }
+        }
+        catch (SocketException)
+        {
+            return $"Cannot resolve hostname: {uri.Host}";
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Checks if an IP address is in a private or reserved range.
+    /// Blocks: 10.x, 172.16-31.x, 192.168.x, 127.x, 169.254.x, 0.x, ::1, fc00::/7, fe80::/10
+    /// </summary>
+    internal static bool IsPrivateOrReservedIp(IPAddress address)
+    {
+        if (IPAddress.IsLoopback(address))
+            return true;
+
+        if (address.AddressFamily == AddressFamily.InterNetwork)
+        {
+            var bytes = address.GetAddressBytes();
+            if (bytes[0] == 10) return true;                                    // 10.0.0.0/8
+            if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) return true; // 172.16.0.0/12
+            if (bytes[0] == 192 && bytes[1] == 168) return true;                // 192.168.0.0/16
+            if (bytes[0] == 127) return true;                                    // 127.0.0.0/8
+            if (bytes[0] == 169 && bytes[1] == 254) return true;                // 169.254.0.0/16
+            if (bytes[0] == 0) return true;                                      // 0.0.0.0/8
+        }
+        else if (address.AddressFamily == AddressFamily.InterNetworkV6)
+        {
+            var bytes = address.GetAddressBytes();
+            if ((bytes[0] & 0xFE) == 0xFC) return true;                         // fc00::/7
+            if (bytes[0] == 0xFE && (bytes[1] & 0xC0) == 0x80) return true;     // fe80::/10
+            if (address.Equals(IPAddress.IPv6None) || address.Equals(IPAddress.IPv6Any))
+                return true;
+        }
+
+        return false;
     }
 
     public void Dispose()
