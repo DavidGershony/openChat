@@ -360,15 +360,16 @@ public class ManagedMlsService : IMlsService
         var mip03Encrypted = Mip03Crypto.Encrypt(exporterSecret, mlsBytes);
         var base64Content = Convert.ToBase64String(mip03Encrypted);
 
-        // Step 4: Build signed kind 445 Nostr event
-        // Use the Nostr group ID from the 0xF2EE extension (32 bytes, 64 hex chars)
-        // for the h-tag, matching the Rust MDK. Fall back to MLS group ID if extension absent.
+        // Step 4: Build signed kind 445 Nostr event with EPHEMERAL key (MIP-03 privacy)
+        // MIP-03: kind 445 events SHOULD use ephemeral keys so relay operators
+        // cannot link group messages to user identities. The sender identity is
+        // inside the MLS-encrypted rumor, not in the Nostr event pubkey.
         var nostrGroupId = _mdk!.GetNostrGroupId(groupId);
         var hTagValue = nostrGroupId != null
             ? Convert.ToHexString(nostrGroupId).ToLowerInvariant()
             : groupIdHex;
         var tags = new List<List<string>> { new() { "h", hTagValue }, new() { "encoding", "base64" } };
-        var eventJson = await BuildSignedNostrEventAsync(445, base64Content, tags);
+        var eventJson = BuildEphemeralSignedEvent(445, base64Content, tags);
 
         _logger.LogDebug("EncryptMessage: produced {Len} bytes event JSON (managed)", eventJson.Length);
 
@@ -1072,6 +1073,67 @@ public class ManagedMlsService : IMlsService
             writer.WriteString("sig", sigHex);
             writer.WriteEndObject();
         }
+        return eventStream.ToArray();
+    }
+
+    /// <summary>
+    /// Signs a Nostr event with a randomly generated ephemeral keypair.
+    /// Used for kind 445 group messages per MIP-03 to prevent linking messages to user identity.
+    /// </summary>
+    private byte[] BuildEphemeralSignedEvent(int kind, string content, List<List<string>> tags)
+    {
+        // Generate ephemeral keypair
+        var ephemeralPrivKey = new byte[32];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(ephemeralPrivKey);
+        if (!Context.Instance.TryCreateECPrivKey(ephemeralPrivKey, out var ecPrivKey) || ecPrivKey is null)
+            throw new InvalidOperationException("Failed to generate ephemeral key");
+        var ephemeralPubKey = ecPrivKey.CreateXOnlyPubKey();
+        var ephPubBytes = new byte[32];
+        ephemeralPubKey.WriteToSpan(ephPubBytes);
+        var ephPubHex = Convert.ToHexString(ephPubBytes).ToLowerInvariant();
+
+        var createdAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        // NIP-01 event ID
+        var serialized = NostrService.SerializeForEventId(ephPubHex, createdAt, kind, tags, content);
+        var eventIdBytes = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(serialized));
+        var eventId = Convert.ToHexString(eventIdBytes).ToLowerInvariant();
+
+        // BIP-340 Schnorr signature with ephemeral key
+        var sig = ecPrivKey.SignBIP340(eventIdBytes);
+        var sigBytes = new byte[64];
+        sig.WriteToSpan(sigBytes);
+        var sigHex = Convert.ToHexString(sigBytes).ToLowerInvariant();
+
+        // Build event JSON
+        using var eventStream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(eventStream, new JsonWriterOptions
+        {
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        }))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("id", eventId);
+            writer.WriteString("pubkey", ephPubHex);
+            writer.WriteNumber("created_at", createdAt);
+            writer.WriteNumber("kind", kind);
+            writer.WritePropertyName("tags");
+            writer.WriteStartArray();
+            foreach (var tag in tags)
+            {
+                writer.WriteStartArray();
+                foreach (var v in tag) writer.WriteStringValue(v);
+                writer.WriteEndArray();
+            }
+            writer.WriteEndArray();
+            writer.WriteString("content", content);
+            writer.WriteString("sig", sigHex);
+            writer.WriteEndObject();
+        }
+
+        _logger.LogDebug("BuildEphemeralSignedEvent: kind {Kind}, ephemeral pubkey {PubKey}",
+            kind, ephPubHex[..16]);
+
         return eventStream.ToArray();
     }
 

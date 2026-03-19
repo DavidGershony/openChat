@@ -693,8 +693,10 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
         Assert.True(root.TryGetProperty("tags", out _), "Event must have 'tags' field");
         Assert.True(root.TryGetProperty("content", out _), "Event must have 'content' field");
 
-        // ── Assert: pubkey matches sender ──
-        Assert.Equal(_pubKeyA, root.GetProperty("pubkey").GetString());
+        // ── Assert: pubkey is a valid 64-char hex key (MIP-03 uses ephemeral keys, not sender's real key) ──
+        var eventPubkey = root.GetProperty("pubkey").GetString();
+        Assert.NotNull(eventPubkey);
+        Assert.Equal(64, eventPubkey!.Length);
 
         // ── Assert: h-tag uses NostrGroupId, NOT MLS group ID ──
         var tags = root.GetProperty("tags");

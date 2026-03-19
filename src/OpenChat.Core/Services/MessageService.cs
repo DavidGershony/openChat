@@ -663,19 +663,14 @@ public class MessageService : IMessageService, IDisposable
             return;
         }
 
-        // Skip relay echoes of our own messages (already saved locally by SendMessageAsync)
-        if (nostrEvent.PublicKey == _currentUser?.PublicKeyHex)
-        {
-            _logger.LogInformation("HandleGroupMessage: skipping echo of own message {EventId}",
-                nostrEvent.EventId[..Math.Min(16, nostrEvent.EventId.Length)]);
-            return;
-        }
-
-        // Deduplicate: skip events already processed and saved to DB
+        // Deduplicate: skip events already processed and saved to DB.
+        // This also catches self-echoes (our own messages saved locally by SendMessageAsync
+        // before the relay echoes them back). With MIP-03 ephemeral keys, we can't use
+        // pubkey comparison for self-echo detection since the event pubkey is ephemeral.
         if (!string.IsNullOrEmpty(nostrEvent.EventId) &&
             await _storageService.MessageExistsByNostrEventIdAsync(nostrEvent.EventId))
         {
-            _logger.LogInformation("HandleGroupMessage: skipping duplicate event {EventId}",
+            _logger.LogDebug("HandleGroupMessage: skipping already-processed event {EventId}",
                 nostrEvent.EventId[..Math.Min(16, nostrEvent.EventId.Length)]);
             return;
         }
