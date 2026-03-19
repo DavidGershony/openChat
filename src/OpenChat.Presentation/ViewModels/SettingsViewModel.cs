@@ -56,6 +56,7 @@ public class SettingsViewModel : ViewModelBase
 
     // MIP-04 media loading
     [Reactive] public bool IsMip04Enabled { get; set; }
+    [Reactive] public string? Mip04DependencyWarning { get; set; }
 
     // Blossom server
     [Reactive] public string BlossomServerUrl { get; set; } = "https://blossom.nostr.build";
@@ -172,7 +173,7 @@ public class SettingsViewModel : ViewModelBase
                 }
             });
 
-        // Persist MIP-04 toggle changes
+        // Persist MIP-04 toggle changes and check dependencies
         this.WhenAnyValue(x => x.IsMip04Enabled)
             .Skip(1) // Skip initial default value
             .Subscribe(async enabled =>
@@ -181,6 +182,19 @@ public class SettingsViewModel : ViewModelBase
                 {
                     await _storageService.SaveSettingAsync("mip04_enabled", enabled ? "true" : "false");
                     _logger.LogInformation("MIP-04 media loading {Status}", enabled ? "enabled" : "disabled");
+
+                    if (enabled)
+                    {
+                        // Check audio recording dependencies
+                        var audioWarning = ChatViewModel.AudioRecordingService?.CheckDependencies();
+                        Mip04DependencyWarning = audioWarning;
+                        if (audioWarning != null)
+                            _logger.LogWarning("MIP-04 dependency issue: {Warning}", audioWarning);
+                    }
+                    else
+                    {
+                        Mip04DependencyWarning = null;
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -218,6 +232,10 @@ public class SettingsViewModel : ViewModelBase
         var mip04Setting = await _storageService.GetSettingAsync("mip04_enabled");
         IsMip04Enabled = mip04Setting == "true";
         _logger.LogInformation("Loaded MIP-04 setting: {Enabled}", IsMip04Enabled);
+
+        // Check dependencies if enabled
+        if (IsMip04Enabled)
+            Mip04DependencyWarning = ChatViewModel.AudioRecordingService?.CheckDependencies();
 
         // Load Blossom server URL
         var blossomUrl = await _storageService.GetSettingAsync("blossom_server_url");

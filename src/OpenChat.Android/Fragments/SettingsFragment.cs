@@ -63,6 +63,7 @@ public class SettingsFragment : Fragment
 
         // Privacy views
         var mip04Toggle = view.FindViewById<MaterialSwitch>(Resource.Id.mip04_toggle)!;
+        var mip04Warning = view.FindViewById<TextView>(Resource.Id.mip04_dependency_warning)!;
         var blossomInput = view.FindViewById<TextInputEditText>(Resource.Id.blossom_server_input)!;
 
         // Developer views
@@ -218,6 +219,16 @@ public class SettingsFragment : Fragment
             {
                 auditButton.Enabled = !auditing;
                 auditButton.Text = auditing ? "Auditing..." : "Audit Key Packages";
+            })
+            .DisposeWith(_disposables);
+
+        // MIP-04 dependency warning
+        ViewModel.WhenAnyValue(x => x.Mip04DependencyWarning)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(warning =>
+            {
+                mip04Warning.Text = warning ?? "";
+                mip04Warning.Visibility = string.IsNullOrEmpty(warning) ? ViewStates.Gone : ViewStates.Visible;
             })
             .DisposeWith(_disposables);
 

@@ -271,6 +271,22 @@
                         </Border>
                     </StackPanel>
 
+                    <!-- Dependency warning -->
+                    <Border IsVisible="{Binding Mip04DependencyWarning, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                            Background="#3DEF4444" CornerRadius="8" Padding="12" Margin="0,4,0,0">
+                        <StackPanel Spacing="4">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <PathIcon Data="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"
+                                          Width="16" Height="16" Foreground="#EF4444" />
+                                <TextBlock Text="Missing dependency" FontWeight="SemiBold" FontSize="13"
+                                           Foreground="#EF4444" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding Mip04DependencyWarning}"
+                                       TextWrapping="Wrap" FontSize="12" Foreground="#EF4444"
+                                       FontFamily="Consolas,monospace" />
+                        </StackPanel>
+                    </Border>
+
                     <!-- Blossom Server -->
                     <StackPanel Spacing="4">
                         <TextBlock Text="Blossom media server" FontSize="14" />

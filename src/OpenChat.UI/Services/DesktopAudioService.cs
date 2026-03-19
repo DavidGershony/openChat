@@ -34,6 +34,32 @@ public class DesktopAudioRecordingService : IAudioRecordingService
             RuntimeInformation.OSDescription);
     }
 
+    public string? CheckDependencies()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            // PowerShell waveIn fallback always works on Windows
+            if (IsCommandAvailable("ffmpeg"))
+                return null;
+            return null; // waveIn fallback available — no install needed
+        }
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            if (IsCommandAvailable("parecord")) return null;
+            if (IsCommandAvailable("arecord")) return null;
+            return "Voice recording requires 'pulseaudio-utils' or 'alsa-utils'.\n" +
+                   "Install with: sudo apt install pulseaudio-utils";
+        }
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            if (IsCommandAvailable("rec")) return null;
+            if (IsCommandAvailable("ffmpeg")) return null;
+            return "Voice recording requires 'sox' or 'ffmpeg'.\n" +
+                   "Install with: brew install sox";
+        }
+        return "Voice recording is not supported on this platform.";
+    }
+
     public Task StartRecordingAsync()
     {
         if (IsRecording)

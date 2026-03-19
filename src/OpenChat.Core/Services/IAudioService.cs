@@ -10,6 +10,12 @@ public interface IAudioRecordingService
     TimeSpan RecordingDuration { get; }
 
     /// <summary>
+    /// Checks if the recording backend and its dependencies are available.
+    /// Returns null if ready, or a user-facing message describing what's missing.
+    /// </summary>
+    string? CheckDependencies();
+
+    /// <summary>
     /// Starts recording audio from the default input device.
     /// </summary>
     Task StartRecordingAsync();

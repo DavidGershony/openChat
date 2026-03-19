@@ -30,6 +30,12 @@ public class AndroidAudioRecordingService : IAudioRecordingService
         _logger.LogInformation("AndroidAudioRecordingService initialized");
     }
 
+    public string? CheckDependencies()
+    {
+        // Android has built-in MediaRecorder — no external dependencies
+        return null;
+    }
+
     public Task StartRecordingAsync()
     {
         if (IsRecording)

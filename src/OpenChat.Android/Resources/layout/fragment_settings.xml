@@ -361,6 +361,16 @@
                         android:layout_marginTop="4dp" />
 
                     <TextView
+                        android:id="@+id/mip04_dependency_warning"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="12sp"
+                        android:textColor="#FFEF4444"
+                        android:fontFamily="monospace"
+                        android:layout_marginTop="4dp"
+                        android:visibility="gone" />
+
+                    <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Blossom media server"
