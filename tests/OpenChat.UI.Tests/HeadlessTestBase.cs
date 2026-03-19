@@ -7,6 +7,7 @@ using OpenChat.Core.Models;
 using OpenChat.Core.Services;
 using OpenChat.Presentation.Services;
 using OpenChat.Presentation.ViewModels;
+using OpenChat.UI.Tests.TestHelpers;
 
 namespace OpenChat.UI.Tests;
 
@@ -57,7 +58,7 @@ public abstract class HeadlessTestBase : IDisposable
 
         var dbPath = Path.Combine(Path.GetTempPath(), $"openchat_headless_{backend}_{Guid.NewGuid()}.db");
         DbPaths.Add(dbPath);
-        var storage = new StorageService(dbPath);
+        var storage = new StorageService(dbPath, new MockSecureStorage());
         await storage.InitializeAsync();
 
         var user = new User

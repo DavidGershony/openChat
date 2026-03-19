@@ -1,6 +1,7 @@
 using Microsoft.Data.Sqlite;
 using OpenChat.Core.Models;
 using OpenChat.Core.Services;
+using OpenChat.Core.Tests.TestHelpers;
 using Xunit;
 
 namespace OpenChat.Core.Tests;
@@ -13,7 +14,7 @@ public class StorageServiceTests : IAsyncLifetime
     public StorageServiceTests()
     {
         _testDbPath = Path.Combine(Path.GetTempPath(), $"openchat_test_{Guid.NewGuid()}.db");
-        _storageService = new StorageService(_testDbPath);
+        _storageService = new StorageService(_testDbPath, new MockSecureStorage());
     }
 
     public async Task InitializeAsync()

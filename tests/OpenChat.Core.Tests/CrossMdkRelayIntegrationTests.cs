@@ -6,6 +6,7 @@ using OpenChat.Core.Marmot;
 using OpenChat.Core.Models;
 using OpenChat.Core.Services;
 using Xunit;
+using OpenChat.Core.Tests.TestHelpers;
 using Xunit.Abstractions;
 
 namespace OpenChat.Core.Tests;
@@ -55,7 +56,7 @@ public class CrossMdkRelayIntegrationTests : IAsyncLifetime
         _pubKeyA = keysA.publicKeyHex;
 
         _dbPathA = Path.Combine(Path.GetTempPath(), $"openchat_crossmdk_A_{Guid.NewGuid()}.db");
-        _storageA = new StorageService(_dbPathA);
+        _storageA = new StorageService(_dbPathA, new MockSecureStorage());
         await _storageA.InitializeAsync();
         await _storageA.SaveCurrentUserAsync(new User
         {
@@ -80,7 +81,7 @@ public class CrossMdkRelayIntegrationTests : IAsyncLifetime
         _pubKeyB = keysB.publicKeyHex;
 
         _dbPathB = Path.Combine(Path.GetTempPath(), $"openchat_crossmdk_B_{Guid.NewGuid()}.db");
-        _storageB = new StorageService(_dbPathB);
+        _storageB = new StorageService(_dbPathB, new MockSecureStorage());
         await _storageB.InitializeAsync();
         await _storageB.SaveCurrentUserAsync(new User
         {

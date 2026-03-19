@@ -1188,28 +1188,27 @@ public class StorageService : IStorageService
     /// <summary>
     /// Encrypts a string value for storage. Returns null if the input is null.
     /// The encrypted bytes are returned as a base64 string.
+    /// Throws if encryption fails — never falls back to plaintext.
     /// </summary>
     private string? ProtectString(string? value)
     {
-        if (value == null || _secureStorage == null)
-            return value;
+        if (value == null)
+            return null;
 
-        try
-        {
-            var plainBytes = Encoding.UTF8.GetBytes(value);
-            var protectedBytes = _secureStorage.Protect(plainBytes);
-            return Convert.ToBase64String(protectedBytes);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to protect string value, storing as plaintext");
-            return value;
-        }
+        if (_secureStorage == null)
+            throw new InvalidOperationException(
+                "Cannot protect sensitive data: secure storage is not configured. " +
+                "Private keys and secrets require encrypted storage.");
+
+        var plainBytes = Encoding.UTF8.GetBytes(value);
+        var protectedBytes = _secureStorage.Protect(plainBytes);
+        return Convert.ToBase64String(protectedBytes);
     }
 
     /// <summary>
     /// Decrypts a string value read from storage. Returns null if the input is null.
-    /// Handles both encrypted (base64) and plaintext (backward compat) values.
+    /// Handles plaintext (backward compat) via FormatException on base64 decode.
+    /// Throws on decryption failure — never returns corrupted/encrypted data as plaintext.
     /// </summary>
     private string? UnprotectString(string? value)
     {
@@ -1228,50 +1227,34 @@ public class StorageService : IStorageService
             _logger.LogInformation("Value is not base64-encoded, returning as plaintext (pre-encryption data)");
             return value;
         }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to unprotect string value, returning raw value");
-            return value;
-        }
     }
 
     /// <summary>
-    /// Encrypts a blob for storage. Returns the input unchanged if no secure storage is configured.
+    /// Encrypts a blob for storage.
+    /// Throws if encryption fails — never falls back to plaintext.
     /// </summary>
     private byte[] ProtectBlob(byte[] data)
     {
         if (_secureStorage == null)
-            return data;
+            throw new InvalidOperationException(
+                "Cannot protect sensitive data: secure storage is not configured. " +
+                "MLS state and key material require encrypted storage.");
 
-        try
-        {
-            return _secureStorage.Protect(data);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to protect blob ({Length} bytes), storing as plaintext", data.Length);
-            return data;
-        }
+        return _secureStorage.Protect(data);
     }
 
     /// <summary>
-    /// Decrypts a blob read from storage. Returns the input unchanged if no secure storage is configured.
+    /// Decrypts a blob read from storage.
+    /// Throws on decryption failure — never returns encrypted data as plaintext.
     /// The Unprotect implementation handles the magic prefix check for backward compat.
     /// </summary>
     private byte[] UnprotectBlob(byte[] data)
     {
         if (_secureStorage == null)
-            return data;
+            throw new InvalidOperationException(
+                "Cannot unprotect sensitive data: secure storage is not configured.");
 
-        try
-        {
-            return _secureStorage.Unprotect(data);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to unprotect blob ({Length} bytes), returning raw data", data.Length);
-            return data;
-        }
+        return _secureStorage.Unprotect(data);
     }
 
     // ---- App Settings ----

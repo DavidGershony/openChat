@@ -8,6 +8,7 @@ using Moq;
 using OpenChat.Core.Models;
 using OpenChat.Core.Services;
 using OpenChat.Presentation.Services;
+using OpenChat.UI.Tests.TestHelpers;
 using OpenChat.Presentation.ViewModels;
 using OpenChat.UI.Views;
 using Xunit;
@@ -506,7 +507,7 @@ public class HeadlessRealMlsIntegrationTests : IDisposable
         // Real storage
         var dbPath = Path.Combine(Path.GetTempPath(), $"openchat_headless_{backend}_{Guid.NewGuid()}.db");
         _dbPaths.Add(dbPath);
-        var storage = new StorageService(dbPath);
+        var storage = new StorageService(dbPath, new MockSecureStorage());
         await storage.InitializeAsync();
 
         var user = new User

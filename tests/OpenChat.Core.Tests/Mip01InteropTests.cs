@@ -9,6 +9,7 @@ using OpenChat.Core.Marmot;
 using OpenChat.Core.Models;
 using OpenChat.Core.Services;
 using Xunit;
+using OpenChat.Core.Tests.TestHelpers;
 using Xunit.Abstractions;
 using Extension = DotnetMls.Types.Extension;
 using KeyPackage = OpenChat.Core.Models.KeyPackage;
@@ -71,14 +72,14 @@ public class Mip01InteropTests : IAsyncLifetime
 
         // Initialize C# MDK A (group creator)
         _dbPathA = Path.Combine(Path.GetTempPath(), $"mip01_interop_A_{Guid.NewGuid()}.db");
-        _storageA = new StorageService(_dbPathA);
+        _storageA = new StorageService(_dbPathA, new MockSecureStorage());
         await _storageA.InitializeAsync();
         _managedMlsA = new ManagedMlsService(_storageA);
         await _managedMlsA.InitializeAsync(_managedPrivKeyA, _managedPubKeyA);
 
         // Initialize C# MDK B (joiner)
         _dbPathB = Path.Combine(Path.GetTempPath(), $"mip01_interop_B_{Guid.NewGuid()}.db");
-        _storageB = new StorageService(_dbPathB);
+        _storageB = new StorageService(_dbPathB, new MockSecureStorage());
         await _storageB.InitializeAsync();
         _managedMlsB = new ManagedMlsService(_storageB);
         await _managedMlsB.InitializeAsync(_managedPrivKeyB, _managedPubKeyB);

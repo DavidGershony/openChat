@@ -6,6 +6,7 @@ using Microsoft.Data.Sqlite;
 using Moq;
 using OpenChat.Core.Models;
 using OpenChat.Core.Services;
+using OpenChat.Core.Tests.TestHelpers;
 using Xunit;
 
 namespace OpenChat.Core.Tests;
@@ -731,7 +732,7 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
 
         // 2. Storage
         var dbPath = Path.Combine(Path.GetTempPath(), $"openchat_e2e_{label}_{Guid.NewGuid()}.db");
-        var storage = new StorageService(dbPath);
+        var storage = new StorageService(dbPath, new MockSecureStorage());
         await storage.InitializeAsync();
         await storage.SaveCurrentUserAsync(new User
         {

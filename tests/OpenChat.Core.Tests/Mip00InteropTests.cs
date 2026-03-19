@@ -7,6 +7,7 @@ using MarmotCs.Protocol.Mip00;
 using OpenChat.Core.Marmot;
 using OpenChat.Core.Services;
 using Xunit;
+using OpenChat.Core.Tests.TestHelpers;
 using Xunit.Abstractions;
 
 namespace OpenChat.Core.Tests;
@@ -61,7 +62,7 @@ public class Mip00InteropTests : IAsyncLifetime
 
         // Initialize C# MDK
         _dbPath = Path.Combine(Path.GetTempPath(), $"mip00_interop_{Guid.NewGuid()}.db");
-        _storage = new StorageService(_dbPath);
+        _storage = new StorageService(_dbPath, new MockSecureStorage());
         await _storage.InitializeAsync();
         _managedMls = new ManagedMlsService(_storage);
         await _managedMls.InitializeAsync(_managedPrivKey, _managedPubKey);

@@ -315,35 +315,56 @@ public class SecureStorageTests : IDisposable
     }
 
     [Fact]
-    public async Task StorageService_WithoutSecureStorage_StoresPlaintext()
+    public async Task StorageService_WithoutSecureStorage_ThrowsOnPrivateKeySave()
     {
         var dbPath = Path.Combine(Path.GetTempPath(), $"openchat_sectest_{Guid.NewGuid()}.db");
         _dbPaths.Add(dbPath);
         var storageService = new StorageService(dbPath); // No secure storage
         await storageService.InitializeAsync();
 
-        var privateKey = "deadbeef01234567deadbeef01234567deadbeef01234567deadbeef01234567";
         var user = new User
         {
             Id = Guid.NewGuid().ToString(),
             PublicKeyHex = "e1f21901bb0990cd36430316aa8a07ad0398fd20feeaaa1bf17434075c69abf1",
             Npub = "npub1test",
-            PrivateKeyHex = privateKey,
+            PrivateKeyHex = "deadbeef01234567deadbeef01234567deadbeef01234567deadbeef01234567",
             DisplayName = "Test",
             IsCurrentUser = true,
             CreatedAt = DateTime.UtcNow
         };
 
+        // Must refuse to store private keys without encryption
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => storageService.SaveCurrentUserAsync(user));
+    }
+
+    [Fact]
+    public async Task StorageService_WithoutSecureStorage_AllowsNullPrivateKey()
+    {
+        // Amber users have no private key — should work without secure storage
+        var dbPath = Path.Combine(Path.GetTempPath(), $"openchat_sectest_{Guid.NewGuid()}.db");
+        _dbPaths.Add(dbPath);
+        var storageService = new StorageService(dbPath); // No secure storage
+        await storageService.InitializeAsync();
+
+        var user = new User
+        {
+            Id = Guid.NewGuid().ToString(),
+            PublicKeyHex = "e1f21901bb0990cd36430316aa8a07ad0398fd20feeaaa1bf17434075c69abf1",
+            Npub = "npub1test",
+            PrivateKeyHex = null,
+            Nsec = null,
+            DisplayName = "Amber User",
+            IsCurrentUser = true,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        // No private key = no encryption needed, should not throw
         await storageService.SaveCurrentUserAsync(user);
+        var loaded = await storageService.GetCurrentUserAsync();
 
-        // Without secure storage, raw DB value IS the plaintext
-        await using var connection = new SqliteConnection($"Data Source={dbPath}");
-        await connection.OpenAsync();
-        var cmd = connection.CreateCommand();
-        cmd.CommandText = "SELECT PrivateKeyHex FROM Users WHERE IsCurrentUser = 1";
-        var rawValue = (string?)await cmd.ExecuteScalarAsync();
-
-        Assert.Equal(privateKey, rawValue); // Plaintext — no encryption
+        Assert.NotNull(loaded);
+        Assert.Null(loaded!.PrivateKeyHex);
     }
 
     [Fact]
