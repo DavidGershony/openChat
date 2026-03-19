@@ -599,13 +599,26 @@ public class ChatListViewModel : ViewModelBase
             var welcome = await _mlsService.AddMemberAsync(chat.MlsGroupId, keyPackage);
 
             // Publish Commit (kind 445) before Welcome (kind 444) per MIP-02
+            // CommitData from AddMemberAsync is already MIP-03 encrypted (managed backend).
             if (welcome.CommitData != null && welcome.CommitData.Length > 0)
             {
-                _logger.LogDebug("Publishing Commit message to Nostr (kind 445)");
-                var commitEventId = await _nostrService.PublishCommitAsync(
-                    welcome.CommitData, groupIdHex, currentUser.PrivateKeyHex);
-                _logger.LogInformation("Published Commit {EventId} for group {GroupId}",
-                    commitEventId[..Math.Min(16, commitEventId.Length)], groupIdHex[..Math.Min(16, groupIdHex.Length)]);
+                _logger.LogDebug("Publishing Commit to Nostr (kind 445)");
+                try
+                {
+                    var commitEventJson = await _mlsService.EncryptCommitAsync(
+                        chat.MlsGroupId, welcome.CommitData);
+                    var commitEventId = await _nostrService.PublishRawEventJsonAsync(commitEventJson);
+                    _logger.LogInformation("Published Commit {EventId} for group {GroupId}",
+                        commitEventId[..Math.Min(16, commitEventId.Length)], groupIdHex[..Math.Min(16, groupIdHex.Length)]);
+                }
+                catch (NotSupportedException)
+                {
+                    // Rust backend: publish commit data directly (handles its own encryption)
+                    var commitEventId = await _nostrService.PublishCommitAsync(
+                        welcome.CommitData, groupIdHex, currentUser.PrivateKeyHex);
+                    _logger.LogInformation("Published Commit {EventId} for group {GroupId} (legacy)",
+                        commitEventId[..Math.Min(16, commitEventId.Length)], groupIdHex[..Math.Min(16, groupIdHex.Length)]);
+                }
                 await Task.Delay(500);
             }
 
@@ -743,17 +756,25 @@ public class ChatListViewModel : ViewModelBase
                             var welcome = await _mlsService.AddMemberAsync(chat.MlsGroupId, keyPackage);
 
                             // MIP-02: Publish Commit (kind 445) BEFORE sending Welcome (kind 444)
-                            // This ensures all existing members receive the commit first
+                            // CommitData is already MIP-03 encrypted by AddMemberAsync (managed backend).
                             if (welcome.CommitData != null && welcome.CommitData.Length > 0)
                             {
-                                _logger.LogDebug("Publishing Commit message to Nostr (kind 445)");
-                                var commitEventId = await _nostrService.PublishCommitAsync(
-                                    welcome.CommitData,
-                                    chat.Id,
-                                    currentUser.PrivateKeyHex);
-
-                                _logger.LogInformation("Published Commit {EventId} for group {GroupId}",
-                                    commitEventId[..Math.Min(16, commitEventId.Length)], chat.Id[..Math.Min(16, chat.Id.Length)]);
+                                _logger.LogDebug("Publishing Commit to Nostr (kind 445)");
+                                try
+                                {
+                                    var commitEventJson = await _mlsService.EncryptCommitAsync(
+                                        chat.MlsGroupId, welcome.CommitData);
+                                    var commitEventId = await _nostrService.PublishRawEventJsonAsync(commitEventJson);
+                                    _logger.LogInformation("Published Commit {EventId} for group {GroupId}",
+                                        commitEventId[..Math.Min(16, commitEventId.Length)], chat.Id[..Math.Min(16, chat.Id.Length)]);
+                                }
+                                catch (NotSupportedException)
+                                {
+                                    var commitEventId = await _nostrService.PublishCommitAsync(
+                                        welcome.CommitData, chat.Id, currentUser.PrivateKeyHex);
+                                    _logger.LogInformation("Published Commit {EventId} for group {GroupId} (legacy)",
+                                        commitEventId[..Math.Min(16, commitEventId.Length)], chat.Id[..Math.Min(16, chat.Id.Length)]);
+                                }
 
                                 // Small delay to allow commit to propagate to relays before welcome
                                 await Task.Delay(500);

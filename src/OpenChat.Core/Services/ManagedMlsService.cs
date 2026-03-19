@@ -236,6 +236,11 @@ public class ManagedMlsService : IMlsService
             throw new InvalidOperationException("Failed to parse KeyPackage event JSON", ex);
         }
 
+        // Capture the pre-commit exporter secret BEFORE AddMembersAsync advances the epoch.
+        // MIP-03: commits must be encrypted with the current epoch's exporter secret
+        // so that existing members (at the current epoch) can decrypt them.
+        var preCommitExporterSecret = _mdk!.GetExporterSecret(groupId);
+
         var result = await _mdk!.AddMembersAsync(groupId, new[] { kpBytes });
 
         await SaveGroupStateAsync(groupId);
@@ -246,10 +251,13 @@ public class ManagedMlsService : IMlsService
         var rawWelcome = result.WelcomeBytes ?? Array.Empty<byte>();
         var mlsMessage = WrapWelcomeInMlsMessage(rawWelcome);
 
+        // MIP-03 encrypt the commit with the PRE-commit exporter secret
+        var mip03Encrypted = Mip03Crypto.Encrypt(preCommitExporterSecret, result.CommitMessageBytes);
+
         return new MlsWelcome
         {
             WelcomeData = mlsMessage,
-            CommitData = result.CommitMessageBytes,
+            CommitData = mip03Encrypted,  // Now MIP-03 encrypted, not raw
             RecipientPublicKey = keyPackage.OwnerPublicKey,
             KeyPackageEventId = keyPackage.NostrEventId
         };
@@ -1074,6 +1082,28 @@ public class ManagedMlsService : IMlsService
             writer.WriteEndObject();
         }
         return eventStream.ToArray();
+    }
+
+    public Task<byte[]> EncryptCommitAsync(byte[] groupId, byte[] mip03EncryptedCommitData)
+    {
+        EnsureInitialized();
+        var groupIdHex = Convert.ToHexString(groupId).ToLowerInvariant();
+        _logger.LogDebug("EncryptCommit: wrapping {Len} bytes MIP-03 encrypted commit in kind 445 event",
+            mip03EncryptedCommitData.Length);
+
+        // CommitData is ALREADY MIP-03 encrypted by AddMemberAsync.
+        // Just wrap in base64 + ephemeral-signed kind 445 event.
+        var base64Content = Convert.ToBase64String(mip03EncryptedCommitData);
+
+        var nostrGroupId = _mdk!.GetNostrGroupId(groupId);
+        var hTagValue = nostrGroupId != null
+            ? Convert.ToHexString(nostrGroupId).ToLowerInvariant()
+            : groupIdHex;
+        var tags = new List<List<string>> { new() { "h", hTagValue }, new() { "encoding", "base64" } };
+        var eventJson = BuildEphemeralSignedEvent(445, base64Content, tags);
+
+        _logger.LogDebug("EncryptCommit: produced {Len} bytes event JSON", eventJson.Length);
+        return Task.FromResult(eventJson);
     }
 
     /// <summary>

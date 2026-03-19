@@ -115,6 +115,13 @@ public interface IMlsService
     /// Used for deriving per-file encryption keys for MIP-04 media.
     /// </summary>
     byte[] GetMediaExporterSecret(byte[] groupId);
+
+    /// <summary>
+    /// MIP-03 encrypt raw commit/proposal bytes using the group's current exporter secret
+    /// and wrap in a signed kind 445 event with ephemeral key.
+    /// Must be called BEFORE the local state advances (use pre-commit exporter secret).
+    /// </summary>
+    Task<byte[]> EncryptCommitAsync(byte[] groupId, byte[] commitData);
 }
 
 public class MlsGroupInfo

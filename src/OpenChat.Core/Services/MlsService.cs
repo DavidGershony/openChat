@@ -310,9 +310,17 @@ public class MlsService : IMlsService
 
     public byte[] GetMediaExporterSecret(byte[] groupId)
     {
-        // Rust MDK does not expose custom exporter secret derivation through FFI.
         _logger.LogWarning("GetMediaExporterSecret called on Rust MlsService — not supported");
         throw new NotSupportedException("MIP-04 media exporter secret is not available with the Rust MDK backend. Use the managed (C#) backend instead.");
+    }
+
+    public Task<byte[]> EncryptCommitAsync(byte[] groupId, byte[] mip03EncryptedCommitData)
+    {
+        // Rust MDK handles commit encryption internally — the commit data passed here
+        // is already in the format expected by Rust peers. Signal that this is raw data
+        // that should be published via the legacy PublishCommitAsync path by returning null.
+        _logger.LogDebug("EncryptCommitAsync: Rust backend does not support MIP-03 commit wrapping");
+        throw new NotSupportedException("Use PublishCommitAsync for the Rust backend.");
     }
 
     private async Task PersistGroupStateAsync(byte[] groupId)
