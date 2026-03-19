@@ -79,6 +79,9 @@ public class ChatViewModel : ViewModelBase
     [Reactive] public string? InviteSuccess { get; set; }
     [Reactive] public string? GroupInviteLink { get; set; }
 
+    // MIP-04 state (controls attach/mic button visibility)
+    [Reactive] public bool IsMip04Enabled { get; set; }
+
     // Voice recording state
     [Reactive] public bool IsRecording { get; set; }
     [Reactive] public string RecordingDuration { get; set; } = "0:00";
@@ -244,6 +247,9 @@ public class ChatViewModel : ViewModelBase
         IsGroup = chat.Type == ChatType.Group;
         ParticipantCount = chat.ParticipantPublicKeys.Count;
         HasChat = true;
+
+        // Load MIP-04 setting for attach/mic button visibility
+        LoadMip04SettingAsync();
 
         // Reset load-older state
         _fetchBoundary = null;
@@ -650,6 +656,19 @@ public class ChatViewModel : ViewModelBase
         if (!message.IsFromCurrentUser)
         {
             _messageService.MarkAsReadAsync(ChatId!).ConfigureAwait(false);
+        }
+    }
+
+    private async void LoadMip04SettingAsync()
+    {
+        try
+        {
+            var setting = await _storageService.GetSettingAsync("mip04_enabled");
+            IsMip04Enabled = setting == "true";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load MIP-04 setting for chat");
         }
     }
 
