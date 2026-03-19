@@ -17,6 +17,10 @@ jobs:
             rid: linux-x64
             native_lib: libopenchat_native.so
             artifact_name: OpenChat-linux-x64
+          - os: macos-latest
+            rid: osx-arm64
+            native_lib: libopenchat_native.dylib
+            artifact_name: OpenChat-macos-arm64
 
     runs-on: ${{ matrix.os }}
 
@@ -129,4 +133,5 @@ jobs:
           files: |
             ./artifacts/OpenChat-win-x64.exe/OpenChat-win-x64.exe
             ./artifacts/OpenChat-linux-x64/OpenChat-linux-x64
+            ./artifacts/OpenChat-macos-arm64/OpenChat-macos-arm64
             ./artifacts/OpenChat.apk/OpenChat.apk
