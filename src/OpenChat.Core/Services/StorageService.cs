@@ -12,6 +12,7 @@ public class StorageService : IStorageService
     private readonly string _connectionString;
     private readonly string _databasePath;
     private readonly ISecureStorage? _secureStorage;
+    private readonly SemaphoreSlim _writeLock = new(1, 1);
     private bool _initialized;
 
     public StorageService(string? databasePath = null, ISecureStorage? secureStorage = null)
@@ -51,6 +52,12 @@ public class StorageService : IStorageService
             await using var connection = new SqliteConnection(_connectionString);
             await connection.OpenAsync();
             _logger.LogDebug("Database connection opened");
+
+            // Enable WAL mode for concurrent read+write support
+            var walCommand = connection.CreateCommand();
+            walCommand.CommandText = "PRAGMA journal_mode=WAL";
+            var journalMode = await walCommand.ExecuteScalarAsync();
+            _logger.LogInformation("SQLite journal mode set to: {Mode}", journalMode);
 
             var command = connection.CreateCommand();
             command.CommandText = @"
@@ -309,7 +316,7 @@ public class StorageService : IStorageService
         return null;
     }
 
-    public async Task SaveUserAsync(User user)
+    public async Task SaveUserAsync(User user) => await ExecuteWithWriteLockAsync(async () =>
     {
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync();
@@ -341,7 +348,7 @@ public class StorageService : IStorageService
         command.Parameters.AddWithValue("@SignerLocalPublicKeyHex", user.SignerLocalPublicKeyHex ?? (object)DBNull.Value);
 
         await command.ExecuteNonQueryAsync();
-    }
+    });
 
     public async Task<IEnumerable<User>> GetAllUsersAsync()
     {
@@ -532,7 +539,7 @@ public class StorageService : IStorageService
         return messages;
     }
 
-    public async Task SaveMessageAsync(Message message)
+    public async Task SaveMessageAsync(Message message) => await ExecuteWithWriteLockAsync(async () =>
     {
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync();
@@ -580,7 +587,7 @@ public class StorageService : IStorageService
                 await insertReaction.ExecuteNonQueryAsync();
             }
         }
-    }
+    });
 
     public async Task UpdateMessageStatusAsync(string messageId, MessageStatus status)
     {
@@ -821,7 +828,7 @@ public class StorageService : IStorageService
         return relays;
     }
 
-    public async Task SaveMlsStateAsync(string groupId, byte[] state)
+    public async Task SaveMlsStateAsync(string groupId, byte[] state) => await ExecuteWithWriteLockAsync(async () =>
     {
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync();
@@ -832,7 +839,7 @@ public class StorageService : IStorageService
         command.Parameters.AddWithValue("@State", ProtectBlob(state));
 
         await command.ExecuteNonQueryAsync();
-    }
+    });
 
     public async Task<byte[]?> GetMlsStateAsync(string groupId)
     {
@@ -1306,6 +1313,39 @@ public class StorageService : IStorageService
         {
             _logger.LogError(ex, "Failed to save setting: {Key}", key);
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Executes a write operation with serialized access to prevent "database is locked" errors.
+    /// WAL mode allows concurrent reads, but writes must be serialized.
+    /// </summary>
+    private async Task ExecuteWithWriteLockAsync(Func<Task> action)
+    {
+        await _writeLock.WaitAsync();
+        try
+        {
+            await action();
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Executes a write operation with serialized access and returns a result.
+    /// </summary>
+    private async Task<T> ExecuteWithWriteLockAsync<T>(Func<Task<T>> action)
+    {
+        await _writeLock.WaitAsync();
+        try
+        {
+            return await action();
+        }
+        finally
+        {
+            _writeLock.Release();
         }
     }
 
