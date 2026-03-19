@@ -368,6 +368,48 @@ public class SecureStorageTests : IDisposable
     }
 
     [Fact]
+    public async Task StorageService_WithSecureStorage_SignerSecretsNotPlaintextInDb()
+    {
+        var secureStorage = new MockSecureStorage();
+        var dbPath = Path.Combine(Path.GetTempPath(), $"openchat_sectest_{Guid.NewGuid()}.db");
+        _dbPaths.Add(dbPath);
+        var storageService = new StorageService(dbPath, secureStorage);
+        await storageService.InitializeAsync();
+
+        var signerSecret = "supersecret123";
+        var signerPrivKey = "cafebabe01234567cafebabe01234567cafebabe01234567cafebabe01234567";
+        var user = new User
+        {
+            Id = Guid.NewGuid().ToString(),
+            PublicKeyHex = "e1f21901bb0990cd36430316aa8a07ad0398fd20feeaaa1bf17434075c69abf1",
+            Npub = "npub1test",
+            DisplayName = "Amber User",
+            IsCurrentUser = true,
+            CreatedAt = DateTime.UtcNow,
+            SignerSecret = signerSecret,
+            SignerLocalPrivateKeyHex = signerPrivKey
+        };
+
+        await storageService.SaveCurrentUserAsync(user);
+
+        // Read raw values from DB — they must NOT be plaintext
+        await using var connection = new SqliteConnection($"Data Source={dbPath}");
+        await connection.OpenAsync();
+        var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT SignerSecret, SignerLocalPrivateKeyHex FROM Users WHERE IsCurrentUser = 1";
+        using var reader = await cmd.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+
+        var rawSecret = reader.IsDBNull(0) ? null : reader.GetString(0);
+        var rawPrivKey = reader.IsDBNull(1) ? null : reader.GetString(1);
+
+        Assert.NotNull(rawSecret);
+        Assert.NotNull(rawPrivKey);
+        Assert.NotEqual(signerSecret, rawSecret); // Must NOT be plaintext
+        Assert.NotEqual(signerPrivKey, rawPrivKey); // Must NOT be plaintext
+    }
+
+    [Fact]
     public async Task StorageService_WithSecureStorage_NullFieldsStayNull()
     {
         var secureStorage = new MockSecureStorage();
