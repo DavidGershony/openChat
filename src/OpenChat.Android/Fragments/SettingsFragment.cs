@@ -63,6 +63,7 @@ public class SettingsFragment : Fragment
 
         // Privacy views
         var mip04Toggle = view.FindViewById<MaterialSwitch>(Resource.Id.mip04_toggle)!;
+        var blossomInput = view.FindViewById<TextInputEditText>(Resource.Id.blossom_server_input)!;
 
         // Developer views
         var viewLogsButton = view.FindViewById<MaterialButton>(Resource.Id.view_logs_button)!;
@@ -128,6 +129,14 @@ public class SettingsFragment : Fragment
         mip04Toggle.CheckedChange += (s, e) =>
         {
             ViewModel.IsMip04Enabled = e.IsChecked;
+        };
+
+        // Blossom server URL
+        blossomInput.Text = ViewModel.BlossomServerUrl;
+        blossomInput.FocusChange += (s, e) =>
+        {
+            if (!e.HasFocus && !string.IsNullOrWhiteSpace(blossomInput.Text))
+                ViewModel.BlossomServerUrl = blossomInput.Text!.Trim();
         };
 
         // View Logs
@@ -209,6 +218,16 @@ public class SettingsFragment : Fragment
             {
                 auditButton.Enabled = !auditing;
                 auditButton.Text = auditing ? "Auditing..." : "Audit Key Packages";
+            })
+            .DisposeWith(_disposables);
+
+        // Blossom server sync
+        ViewModel.WhenAnyValue(x => x.BlossomServerUrl)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(url =>
+            {
+                if (blossomInput.Text != url)
+                    blossomInput.Text = url;
             })
             .DisposeWith(_disposables);
 

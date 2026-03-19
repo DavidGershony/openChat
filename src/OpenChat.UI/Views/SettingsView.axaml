@@ -270,6 +270,16 @@
                             </StackPanel>
                         </Border>
                     </StackPanel>
+
+                    <!-- Blossom Server -->
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Blossom media server" FontSize="14" />
+                        <TextBlock Text="Server for uploading encrypted voice messages and media"
+                                   Classes="muted" FontSize="12" />
+                        <TextBox Text="{Binding BlossomServerUrl}"
+                                 Watermark="https://blossom.nostr.build"
+                                 FontFamily="Consolas,monospace" FontSize="13" />
+                    </StackPanel>
                 </StackPanel>
             </Border>
 

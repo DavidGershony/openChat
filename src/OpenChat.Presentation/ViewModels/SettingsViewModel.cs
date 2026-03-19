@@ -57,6 +57,10 @@ public class SettingsViewModel : ViewModelBase
     // MIP-04 media loading
     [Reactive] public bool IsMip04Enabled { get; set; }
 
+    // Blossom server
+    [Reactive] public string BlossomServerUrl { get; set; } = "https://blossom.nostr.build";
+    [Reactive] public string? BlossomStatus { get; set; }
+
     public ObservableCollection<RelayViewModel> Relays { get; } = new();
 
     public ReactiveCommand<Unit, Unit> SaveProfileCommand { get; }
@@ -149,6 +153,25 @@ public class SettingsViewModel : ViewModelBase
         foreach (var relay in NostrConstants.DefaultRelays)
             Relays.Add(new RelayViewModel { Url = relay, IsConnected = false });
 
+        // Persist Blossom server URL changes and sync with upload service
+        this.WhenAnyValue(x => x.BlossomServerUrl)
+            .Skip(1)
+            .Where(url => !string.IsNullOrWhiteSpace(url))
+            .Subscribe(async url =>
+            {
+                try
+                {
+                    await _storageService.SaveSettingAsync("blossom_server_url", url.Trim());
+                    if (ChatViewModel.MediaUploadService is BlossomUploadService blossom)
+                        blossom.BlossomServerUrl = url.Trim();
+                    _logger.LogInformation("Blossom server URL updated: {Url}", url.Trim());
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to save Blossom server URL");
+                }
+            });
+
         // Persist MIP-04 toggle changes
         this.WhenAnyValue(x => x.IsMip04Enabled)
             .Skip(1) // Skip initial default value
@@ -195,6 +218,16 @@ public class SettingsViewModel : ViewModelBase
         var mip04Setting = await _storageService.GetSettingAsync("mip04_enabled");
         IsMip04Enabled = mip04Setting == "true";
         _logger.LogInformation("Loaded MIP-04 setting: {Enabled}", IsMip04Enabled);
+
+        // Load Blossom server URL
+        var blossomUrl = await _storageService.GetSettingAsync("blossom_server_url");
+        if (!string.IsNullOrEmpty(blossomUrl))
+        {
+            BlossomServerUrl = blossomUrl;
+            if (ChatViewModel.MediaUploadService is BlossomUploadService blossom)
+                blossom.BlossomServerUrl = blossomUrl;
+        }
+        _logger.LogInformation("Loaded Blossom server: {Url}", BlossomServerUrl);
     }
 
     private async Task SaveProfileAsync()

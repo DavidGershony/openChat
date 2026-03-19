@@ -23,6 +23,7 @@ public class ChatViewModel : ViewModelBase
     private readonly IMlsService _mlsService;
     private readonly IPlatformClipboard _clipboard;
     private IDisposable? _messageSubscription;
+    private IDisposable? _recordingTimerSubscription;
     private Chat? _currentChat;
     private string? _currentUserPrivateKeyHex;
     private string? _currentUserPublicKeyHex;
@@ -652,6 +653,20 @@ public class ChatViewModel : ViewModelBase
         {
             await AudioRecordingService.StartRecordingAsync();
             IsRecording = true;
+            RecordingDuration = "0:00";
+
+            // Update recording duration every second
+            _recordingTimerSubscription = Observable.Interval(TimeSpan.FromSeconds(1))
+                .ObserveOn(RxApp.MainThreadScheduler)
+                .Subscribe(_ =>
+                {
+                    if (AudioRecordingService?.IsRecording == true)
+                    {
+                        var dur = AudioRecordingService.RecordingDuration;
+                        RecordingDuration = $"{(int)dur.TotalMinutes}:{dur.Seconds:D2}";
+                    }
+                });
+
             _logger.LogInformation("Voice recording started");
         }
         catch (Exception ex)
@@ -668,6 +683,8 @@ public class ChatViewModel : ViewModelBase
         {
             IsSendingVoice = true;
             IsRecording = false;
+            _recordingTimerSubscription?.Dispose();
+            _recordingTimerSubscription = null;
 
             var recording = await AudioRecordingService.StopRecordingAsync();
             _logger.LogInformation("Recording stopped: {Duration}s, {Bytes} bytes PCM",
@@ -732,8 +749,11 @@ public class ChatViewModel : ViewModelBase
 
         try
         {
+            _recordingTimerSubscription?.Dispose();
+            _recordingTimerSubscription = null;
             await AudioRecordingService.CancelRecordingAsync();
             IsRecording = false;
+            RecordingDuration = "0:00";
             _logger.LogInformation("Voice recording cancelled");
         }
         catch (Exception ex)

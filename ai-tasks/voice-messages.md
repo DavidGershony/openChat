@@ -90,4 +90,12 @@ Full voice message support: record audio, encode to Opus, encrypt via MIP-04, up
 - Configurable like relays (add/remove in Settings)
 
 ## Status
-- [ ] Not started
+- [x] Steps 1-8 implemented
+- [x] Opus codec, Blossom upload, MIP-04 encrypt/decrypt bidirectional
+- [x] Desktop + Android recording and playback services
+- [x] Recording timer with Observable.Interval (updates every second)
+- [x] Blossom server URL configurable in Settings (Desktop + Android), persisted
+- [x] Android RECORD_AUDIO runtime permission request
+- [x] Mic button in Desktop ChatView and Android fragment_chat
+- [x] Audio player widget in message bubbles (Desktop + Android)
+- [x] All 239 tests pass

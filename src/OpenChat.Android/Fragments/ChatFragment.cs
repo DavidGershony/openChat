@@ -1,6 +1,11 @@
+using Android;
 using Android.Content;
+using Android.Content.PM;
 using Android.OS;
 using Android.Views;
+using Android.Widget;
+using AndroidX.Core.App;
+using AndroidX.Core.Content;
 using AndroidX.RecyclerView.Widget;
 using Google.Android.Material.AppBar;
 using Google.Android.Material.Button;
@@ -70,6 +75,19 @@ public class ChatFragment : Fragment
 
         _adapter = new MessageAdapter();
         recyclerView.SetAdapter(_adapter);
+
+        // Record button — request RECORD_AUDIO permission, then toggle recording
+        var recordButton = view.FindViewById<ImageButton>(Resource.Id.record_button)!;
+        recordButton.Click += (s, e) =>
+        {
+            if (ContextCompat.CheckSelfPermission(RequireContext(), Manifest.Permission.RecordAudio)
+                != Permission.Granted)
+            {
+                RequestPermissions(new[] { Manifest.Permission.RecordAudio }, 1001);
+                return;
+            }
+            ViewModel.ToggleRecordingCommand.Execute().Subscribe().DisposeWith(_disposables);
+        };
 
         // Send button
         sendButton.Click += (s, e) =>
