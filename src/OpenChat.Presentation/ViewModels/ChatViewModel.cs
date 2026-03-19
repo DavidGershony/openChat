@@ -219,6 +219,14 @@ public class ChatViewModel : ViewModelBase
             (hasChat, sending) => hasChat && !sending);
         AttachFileCommand = ReactiveCommand.CreateFromTask(AttachAndSendFileAsync, canAttach);
 
+        // Log errors from media commands (ReactiveCommand swallows exceptions by default)
+        ToggleRecordingCommand.ThrownExceptions.Subscribe(ex =>
+            _logger.LogError(ex, "ToggleRecordingCommand failed"));
+        CancelRecordingCommand.ThrownExceptions.Subscribe(ex =>
+            _logger.LogError(ex, "CancelRecordingCommand failed"));
+        AttachFileCommand.ThrownExceptions.Subscribe(ex =>
+            _logger.LogError(ex, "AttachFileCommand failed"));
+
         // Subscribe to new messages
         _messageSubscription = _messageService.NewMessages
             .ObserveOn(RxApp.MainThreadScheduler)
