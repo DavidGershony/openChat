@@ -510,6 +510,35 @@ public class StorageService : IStorageService
         return null;
     }
 
+    /// <summary>
+    /// Gets the last message for each chat in a single query. Much faster than N individual queries.
+    /// </summary>
+    public async Task<Dictionary<string, Message>> GetLastMessagePerChatAsync()
+    {
+        var result = new Dictionary<string, Message>();
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        var command = connection.CreateCommand();
+        command.CommandText = @"
+            SELECT m.* FROM Messages m
+            INNER JOIN (
+                SELECT ChatId, MAX(Timestamp) AS MaxTs
+                FROM Messages WHERE IsDeleted = 0
+                GROUP BY ChatId
+            ) latest ON m.ChatId = latest.ChatId AND m.Timestamp = latest.MaxTs AND m.IsDeleted = 0";
+
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var message = ReadMessage(reader);
+            result[message.ChatId] = message;
+        }
+
+        return result;
+    }
+
     public async Task<IEnumerable<Message>> GetMessagesForChatAsync(string chatId, int limit = 50, int offset = 0)
     {
         var messages = new List<Message>();

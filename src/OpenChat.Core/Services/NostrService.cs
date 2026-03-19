@@ -1958,25 +1958,31 @@ public class NostrService : INostrService, IDisposable
     {
         _logger.LogInformation("Fetching NIP-65 relay list for {PubKey}", publicKeyHex[..Math.Min(16, publicKeyHex.Length)] + "...");
 
-        var relays = new List<RelayPreference>();
-        long latestCreatedAt = 0;
-
-        foreach (var discoveryRelay in NostrConstants.DiscoveryRelays)
+        // Query all discovery relays in parallel instead of sequentially
+        var tasks = NostrConstants.DiscoveryRelays.Select(async relay =>
         {
             try
             {
-                var (found, createdAt) = await FetchRelayListFromRelayAsync(discoveryRelay, publicKeyHex);
-                if (found.Count > 0 && createdAt > latestCreatedAt)
-                {
-                    relays = found;
-                    latestCreatedAt = createdAt;
-                    _logger.LogInformation("Found {Count} relays from {Relay} (created_at: {CreatedAt})",
-                        found.Count, discoveryRelay, createdAt);
-                }
+                return await FetchRelayListFromRelayAsync(relay, publicKeyHex);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to fetch relay list from {Relay}", discoveryRelay);
+                _logger.LogWarning(ex, "Failed to fetch relay list from {Relay}", relay);
+                return (new List<RelayPreference>(), 0L);
+            }
+        });
+
+        var results = await Task.WhenAll(tasks);
+
+        // Pick the result with the most recent created_at
+        var relays = new List<RelayPreference>();
+        long latestCreatedAt = 0;
+        foreach (var (found, createdAt) in results)
+        {
+            if (found.Count > 0 && createdAt > latestCreatedAt)
+            {
+                relays = found;
+                latestCreatedAt = createdAt;
             }
         }
 

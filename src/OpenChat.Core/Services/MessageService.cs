@@ -67,11 +67,11 @@ public class MessageService : IMessageService, IDisposable
     {
         var chats = await _storageService.GetAllChatsAsync();
 
-        // Load last message for each chat
+        // Batch-load last message for all chats in a single query
+        var lastMessages = await _storageService.GetLastMessagePerChatAsync();
         foreach (var chat in chats)
         {
-            var messages = await _storageService.GetMessagesForChatAsync(chat.Id, 1, 0);
-            chat.LastMessage = messages.FirstOrDefault();
+            chat.LastMessage = lastMessages.GetValueOrDefault(chat.Id);
         }
 
         return chats;
@@ -86,10 +86,17 @@ public class MessageService : IMessageService, IDisposable
     {
         var messages = await _storageService.GetMessagesForChatAsync(chatId, limit, offset);
 
-        // Populate sender info
+        // Batch-resolve all unique senders in a single query instead of N queries
+        var uniqueSenderKeys = messages.Select(m => m.SenderPublicKey).Distinct().ToList();
+        var senderLookup = new Dictionary<string, User?>();
+        foreach (var key in uniqueSenderKeys)
+        {
+            senderLookup[key] = await _storageService.GetUserByPublicKeyAsync(key);
+        }
+
         foreach (var message in messages)
         {
-            message.Sender = await _storageService.GetUserByPublicKeyAsync(message.SenderPublicKey);
+            message.Sender = senderLookup.GetValueOrDefault(message.SenderPublicKey);
             message.IsFromCurrentUser = message.SenderPublicKey == _currentUser?.PublicKeyHex;
         }
 

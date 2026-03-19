@@ -24,6 +24,7 @@ public interface IStorageService
 
     // Message operations
     Task<Message?> GetMessageAsync(string messageId);
+    Task<Dictionary<string, Message>> GetLastMessagePerChatAsync();
     Task<IEnumerable<Message>> GetMessagesForChatAsync(string chatId, int limit = 50, int offset = 0);
     Task SaveMessageAsync(Message message);
     Task UpdateMessageStatusAsync(string messageId, MessageStatus status);

@@ -405,117 +405,7 @@ public class MainViewModel : ViewModelBase
             }
         }
 
-        // Fetch user's NIP-65 relay list, fall back to defaults
-        var relaysToConnect = NostrConstants.DefaultRelays.ToList();
-        try
-        {
-            var savedRelays = await _storageService.GetUserRelayListAsync(CurrentUser.PublicKeyHex);
-            if (savedRelays.Count > 0)
-            {
-                _logger.LogInformation("Using {Count} saved relays from local storage", savedRelays.Count);
-                relaysToConnect = savedRelays.Select(r => r.Url).Distinct().ToList();
-            }
-            else
-            {
-                // Try fetching from discovery relays
-                _logger.LogInformation("No saved relays, fetching NIP-65 relay list from discovery relays");
-                var discoveredRelays = await _nostrService.FetchRelayListAsync(CurrentUser.PublicKeyHex);
-                if (discoveredRelays.Count > 0)
-                {
-                    _logger.LogInformation("Discovered {Count} relays via NIP-65", discoveredRelays.Count);
-                    await _storageService.SaveUserRelayListAsync(CurrentUser.PublicKeyHex, discoveredRelays);
-                    relaysToConnect = discoveredRelays.Select(r => r.Url).Distinct().ToList();
-                }
-                else
-                {
-                    _logger.LogInformation("No NIP-65 relay list found, publishing defaults");
-                    // New user or no relay list — publish defaults so others can discover us
-                    var defaultPrefs = NostrConstants.DefaultRelays
-                        .Select(url => new RelayPreference { Url = url, Usage = RelayUsage.Both })
-                        .ToList();
-                    try
-                    {
-                        await _nostrService.PublishRelayListAsync(defaultPrefs, CurrentUser.PrivateKeyHex);
-                        await _storageService.SaveUserRelayListAsync(CurrentUser.PublicKeyHex, defaultPrefs);
-                        _logger.LogInformation("Published default NIP-65 relay list");
-                    }
-                    catch (Exception pubEx)
-                    {
-                        _logger.LogWarning(pubEx, "Failed to publish default relay list");
-                    }
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to fetch relay list, using defaults");
-        }
-
-        _logger.LogInformation("Connecting to {Count} relays", relaysToConnect.Count);
-        await _nostrService.ConnectAsync(relaysToConnect);
-        _logger.LogInformation("Relay connection initiated");
-
-        // Subscribe to Welcome messages (incoming group invites)
-        if (!string.IsNullOrEmpty(CurrentUser.PublicKeyHex))
-        {
-            _logger.LogDebug("Subscribing to welcome messages (NIP-59 gift wrap)");
-            await _nostrService.SubscribeToWelcomesAsync(CurrentUser.PublicKeyHex, CurrentUser.PrivateKeyHex);
-        }
-
-        // Check if our KeyPackage is published on relays
-        if (!string.IsNullOrEmpty(CurrentUser.PublicKeyHex))
-        {
-            try
-            {
-                _logger.LogDebug("Checking for published KeyPackage on relays");
-                var myKeyPackages = await _nostrService.FetchKeyPackagesAsync(CurrentUser.PublicKeyHex);
-                if (!myKeyPackages.Any())
-                {
-                    _logger.LogWarning("No KeyPackage found on relays for current user");
-                    ChatListViewModel.StatusMessage = "No KeyPackage published — others cannot invite you. Publish one in Settings.";
-                }
-                else
-                {
-                    _logger.LogInformation("Found {Count} KeyPackage(s) on relays", myKeyPackages.Count());
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to check KeyPackage status on relays");
-            }
-        }
-
-        // Fetch own profile metadata for avatar
-        if (!string.IsNullOrEmpty(CurrentUser.PublicKeyHex))
-        {
-            try
-            {
-                _logger.LogDebug("Fetching own profile metadata");
-                var metadata = await _nostrService.FetchUserMetadataAsync(CurrentUser.PublicKeyHex);
-                if (metadata != null)
-                {
-                    MyDisplayName = metadata.DisplayName;
-                    MyName = metadata.Name;
-                    MyPictureUrl = metadata.Picture;
-                    MyAbout = metadata.About;
-                    HeaderDisplayName = metadata.GetDisplayName();
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to fetch own profile metadata at login");
-            }
-            finally
-            {
-                IsHeaderLoading = false;
-            }
-        }
-        else
-        {
-            IsHeaderLoading = false;
-        }
-
-        // Update SettingsViewModel with user data (LoadSettingsAsync ran before login)
+        // Update SettingsViewModel with user data
         SettingsViewModel.PublicKeyHex = CurrentUser.PublicKeyHex;
         SettingsViewModel.PrivateKeyHex = CurrentUser.PrivateKeyHex;
         SettingsViewModel.Npub = CurrentUser.Npub;
@@ -524,36 +414,15 @@ public class MainViewModel : ViewModelBase
         SettingsViewModel.About = CurrentUser.About;
         SettingsViewModel.AvatarUrl = CurrentUser.AvatarUrl;
 
-        // Load chats
-        _logger.LogDebug("Loading chats");
+        // === FAST PATH: Show chats from DB immediately ===
+        _logger.LogDebug("Loading chats from local database");
         await ChatListViewModel.LoadChatsAsync();
+        _logger.LogInformation("Chat list loaded from DB — UI is now responsive");
 
-        // Subscribe to group messages for existing groups
-        // Use NostrGroupId (from 0xF2EE extension) for relay subscriptions when available,
-        // falling back to MlsGroupId for backward compatibility with older chats.
-        var chats = await _messageService.GetChatsAsync();
-        var groupIds = chats
-            .Where(c => c.Type == ChatType.Group && c.MlsGroupId != null && c.MlsGroupId.Length > 0)
-            .Select(c => c.NostrGroupId != null && c.NostrGroupId.Length > 0
-                ? Convert.ToHexString(c.NostrGroupId).ToLowerInvariant()
-                : Convert.ToHexString(c.MlsGroupId!).ToLowerInvariant())
-            .ToList();
+        // === BACKGROUND: All relay/network operations run without blocking the UI ===
+        _ = InitializeNetworkAsync();
 
-        if (groupIds.Count > 0)
-        {
-            _logger.LogDebug("Subscribing to {Count} group message channels", groupIds.Count);
-            var latestActivity = chats
-                .Where(c => c.Type == ChatType.Group && c.MlsGroupId != null)
-                .Select(c => c.LastActivityAt)
-                .DefaultIfEmpty(DateTime.MinValue)
-                .Max();
-            DateTimeOffset? since = latestActivity > DateTime.MinValue
-                ? new DateTimeOffset(latestActivity, TimeSpan.Zero).AddMinutes(-5)
-                : null;
-            await _nostrService.SubscribeToGroupMessagesAsync(groupIds, since);
-        }
-
-        _logger.LogInformation("InitializeAfterLoginAsync completed successfully");
+        _logger.LogInformation("InitializeAfterLoginAsync completed (network init continuing in background)");
         }
         catch (Exception ex)
         {
@@ -589,6 +458,149 @@ public class MainViewModel : ViewModelBase
         }
 
         IsConnected = RelayStatuses.Any(r => r.IsConnected);
+    }
+
+    /// <summary>
+    /// Runs all relay/network operations in the background after the UI is already showing cached chats.
+    /// </summary>
+    private async Task InitializeNetworkAsync()
+    {
+        try
+        {
+            // 1. Determine relays to connect to (from cache, then network)
+            var relaysToConnect = NostrConstants.DefaultRelays.ToList();
+            try
+            {
+                var savedRelays = await _storageService.GetUserRelayListAsync(CurrentUser!.PublicKeyHex);
+                if (savedRelays.Count > 0)
+                {
+                    _logger.LogInformation("Using {Count} saved relays from local storage", savedRelays.Count);
+                    relaysToConnect = savedRelays.Select(r => r.Url).Distinct().ToList();
+                }
+                else
+                {
+                    _logger.LogInformation("No saved relays, fetching NIP-65 relay list from discovery relays");
+                    var discoveredRelays = await _nostrService.FetchRelayListAsync(CurrentUser.PublicKeyHex);
+                    if (discoveredRelays.Count > 0)
+                    {
+                        _logger.LogInformation("Discovered {Count} relays via NIP-65", discoveredRelays.Count);
+                        await _storageService.SaveUserRelayListAsync(CurrentUser.PublicKeyHex, discoveredRelays);
+                        relaysToConnect = discoveredRelays.Select(r => r.Url).Distinct().ToList();
+                    }
+                    else
+                    {
+                        var defaultPrefs = NostrConstants.DefaultRelays
+                            .Select(url => new RelayPreference { Url = url, Usage = RelayUsage.Both })
+                            .ToList();
+                        try
+                        {
+                            await _nostrService.PublishRelayListAsync(defaultPrefs, CurrentUser.PrivateKeyHex);
+                            await _storageService.SaveUserRelayListAsync(CurrentUser.PublicKeyHex, defaultPrefs);
+                        }
+                        catch (Exception pubEx)
+                        {
+                            _logger.LogWarning(pubEx, "Failed to publish default relay list");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to fetch relay list, using defaults");
+            }
+
+            // 2. Connect to relays
+            _logger.LogInformation("Connecting to {Count} relays", relaysToConnect.Count);
+            await _nostrService.ConnectAsync(relaysToConnect);
+
+            // 3. Subscribe to welcomes + group messages in parallel
+            var subscriptionTasks = new List<Task>();
+
+            if (!string.IsNullOrEmpty(CurrentUser.PublicKeyHex))
+            {
+                subscriptionTasks.Add(_nostrService.SubscribeToWelcomesAsync(
+                    CurrentUser.PublicKeyHex, CurrentUser.PrivateKeyHex));
+            }
+
+            var chats = await _messageService.GetChatsAsync();
+            var groupIds = chats
+                .Where(c => c.Type == ChatType.Group && c.MlsGroupId != null && c.MlsGroupId.Length > 0)
+                .Select(c => c.NostrGroupId != null && c.NostrGroupId.Length > 0
+                    ? Convert.ToHexString(c.NostrGroupId).ToLowerInvariant()
+                    : Convert.ToHexString(c.MlsGroupId!).ToLowerInvariant())
+                .ToList();
+
+            if (groupIds.Count > 0)
+            {
+                var latestActivity = chats
+                    .Where(c => c.Type == ChatType.Group && c.MlsGroupId != null)
+                    .Select(c => c.LastActivityAt)
+                    .DefaultIfEmpty(DateTime.MinValue)
+                    .Max();
+                DateTimeOffset? since = latestActivity > DateTime.MinValue
+                    ? new DateTimeOffset(latestActivity, TimeSpan.Zero).AddMinutes(-5)
+                    : null;
+                subscriptionTasks.Add(_nostrService.SubscribeToGroupMessagesAsync(groupIds, since));
+            }
+
+            await Task.WhenAll(subscriptionTasks);
+
+            // 4. KeyPackage check + profile metadata in parallel (non-blocking)
+            var backgroundTasks = new List<Task>();
+
+            if (!string.IsNullOrEmpty(CurrentUser.PublicKeyHex))
+            {
+                backgroundTasks.Add(Task.Run(async () =>
+                {
+                    try
+                    {
+                        var myKeyPackages = await _nostrService.FetchKeyPackagesAsync(CurrentUser.PublicKeyHex);
+                        if (!myKeyPackages.Any())
+                            ChatListViewModel.StatusMessage = "No KeyPackage published — others cannot invite you. Publish one in Settings.";
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to check KeyPackage status");
+                    }
+                }));
+
+                backgroundTasks.Add(Task.Run(async () =>
+                {
+                    try
+                    {
+                        var metadata = await _nostrService.FetchUserMetadataAsync(CurrentUser.PublicKeyHex);
+                        if (metadata != null)
+                        {
+                            MyDisplayName = metadata.DisplayName;
+                            MyName = metadata.Name;
+                            MyPictureUrl = metadata.Picture;
+                            MyAbout = metadata.About;
+                            HeaderDisplayName = metadata.GetDisplayName();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to fetch own profile metadata");
+                    }
+                    finally
+                    {
+                        IsHeaderLoading = false;
+                    }
+                }));
+            }
+            else
+            {
+                IsHeaderLoading = false;
+            }
+
+            await Task.WhenAll(backgroundTasks);
+            _logger.LogInformation("Background network initialization completed");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Background network initialization failed");
+            IsHeaderLoading = false;
+        }
     }
 
     private async Task LogoutAsync()
