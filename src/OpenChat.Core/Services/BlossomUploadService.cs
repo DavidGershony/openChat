@@ -89,7 +89,12 @@ public class BlossomUploadService : IMediaUploadService
 
         if (!string.IsNullOrEmpty(privateKeyHex))
         {
-            // Sign locally
+            // Sign locally — handle nsec (bech32) format if needed
+            if (privateKeyHex.StartsWith("nsec"))
+            {
+                var (hexKey, _, _, _) = new NostrService().ImportPrivateKey(privateKeyHex);
+                privateKeyHex = hexKey;
+            }
             var privBytes = Convert.FromHexString(privateKeyHex);
             var pubBytes = NostrService.DerivePublicKey(privBytes);
             var pubHex = Convert.ToHexString(pubBytes).ToLowerInvariant();

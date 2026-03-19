@@ -56,23 +56,101 @@ public class DesktopAudioRecordingService : IAudioRecordingService
                 RedirectStandardError = true
             };
 
-            // Fallback: try Windows' built-in SoundRecorder via PowerShell
+            // Fallback: use PowerShell with .NET WaveIn API for audio capture
             if (!IsCommandAvailable("ffmpeg"))
             {
-                _logger.LogInformation("ffmpeg not found, using PowerShell AudioRecord fallback");
+                _logger.LogInformation("ffmpeg not found, using PowerShell WaveIn recording");
+                // PowerShell script that uses .NET's interop to record via Windows waveIn API
+                // Records raw PCM to a WAV file until the process is killed
+                var ps1 = $@"
+Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Threading;
+
+public class WaveRecorder {{
+    [DllImport(""winmm.dll"")] static extern int waveInOpen(out IntPtr h, int id, byte[] fmt, IntPtr cb, IntPtr inst, int flags);
+    [DllImport(""winmm.dll"")] static extern int waveInPrepareHeader(IntPtr h, IntPtr hdr, int size);
+    [DllImport(""winmm.dll"")] static extern int waveInAddBuffer(IntPtr h, IntPtr hdr, int size);
+    [DllImport(""winmm.dll"")] static extern int waveInStart(IntPtr h);
+    [DllImport(""winmm.dll"")] static extern int waveInStop(IntPtr h);
+    [DllImport(""winmm.dll"")] static extern int waveInClose(IntPtr h);
+    [DllImport(""winmm.dll"")] static extern int waveInReset(IntPtr h);
+
+    public static void Record(string path) {{
+        var fmt = new byte[18];
+        BitConverter.GetBytes((short)1).CopyTo(fmt, 0);  // PCM
+        BitConverter.GetBytes((short)1).CopyTo(fmt, 2);  // mono
+        BitConverter.GetBytes(48000).CopyTo(fmt, 4);      // sample rate
+        BitConverter.GetBytes(96000).CopyTo(fmt, 8);      // byte rate
+        BitConverter.GetBytes((short)2).CopyTo(fmt, 12);  // block align
+        BitConverter.GetBytes((short)16).CopyTo(fmt, 14); // bits per sample
+        BitConverter.GetBytes((short)0).CopyTo(fmt, 16);  // extra
+
+        IntPtr hWaveIn;
+        if (waveInOpen(out hWaveIn, -1, fmt, IntPtr.Zero, IntPtr.Zero, 0) != 0) return;
+
+        int bufSize = 48000 * 2; // 1 second buffer
+        var fs = new FileStream(path, FileMode.Create);
+        // Write WAV header placeholder
+        var hdr = new byte[44];
+        System.Text.Encoding.ASCII.GetBytes(""RIFF"").CopyTo(hdr, 0);
+        System.Text.Encoding.ASCII.GetBytes(""WAVE"").CopyTo(hdr, 8);
+        System.Text.Encoding.ASCII.GetBytes(""fmt "").CopyTo(hdr, 12);
+        BitConverter.GetBytes(16).CopyTo(hdr, 16);
+        Array.Copy(fmt, 0, hdr, 20, 16);
+        System.Text.Encoding.ASCII.GetBytes(""data"").CopyTo(hdr, 36);
+        fs.Write(hdr, 0, 44);
+
+        var bufs = new IntPtr[4];
+        var hdrs = new IntPtr[4];
+        for (int i = 0; i < 4; i++) {{
+            bufs[i] = Marshal.AllocHGlobal(bufSize);
+            var wh = new byte[32];
+            var gch = GCHandle.Alloc(wh, GCHandleType.Pinned);
+            hdrs[i] = gch.AddrOfPinnedObject();
+            Marshal.WriteIntPtr(hdrs[i], 0, bufs[i]);
+            Marshal.WriteInt32(hdrs[i], 8, bufSize);
+            waveInPrepareHeader(hWaveIn, hdrs[i], 32);
+            waveInAddBuffer(hWaveIn, hdrs[i], 32);
+        }}
+
+        waveInStart(hWaveIn);
+        Console.CancelKeyPress += (s,e) => {{ waveInStop(hWaveIn); }};
+
+        while (true) {{
+            Thread.Sleep(500);
+            for (int i = 0; i < 4; i++) {{
+                int flags = Marshal.ReadInt32(hdrs[i], 12);
+                if ((flags & 1) != 0) {{ // WHDR_DONE
+                    int recorded = Marshal.ReadInt32(hdrs[i], 16);
+                    if (recorded > 0) {{
+                        var data = new byte[recorded];
+                        Marshal.Copy(bufs[i], data, 0, recorded);
+                        fs.Write(data, 0, recorded);
+                    }}
+                    Marshal.WriteInt32(hdrs[i], 12, 0);
+                    Marshal.WriteInt32(hdrs[i], 16, 0);
+                    waveInAddBuffer(hWaveIn, hdrs[i], 32);
+                }}
+            }}
+        }}
+    }}
+}}
+'@ -ReferencedAssemblies System.IO
+[WaveRecorder]::Record('{_tempFilePath.Replace("\\", "\\\\")}')
+";
+                var ps1Path = Path.Combine(Path.GetTempPath(), "openchat_record.ps1");
+                File.WriteAllText(ps1Path, ps1);
                 psi = new ProcessStartInfo
                 {
                     FileName = "powershell",
-                    Arguments = $"-NoProfile -Command \"" +
-                        $"Add-Type -AssemblyName System.Speech; " +
-                        $"$r = New-Object System.Speech.Recognition.SpeechRecognitionEngine; " +
-                        $"$r.SetInputToDefaultAudioDevice(); " +
-                        $"$r.RecognizeAsync([System.Speech.Recognition.RecognizeMode]::Multiple); " +
-                        $"Start-Sleep -Seconds 300\"",
+                    Arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{ps1Path}\"",
                     UseShellExecute = false,
-                    CreateNoWindow = true
+                    CreateNoWindow = true,
+                    RedirectStandardError = true
                 };
-                // PowerShell fallback is limited — ffmpeg is strongly recommended
             }
         }
         else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
