@@ -397,6 +397,7 @@ public class NostrService : INostrService, IDisposable
             var pubkey = eventData.GetProperty("pubkey").GetString() ?? "";
             var content = eventData.GetProperty("content").GetString() ?? "";
             var createdAt = eventData.GetProperty("created_at").GetInt64();
+            var sig = eventData.TryGetProperty("sig", out var sigElement) ? sigElement.GetString() ?? "" : "";
 
             var tags = new List<List<string>>();
             if (eventData.TryGetProperty("tags", out var tagsElement))
@@ -412,6 +413,15 @@ public class NostrService : INostrService, IDisposable
                 }
             }
 
+            // NIP-01: Verify event ID and signature before accepting
+            if (!VerifyEventSignature(id, pubkey, createdAt, kind, tags, content, sig))
+            {
+                _logger.LogWarning(
+                    "Rejected event with invalid signature from {RelayUrl}: id={EventId}, kind={Kind}, pubkey={PubKey}",
+                    relayUrl, id[..Math.Min(16, id.Length)], kind, pubkey[..Math.Min(16, pubkey.Length)]);
+                return null;
+            }
+
             return new NostrEventReceived
             {
                 Kind = kind,
@@ -420,13 +430,60 @@ public class NostrService : INostrService, IDisposable
                 Content = content,
                 CreatedAt = DateTimeOffset.FromUnixTimeSeconds(createdAt).UtcDateTime,
                 Tags = tags,
-                RelayUrl = relayUrl
+                RelayUrl = relayUrl,
+                Signature = sig
             };
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to parse Nostr event from {RelayUrl}", relayUrl);
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Verifies a Nostr event's ID (SHA-256) and BIP-340 Schnorr signature per NIP-01.
+    /// Returns true if valid, false if forged or malformed.
+    /// </summary>
+    internal static bool VerifyEventSignature(
+        string eventId, string pubkey, long createdAt, int kind,
+        List<List<string>> tags, string content, string sig)
+    {
+        // Validate field formats
+        if (eventId.Length != 64 || pubkey.Length != 64 || sig.Length != 128)
+            return false;
+
+        byte[] eventIdBytes, pubkeyBytes, sigBytes;
+        try
+        {
+            eventIdBytes = Convert.FromHexString(eventId);
+            pubkeyBytes = Convert.FromHexString(pubkey);
+            sigBytes = Convert.FromHexString(sig);
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+
+        // Step 1: Recompute event ID = SHA-256([0, pubkey, created_at, kind, tags, content])
+        var serialized = SerializeForEventId(pubkey, createdAt, kind, tags, content);
+        var computedIdBytes = System.Security.Cryptography.SHA256.HashData(
+            Encoding.UTF8.GetBytes(serialized));
+
+        if (!CryptographicOperations.FixedTimeEquals(computedIdBytes, eventIdBytes))
+            return false;
+
+        // Step 2: Verify BIP-340 Schnorr signature over the event ID
+        try
+        {
+            var xOnlyPub = ECXOnlyPubKey.Create(pubkeyBytes);
+            if (!SecpSchnorrSignature.TryCreate(sigBytes, out var schnorrSig) || schnorrSig is null)
+                return false;
+            return xOnlyPub.SigVerifyBIP340(schnorrSig, eventIdBytes);
+        }
+        catch
+        {
+            return false;
         }
     }
 

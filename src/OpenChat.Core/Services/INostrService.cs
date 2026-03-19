@@ -206,6 +206,7 @@ public class NostrEventReceived
     public DateTime CreatedAt { get; set; }
     public List<List<string>> Tags { get; set; } = new();
     public string RelayUrl { get; set; } = string.Empty;
+    public string Signature { get; set; } = string.Empty;
 }
 
 public class NostrFilter
