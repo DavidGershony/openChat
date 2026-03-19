@@ -113,11 +113,33 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Text Content (for non-image messages or captions) -->
+                <!-- Audio Player (for voice messages) -->
+                <StackPanel IsVisible="{Binding IsAudio}" Orientation="Horizontal" Spacing="8">
+                    <Button Command="{Binding LoadMediaCommand}"
+                            Width="36" Height="36" CornerRadius="18"
+                            Padding="0" Classes="primary"
+                            IsVisible="{Binding ShowTapToLoad}">
+                        <PathIcon Data="M8 5v14l11-7z" Width="16" Height="16" Foreground="White" />
+                    </Button>
+                    <TextBlock Text="{Binding ImageDisplayText}"
+                               VerticalAlignment="Center" FontSize="13"
+                               Foreground="{StaticResource BubbleReceivedText}"
+                               IsVisible="{Binding ShowTapToLoad}" />
+                    <TextBlock Text="{Binding ImageDisplayText}"
+                               VerticalAlignment="Center" FontSize="13"
+                               Foreground="{StaticResource TextMutedBrush}"
+                               IsVisible="{Binding ShowMediaDisabled}" />
+                    <TextBlock Text="{Binding MediaError}"
+                               VerticalAlignment="Center" FontSize="13"
+                               Foreground="{StaticResource StatusErrorBrush}"
+                               IsVisible="{Binding MediaError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                </StackPanel>
+
+                <!-- Text Content (for non-image/non-audio messages) -->
                 <TextBlock Text="{Binding Content}"
                            Foreground="{StaticResource BubbleReceivedText}"
                            TextWrapping="Wrap" FontSize="14"
-                           IsVisible="{Binding !IsImage}" />
+                           IsVisible="{Binding IsTextMessage}" />
 
                 <!-- Timestamp -->
                 <TextBlock Text="{Binding Timestamp, StringFormat={}{0:HH:mm}}"
@@ -221,11 +243,33 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Text Content (for non-image messages) -->
+                <!-- Audio Player (for voice messages) -->
+                <StackPanel IsVisible="{Binding IsAudio}" Orientation="Horizontal" Spacing="8">
+                    <Button Command="{Binding LoadMediaCommand}"
+                            Width="36" Height="36" CornerRadius="18"
+                            Padding="0" Classes="primary"
+                            IsVisible="{Binding ShowTapToLoad}">
+                        <PathIcon Data="M8 5v14l11-7z" Width="16" Height="16" Foreground="White" />
+                    </Button>
+                    <TextBlock Text="{Binding ImageDisplayText}"
+                               VerticalAlignment="Center" FontSize="13"
+                               Foreground="{StaticResource BubbleSentText}"
+                               IsVisible="{Binding ShowTapToLoad}" />
+                    <TextBlock Text="{Binding ImageDisplayText}"
+                               VerticalAlignment="Center" FontSize="13"
+                               Foreground="{StaticResource TextMutedBrush}"
+                               IsVisible="{Binding ShowMediaDisabled}" />
+                    <TextBlock Text="{Binding MediaError}"
+                               VerticalAlignment="Center" FontSize="13"
+                               Foreground="{StaticResource StatusErrorBrush}"
+                               IsVisible="{Binding MediaError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                </StackPanel>
+
+                <!-- Text Content (for non-image/non-audio messages) -->
                 <TextBlock Text="{Binding Content}"
                            Foreground="{StaticResource BubbleSentText}"
                            TextWrapping="Wrap" FontSize="14"
-                           IsVisible="{Binding !IsImage}" />
+                           IsVisible="{Binding IsTextMessage}" />
 
                 <!-- Timestamp -->
                 <TextBlock Text="{Binding Timestamp, StringFormat={}{0:HH:mm}}"

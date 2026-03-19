@@ -75,6 +75,55 @@ public static class Mip04MediaCrypto
     }
 
     /// <summary>
+    /// Encrypts a media file using ChaCha20-Poly1305 with MIP-04 AAD construction.
+    /// The caller must provide a random 12-byte nonce.
+    /// </summary>
+    public static byte[] EncryptMediaFile(byte[] plaintext, byte[] fileKey, string sha256Hex,
+        string mimeType, string filename, byte[] nonce)
+    {
+        ArgumentNullException.ThrowIfNull(plaintext);
+        ArgumentNullException.ThrowIfNull(fileKey);
+        if (fileKey.Length != KeyLength)
+            throw new ArgumentException($"File key must be {KeyLength} bytes.", nameof(fileKey));
+        if (nonce.Length != NonceLength)
+            throw new ArgumentException($"Nonce must be {NonceLength} bytes.", nameof(nonce));
+
+        var canonicalMime = CanonicalizeMimeType(mimeType);
+        var sha256Bytes = Convert.FromHexString(sha256Hex);
+        var mimeBytes = Encoding.UTF8.GetBytes(canonicalMime);
+        var filenameBytes = Encoding.UTF8.GetBytes(filename);
+        var versionBytes = Encoding.UTF8.GetBytes(VersionPrefix);
+
+        var aadLength = versionBytes.Length + 1 + sha256Bytes.Length + 1 + mimeBytes.Length + 1 + filenameBytes.Length;
+        var aad = new byte[aadLength];
+        var offset = 0;
+        Buffer.BlockCopy(versionBytes, 0, aad, offset, versionBytes.Length); offset += versionBytes.Length;
+        aad[offset++] = 0x00;
+        Buffer.BlockCopy(sha256Bytes, 0, aad, offset, sha256Bytes.Length); offset += sha256Bytes.Length;
+        aad[offset++] = 0x00;
+        Buffer.BlockCopy(mimeBytes, 0, aad, offset, mimeBytes.Length); offset += mimeBytes.Length;
+        aad[offset++] = 0x00;
+        Buffer.BlockCopy(filenameBytes, 0, aad, offset, filenameBytes.Length);
+
+        var cipher = new BcChaCha20Poly1305();
+        cipher.Init(true, new AeadParameters(new KeyParameter(fileKey), TagSizeBits, nonce, aad));
+
+        var ciphertext = new byte[cipher.GetOutputSize(plaintext.Length)];
+        var len = cipher.ProcessBytes(plaintext, 0, plaintext.Length, ciphertext, 0);
+        len += cipher.DoFinal(ciphertext, len);
+
+        if (len < ciphertext.Length)
+        {
+            var trimmed = new byte[len];
+            Buffer.BlockCopy(ciphertext, 0, trimmed, 0, len);
+            ciphertext = trimmed;
+        }
+
+        _logger.LogInformation("EncryptMediaFile: {InLen} → {OutLen} bytes", plaintext.Length, ciphertext.Length);
+        return ciphertext;
+    }
+
+    /// <summary>
     /// Decrypts a MIP-04 encrypted media file.
     /// AAD = "mip04-v2" || 0x00 || sha256_bytes || 0x00 || mime_bytes || 0x00 || filename_bytes
     /// Verifies SHA-256 integrity after decryption.

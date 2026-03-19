@@ -181,6 +181,64 @@ public class MessageService : IMessageService, IDisposable
         return message;
     }
 
+    public async Task SendVoiceMessageAsync(string chatId, string content, string mediaUrl,
+        string sha256Hex, string nonceHex, string mimeType, string filename, double durationSeconds)
+    {
+        if (_currentUser == null)
+            throw new InvalidOperationException("User not logged in");
+
+        var chat = await _storageService.GetChatAsync(chatId)
+            ?? throw new ArgumentException("Chat not found", nameof(chatId));
+
+        var message = new Message
+        {
+            Id = Guid.NewGuid().ToString(),
+            ChatId = chatId,
+            SenderPublicKey = _currentUser.PublicKeyHex,
+            Sender = _currentUser,
+            Type = MessageType.Audio,
+            Content = content,
+            ImageUrl = mediaUrl,
+            FileName = filename,
+            FileSha256 = sha256Hex,
+            EncryptionNonce = nonceHex,
+            MediaType = mimeType,
+            EncryptionVersion = "mip04-v2",
+            AudioDurationSeconds = durationSeconds,
+            Timestamp = DateTime.UtcNow,
+            Status = MessageStatus.Pending,
+            IsFromCurrentUser = true
+        };
+
+        await _storageService.SaveMessageAsync(message);
+        _newMessages.OnNext(message);
+
+        try
+        {
+            if (chat.MlsGroupId != null)
+            {
+                var eventJsonBytes = await _mlsService.EncryptMessageAsync(chat.MlsGroupId, content);
+                message.NostrEventId = await _nostrService.PublishRawEventJsonAsync(eventJsonBytes);
+                _logger.LogInformation("Voice message published: event {EventId}", message.NostrEventId);
+            }
+
+            message.Status = MessageStatus.Sent;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send voice message for chat {ChatId}", chatId);
+            message.Status = MessageStatus.Failed;
+        }
+
+        await _storageService.SaveMessageAsync(message);
+        _messageStatusUpdates.OnNext((message.Id, message.Status));
+
+        chat.LastActivityAt = DateTime.UtcNow;
+        chat.LastMessage = message;
+        await _storageService.SaveChatAsync(chat);
+        _chatUpdates.OnNext(chat);
+    }
+
     public async Task<Message> SendReplyAsync(string chatId, string content, string replyToMessageId)
     {
         var message = await SendMessageAsync(chatId, content);

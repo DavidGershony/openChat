@@ -68,6 +68,11 @@ public class Message
     public string? EncryptionVersion { get; set; }
 
     /// <summary>
+    /// Audio duration in seconds (for voice messages).
+    /// </summary>
+    public double? AudioDurationSeconds { get; set; }
+
+    /// <summary>
     /// Nostr event ID for this message.
     /// </summary>
     public string? NostrEventId { get; set; }
@@ -127,6 +132,7 @@ public enum MessageType
 {
     Text,
     Image,
+    Audio,
     File,
     System
 }

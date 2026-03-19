@@ -5,6 +5,8 @@ using System.Reactive.Linq;
 using Microsoft.Extensions.Logging;
 using ReactiveUI;
 using ReactiveUI.Fody.Helpers;
+using OpenChat.Core.Audio;
+using OpenChat.Core.Crypto;
 using OpenChat.Core.Logging;
 using OpenChat.Core.Models;
 using OpenChat.Core.Services;
@@ -76,6 +78,11 @@ public class ChatViewModel : ViewModelBase
     [Reactive] public string? InviteSuccess { get; set; }
     [Reactive] public string? GroupInviteLink { get; set; }
 
+    // Voice recording state
+    [Reactive] public bool IsRecording { get; set; }
+    [Reactive] public string RecordingDuration { get; set; } = "0:00";
+    [Reactive] public bool IsSendingVoice { get; set; }
+
     public ReactiveCommand<Unit, Unit> SendMessageCommand { get; }
     public ReactiveCommand<Unit, Unit> LoadMoreCommand { get; }
     public ReactiveCommand<Unit, Unit> LoadOlderMessagesCommand { get; }
@@ -85,6 +92,13 @@ public class ChatViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> CloseInviteDialogCommand { get; }
     public ReactiveCommand<Unit, Unit> SendInviteCommand { get; }
     public ReactiveCommand<Unit, Unit> CopyGroupLinkCommand { get; }
+    public ReactiveCommand<Unit, Unit> ToggleRecordingCommand { get; }
+    public ReactiveCommand<Unit, Unit> CancelRecordingCommand { get; }
+
+    // Static service references for voice message flow
+    internal static IAudioRecordingService? AudioRecordingService { get; set; }
+    internal static IAudioPlaybackService? AudioPlaybackService { get; set; }
+    internal static IMediaUploadService? MediaUploadService { get; set; }
 
     public ChatViewModel(IMessageService messageService, IStorageService storageService, INostrService nostrService, IMlsService mlsService, IPlatformClipboard clipboard, IMediaDownloadService? mediaDownloadService = null)
     {
@@ -180,6 +194,13 @@ public class ChatViewModel : ViewModelBase
                 _logger.LogError(ex, "Failed to copy group link");
             }
         });
+
+        var canRecord = this.WhenAnyValue(
+            x => x.HasChat,
+            x => x.IsSendingVoice,
+            (hasChat, sending) => hasChat && !sending);
+        ToggleRecordingCommand = ReactiveCommand.CreateFromTask(ToggleRecordingAsync, canRecord);
+        CancelRecordingCommand = ReactiveCommand.CreateFromTask(CancelRecordingAsync);
 
         // Subscribe to new messages
         _messageSubscription = _messageService.NewMessages
@@ -606,6 +627,120 @@ public class ChatViewModel : ViewModelBase
             _messageService.MarkAsReadAsync(ChatId!).ConfigureAwait(false);
         }
     }
+
+    private async Task ToggleRecordingAsync()
+    {
+        if (IsRecording)
+        {
+            await SendVoiceMessageAsync();
+        }
+        else
+        {
+            await StartRecordingAsync();
+        }
+    }
+
+    private async Task StartRecordingAsync()
+    {
+        if (AudioRecordingService == null)
+        {
+            _logger.LogWarning("Audio recording service not available");
+            return;
+        }
+
+        try
+        {
+            await AudioRecordingService.StartRecordingAsync();
+            IsRecording = true;
+            _logger.LogInformation("Voice recording started");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to start voice recording");
+        }
+    }
+
+    private async Task SendVoiceMessageAsync()
+    {
+        if (AudioRecordingService == null || _currentChat == null) return;
+
+        try
+        {
+            IsSendingVoice = true;
+            IsRecording = false;
+
+            var recording = await AudioRecordingService.StopRecordingAsync();
+            _logger.LogInformation("Recording stopped: {Duration}s, {Bytes} bytes PCM",
+                recording.Duration.TotalSeconds, recording.PcmData.Length);
+
+            // Encode to Opus
+            var opusBytes = OpusCodec.Encode(recording.PcmData, recording.SampleRate, recording.Channels);
+            var durationSeconds = recording.Duration.TotalSeconds;
+
+            // MIP-04 encrypt
+            var sha256Hex = Convert.ToHexString(
+                System.Security.Cryptography.SHA256.HashData(opusBytes)).ToLowerInvariant();
+            var mediaKey = Mip04MediaCrypto.DeriveMediaEncryptionKey(
+                _mlsService.GetMediaExporterSecret(_currentChat.MlsGroupId!),
+                sha256Hex, "audio/opus", "voice.opus");
+            var nonce = System.Security.Cryptography.RandomNumberGenerator.GetBytes(12);
+            var encrypted = Mip04MediaCrypto.EncryptMediaFile(
+                opusBytes, mediaKey, sha256Hex, "audio/opus", "voice.opus", nonce);
+
+            // Upload to Blossom
+            if (MediaUploadService == null)
+                throw new InvalidOperationException("Media upload service not configured");
+
+            var uploadResult = await MediaUploadService.UploadAsync(encrypted, _currentUserPrivateKeyHex);
+
+            // Build imeta tag and send as MLS message
+            var nonceHex = Convert.ToHexString(nonce).ToLowerInvariant();
+            var imetaTag = new List<string>
+            {
+                "imeta",
+                $"url {uploadResult.Url}",
+                $"m audio/opus",
+                $"x {sha256Hex}",
+                $"n {nonceHex}",
+                $"v mip04-v2",
+                $"filename voice.opus",
+                $"duration {durationSeconds:F1}"
+            };
+
+            // Send via MLS (the rumor content can be a placeholder since the media is in imeta)
+            var content = $"[Voice message ({TimeSpan.FromSeconds(durationSeconds):m\\:ss})]";
+            await _messageService.SendVoiceMessageAsync(
+                _currentChat.Id, content, uploadResult.Url, sha256Hex, nonceHex,
+                "audio/opus", "voice.opus", durationSeconds);
+
+            _logger.LogInformation("Voice message sent: {Duration}s, {Size} bytes encrypted",
+                durationSeconds, encrypted.Length);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send voice message");
+        }
+        finally
+        {
+            IsSendingVoice = false;
+        }
+    }
+
+    private async Task CancelRecordingAsync()
+    {
+        if (AudioRecordingService == null) return;
+
+        try
+        {
+            await AudioRecordingService.CancelRecordingAsync();
+            IsRecording = false;
+            _logger.LogInformation("Voice recording cancelled");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to cancel recording");
+        }
+    }
 }
 
 public class MessageViewModel : ViewModelBase
@@ -645,6 +780,16 @@ public class MessageViewModel : ViewModelBase
     public bool IsImage { get; }
 
     /// <summary>
+    /// True when this message is a voice/audio message (MessageType.Audio).
+    /// </summary>
+    public bool IsAudio { get; }
+
+    /// <summary>
+    /// True when this is a plain text message (not image, not audio).
+    /// </summary>
+    public bool IsTextMessage => !IsImage && !IsAudio;
+
+    /// <summary>
     /// Display text for image messages, e.g. "[Encrypted image: photo.jpg]".
     /// </summary>
     public string? ImageDisplayText { get; }
@@ -659,15 +804,21 @@ public class MessageViewModel : ViewModelBase
     /// </summary>
     public string? ServerHostname { get; }
 
-    /// <summary>
-    /// True when MIP-04 is disabled and this is an image message.
-    /// </summary>
-    public bool ShowMediaDisabled => IsImage && !IsMip04Enabled;
+    // Audio playback state
+    [Reactive] public bool IsPlayingAudio { get; set; }
+    [Reactive] public double AudioProgress { get; set; }
+    [Reactive] public string? AudioDurationText { get; set; }
+    [Reactive] public byte[]? DecodedAudioPcm { get; set; }
 
     /// <summary>
-    /// True when MIP-04 is enabled, this is an image, and it hasn't been loaded yet.
+    /// True when this is a media message (image or audio) and MIP-04 is disabled.
     /// </summary>
-    public bool ShowTapToLoad => IsImage && IsMip04Enabled && !IsMediaLoaded && !IsLoadingMedia && MediaError == null;
+    public bool ShowMediaDisabled => (IsImage || IsAudio) && !IsMip04Enabled;
+
+    /// <summary>
+    /// True when MIP-04 is enabled, this is media, and it hasn't been loaded yet.
+    /// </summary>
+    public bool ShowTapToLoad => (IsImage || IsAudio) && IsMip04Enabled && !IsMediaLoaded && !IsLoadingMedia && MediaError == null;
 
     public ReactiveCommand<Unit, Unit> LoadMediaCommand { get; }
 
@@ -696,25 +847,34 @@ public class MessageViewModel : ViewModelBase
         Status = message.Status;
 
         IsImage = message.Type == MessageType.Image;
+        IsAudio = message.Type == MessageType.Audio;
         if (IsImage)
         {
             var displayName = !string.IsNullOrEmpty(message.FileName) ? message.FileName : "image";
             ImageDisplayText = $"[Encrypted image: {displayName}]";
+        }
+        else if (IsAudio)
+        {
+            var duration = message.AudioDurationSeconds.HasValue
+                ? TimeSpan.FromSeconds(message.AudioDurationSeconds.Value).ToString(@"m\:ss")
+                : "?:??";
+            ImageDisplayText = $"Voice message ({duration})";
+            AudioDurationText = duration;
+        }
 
-            // Determine server safety
-            if (!string.IsNullOrEmpty(message.ImageUrl))
-            {
-                IsUnknownServer = MediaDownloadService != null && !MediaDownloadService.IsKnownBlossomServer(message.ImageUrl);
-                if (Uri.TryCreate(message.ImageUrl, UriKind.Absolute, out var uri))
-                    ServerHostname = uri.Host;
-            }
+        // Determine server safety for media messages
+        if ((IsImage || IsAudio) && !string.IsNullOrEmpty(message.ImageUrl))
+        {
+            IsUnknownServer = MediaDownloadService != null && !MediaDownloadService.IsKnownBlossomServer(message.ImageUrl);
+            if (Uri.TryCreate(message.ImageUrl, UriKind.Absolute, out var uri))
+                ServerHostname = uri.Host;
         }
 
         // Load MIP-04 setting
         LoadMip04Setting();
 
         // Check cache
-        if (IsImage && MediaCacheGet != null)
+        if ((IsImage || IsAudio) && MediaCacheGet != null)
         {
             var cached = MediaCacheGet(Id);
             if (cached != null)
@@ -743,10 +903,10 @@ public class MessageViewModel : ViewModelBase
 
     private async Task LoadMediaAsync()
     {
-        if (!IsImage || string.IsNullOrEmpty(Message.ImageUrl))
+        if ((!IsImage && !IsAudio) || string.IsNullOrEmpty(Message.ImageUrl))
         {
-            MediaError = "No image URL available.";
-            _logger.LogWarning("LoadMedia: no image URL for message {Id}", Id);
+            MediaError = "No media URL available.";
+            _logger.LogWarning("LoadMedia: no media URL for message {Id}", Id);
             return;
         }
 

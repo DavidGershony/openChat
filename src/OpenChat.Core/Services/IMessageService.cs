@@ -58,6 +58,12 @@ public interface IMessageService
     Task<Message> SendMessageAsync(string chatId, string content);
 
     /// <summary>
+    /// Send a voice message with encrypted audio uploaded to Blossom.
+    /// </summary>
+    Task SendVoiceMessageAsync(string chatId, string content, string mediaUrl,
+        string sha256Hex, string nonceHex, string mimeType, string filename, double durationSeconds);
+
+    /// <summary>
     /// Send a reply to a message.
     /// </summary>
     Task<Message> SendReplyAsync(string chatId, string content, string replyToMessageId);
