@@ -1,4 +1,5 @@
 using System.Net.WebSockets;
+using OpenChat.Core.Configuration;
 using OpenChat.Core.Services;
 using Xunit;
 
@@ -11,6 +12,7 @@ public class NostrServiceTests
 
     public NostrServiceTests()
     {
+        ProfileConfiguration.SetAllowLocalRelays(true);
         _nostrService = new NostrService();
     }
 

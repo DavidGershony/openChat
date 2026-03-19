@@ -2,6 +2,7 @@ using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Security.Cryptography;
 using Microsoft.Data.Sqlite;
+using OpenChat.Core.Configuration;
 using OpenChat.Core.Models;
 using OpenChat.Core.Services;
 using Xunit;
@@ -27,6 +28,7 @@ public class RelayIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
+        ProfileConfiguration.SetAllowLocalRelays(true);
         _nostrServiceA = new NostrService();
         _nostrServiceB = new NostrService();
 

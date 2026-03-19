@@ -7,6 +7,7 @@ using OpenChat.Core.Marmot;
 using OpenChat.Core.Models;
 using OpenChat.Core.Services;
 using Xunit;
+using OpenChat.Core.Configuration;
 using OpenChat.Core.Tests.TestHelpers;
 using Xunit.Abstractions;
 
@@ -46,6 +47,7 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
 
     public FullStackRelayIntegrationTests(ITestOutputHelper output)
     {
+        ProfileConfiguration.SetAllowLocalRelays(true);
         _output = output;
     }
 

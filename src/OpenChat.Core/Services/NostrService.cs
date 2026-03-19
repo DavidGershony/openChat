@@ -11,6 +11,7 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using NBitcoin.Secp256k1;
 using OpenChat.Core;
+using OpenChat.Core.Configuration;
 using OpenChat.Core.Crypto;
 using OpenChat.Core.Logging;
 using OpenChat.Core.Models;
@@ -76,15 +77,15 @@ public class NostrService : INostrService, IDisposable
             var validationError = await ValidateRelayUrlAsync(relayUrl);
             if (validationError != null)
             {
-                if (validationError.Contains("private", StringComparison.OrdinalIgnoreCase) ||
-                    validationError.Contains("reserved", StringComparison.OrdinalIgnoreCase))
+                var isPrivateIpError = validationError.Contains("private", StringComparison.OrdinalIgnoreCase) ||
+                                       validationError.Contains("reserved", StringComparison.OrdinalIgnoreCase);
+
+                if (isPrivateIpError && ProfileConfiguration.AllowLocalRelays)
                 {
-                    // Private IPs: warn but allow (user may be running a local relay for development)
-                    _logger.LogWarning("Relay URL {RelayUrl} resolves to private/reserved IP — allowing for local use", relayUrl);
+                    _logger.LogWarning("Relay URL {RelayUrl} resolves to private/reserved IP — allowed by --allow-local-relays", relayUrl);
                 }
                 else
                 {
-                    // Non-WebSocket schemes, invalid URLs: reject
                     _logger.LogWarning("Rejected relay URL {RelayUrl}: {Reason}", relayUrl, validationError);
                     _connectionStatus.OnNext(new NostrConnectionStatus
                     {

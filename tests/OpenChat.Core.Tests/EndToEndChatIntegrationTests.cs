@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Moq;
+using OpenChat.Core.Configuration;
 using OpenChat.Core.Models;
 using OpenChat.Core.Services;
 using OpenChat.Core.Tests.TestHelpers;
@@ -46,7 +47,11 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
     private IMlsService _mlsServiceB => _userB.MlsService;
     private MessageService _messageServiceB => _userB.MessageService;
 
-    public Task InitializeAsync() => Task.CompletedTask;
+    public Task InitializeAsync()
+    {
+        ProfileConfiguration.SetAllowLocalRelays(true);
+        return Task.CompletedTask;
+    }
 
     private async Task SetupUsers(string backend)
     {

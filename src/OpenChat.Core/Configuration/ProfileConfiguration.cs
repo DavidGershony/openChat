@@ -14,6 +14,14 @@ public static class ProfileConfiguration
 
     public static void SetMdkBackend(MdkBackend backend) => ActiveMdkBackend = backend;
 
+    /// <summary>
+    /// When true, relay URL validation allows connections to private/reserved IPs (localhost, 10.x, etc.).
+    /// Set via --allow-local-relays CLI flag. Default: false (private IPs blocked).
+    /// </summary>
+    public static bool AllowLocalRelays { get; private set; }
+
+    public static void SetAllowLocalRelays(bool allow) => AllowLocalRelays = allow;
+
     private static readonly Regex ValidProfileName = new(@"^[a-zA-Z0-9_-]+$", RegexOptions.Compiled);
 
     /// <summary>

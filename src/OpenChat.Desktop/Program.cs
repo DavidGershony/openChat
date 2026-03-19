@@ -10,15 +10,18 @@ class Program
     [STAThread]
     public static void Main(string[] args)
     {
-        // Parse --profile and --mdk arguments before anything else
+        // Parse CLI arguments before anything else
         string? profileName = null;
         string? mdkBackendArg = null;
-        for (int i = 0; i < args.Length - 1; i++)
+        bool allowLocalRelays = false;
+        for (int i = 0; i < args.Length; i++)
         {
-            if (args[i].Equals("--profile", StringComparison.OrdinalIgnoreCase))
-                profileName = args[i + 1];
-            else if (args[i].Equals("--mdk", StringComparison.OrdinalIgnoreCase))
-                mdkBackendArg = args[i + 1];
+            if (args[i].Equals("--profile", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+                profileName = args[++i];
+            else if (args[i].Equals("--mdk", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+                mdkBackendArg = args[++i];
+            else if (args[i].Equals("--allow-local-relays", StringComparison.OrdinalIgnoreCase))
+                allowLocalRelays = true;
         }
 
         ProfileConfiguration.SetProfile(profileName);
@@ -33,6 +36,9 @@ class Program
             };
             ProfileConfiguration.SetMdkBackend(backend);
         }
+
+        if (allowLocalRelays)
+            ProfileConfiguration.SetAllowLocalRelays(true);
 
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
