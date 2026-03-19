@@ -53,6 +53,14 @@ public class MainActivity : AppCompatActivity, IActivatableView
         var qrCodeGenerator = new AndroidQrCodeGenerator();
         var launcher = new AndroidLauncher(this);
 
+        // Audio and upload services for voice messages
+        var audioRecording = new OpenChat.Android.Services.AndroidAudioRecordingService(this);
+        var audioPlayback = new OpenChat.Android.Services.AndroidAudioPlaybackService(this);
+        var blossomUpload = new BlossomUploadService();
+        ChatViewModel.AudioRecordingService = audioRecording;
+        ChatViewModel.AudioPlaybackService = audioPlayback;
+        ChatViewModel.MediaUploadService = blossomUpload;
+
         // Create MainViewModel
         _viewModel = new MainViewModel(
             messageService, nostrService, storageService, mlsService,

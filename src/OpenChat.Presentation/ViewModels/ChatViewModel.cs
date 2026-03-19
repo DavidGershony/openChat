@@ -95,10 +95,10 @@ public class ChatViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> ToggleRecordingCommand { get; }
     public ReactiveCommand<Unit, Unit> CancelRecordingCommand { get; }
 
-    // Static service references for voice message flow
-    internal static IAudioRecordingService? AudioRecordingService { get; set; }
-    internal static IAudioPlaybackService? AudioPlaybackService { get; set; }
-    internal static IMediaUploadService? MediaUploadService { get; set; }
+    // Static service references for voice message flow (set by platform startup)
+    public static IAudioRecordingService? AudioRecordingService { get; set; }
+    public static IAudioPlaybackService? AudioPlaybackService { get; set; }
+    public static IMediaUploadService? MediaUploadService { get; set; }
 
     public ChatViewModel(IMessageService messageService, IStorageService storageService, INostrService nostrService, IMlsService mlsService, IPlatformClipboard clipboard, IMediaDownloadService? mediaDownloadService = null)
     {

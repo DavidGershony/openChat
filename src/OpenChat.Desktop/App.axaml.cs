@@ -60,6 +60,14 @@ public partial class App : Application
                 var qrCodeGenerator = new AvaloniaQrCodeGenerator();
                 var launcher = new AvaloniaLauncher();
 
+                // Audio and upload services for voice messages
+                var audioRecording = new DesktopAudioRecordingService();
+                var audioPlayback = new DesktopAudioPlaybackService();
+                var blossomUpload = new BlossomUploadService();
+                ChatViewModel.AudioRecordingService = audioRecording;
+                ChatViewModel.AudioPlaybackService = audioPlayback;
+                ChatViewModel.MediaUploadService = blossomUpload;
+
                 _logger?.LogDebug("Creating MainViewModel...");
                 var mainViewModel = new MainViewModel(messageService, nostrService, storageService, mlsService, clipboard, qrCodeGenerator, launcher);
 
