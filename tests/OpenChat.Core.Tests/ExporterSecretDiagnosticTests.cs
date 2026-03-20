@@ -294,7 +294,14 @@ public class ExporterSecretDiagnosticTests : IAsyncLifetime
             var msgBytes = await user.mls.EncryptMessageAsync(chat.MlsGroupId!, "Hello from OpenChat diagnostic!");
             var msgEventId = await user.nostr.PublishRawEventJsonAsync(msgBytes);
             _output.WriteLine($"Published kind 445 message: {msgEventId}");
+
+            // Wait for relay to acknowledge and store the event
+            _output.WriteLine("Waiting 5s for relay to store event...");
+            await Task.Delay(5000);
+
             _output.WriteLine("Check if the web app can decrypt this message.");
+            _output.WriteLine("Keeping connection alive for 30s so relay processes everything...");
+            await Task.Delay(30000);
         }
         catch (Exception ex)
         {
