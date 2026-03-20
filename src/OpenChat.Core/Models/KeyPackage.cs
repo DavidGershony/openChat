@@ -22,7 +22,7 @@ public class KeyPackage
     /// Cipher suites that OpenChat can currently process.
     /// Other suites are displayed but marked as unsupported.
     /// </summary>
-    public static readonly HashSet<ushort> SupportedCipherSuites = new() { 0x0001 };
+    public static readonly HashSet<ushort> SupportedCipherSuites = new() { 0x0001, 0x0003 };
 
     /// <summary>
     /// Human-readable names for known cipher suites (RFC 9420 + ts-mls extensions).
