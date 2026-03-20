@@ -393,11 +393,14 @@ public class MessageService : IMessageService, IDisposable
 
         var groupIdHex = Convert.ToHexString(chat.MlsGroupId).ToLowerInvariant();
 
-        // Fetch member's KeyPackage
+        // Fetch member's KeyPackage — only use supported cipher suites
         _logger.LogDebug("AddMember: fetching KeyPackages for {Member}", memberPublicKey[..Math.Min(16, memberPublicKey.Length)]);
         var keyPackages = await _nostrService.FetchKeyPackagesAsync(memberPublicKey);
-        var keyPackage = keyPackages.FirstOrDefault()
-            ?? throw new InvalidOperationException("No KeyPackage found for member");
+        var keyPackage = keyPackages.FirstOrDefault(kp => kp.IsCipherSuiteSupported)
+            ?? throw new InvalidOperationException(
+                keyPackages.Any()
+                    ? $"No KeyPackage with a supported cipher suite found for member (found {keyPackages.Count()} with unsupported suites)"
+                    : "No KeyPackage found for member");
         _logger.LogInformation("AddMember: found KeyPackage {KpId}, {Len} bytes",
             keyPackage.NostrEventId?[..Math.Min(16, keyPackage.NostrEventId?.Length ?? 0)] ?? "none",
             keyPackage.Data.Length);

@@ -18,6 +18,38 @@ public enum KeyPackageStatus
 /// </summary>
 public class KeyPackage
 {
+    /// <summary>
+    /// Cipher suites that OpenChat can currently process.
+    /// Other suites are displayed but marked as unsupported.
+    /// </summary>
+    public static readonly HashSet<ushort> SupportedCipherSuites = new() { 0x0001 };
+
+    /// <summary>
+    /// Human-readable names for known cipher suites (RFC 9420 + ts-mls extensions).
+    /// </summary>
+    public static readonly Dictionary<ushort, string> CipherSuiteNames = new()
+    {
+        { 0x0001, "X25519 / AES-128-GCM / SHA-256 / Ed25519" },
+        { 0x0002, "P-256 / AES-128-GCM / SHA-256 / P-256" },
+        { 0x0003, "X25519 / ChaCha20-Poly1305 / SHA-256 / Ed25519" },
+        { 0x0004, "X448 / AES-256-GCM / SHA-512 / Ed448" },
+        { 0x0005, "P-521 / AES-256-GCM / SHA-512 / P-521" },
+        { 0x0006, "X448 / ChaCha20-Poly1305 / SHA-512 / Ed448" },
+        { 0x0007, "P-384 / AES-256-GCM / SHA-384 / P-384" },
+    };
+
+    /// <summary>
+    /// Whether this KeyPackage uses a cipher suite that OpenChat supports.
+    /// </summary>
+    public bool IsCipherSuiteSupported => SupportedCipherSuites.Contains(CiphersuiteId);
+
+    /// <summary>
+    /// Human-readable cipher suite name, or "Unknown (0xNNNN)" for unrecognized suites.
+    /// </summary>
+    public string CipherSuiteName => CipherSuiteNames.TryGetValue(CiphersuiteId, out var name)
+        ? name
+        : $"Unknown (0x{CiphersuiteId:x4})";
+
     public string Id { get; set; } = string.Empty;
 
     /// <summary>

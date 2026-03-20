@@ -388,16 +388,37 @@ public class ChatListViewModel : ViewModelBase
                 {
                     FoundKeyPackages.Add(new KeyPackageItemViewModel(kp));
                 }
-                // Auto-select the most recent one
-                SelectedKeyPackage = FoundKeyPackages.First();
+
+                // Auto-select the most recent SUPPORTED KeyPackage
+                var supportedKp = FoundKeyPackages.FirstOrDefault(kp => kp.IsSupported);
+                SelectedKeyPackage = supportedKp;
+
+                var supportedCount = keyPackageList.Count(kp => kp.IsCipherSuiteSupported);
+                var unsupportedCount = keyPackageList.Count - supportedCount;
 
                 var latestPackage = keyPackageList.First();
                 KeyPackageCreatedAt = latestPackage.CreatedAt;
                 KeyPackageRelays = latestPackage.RelayUrls.Count > 0
                     ? string.Join(", ", latestPackage.RelayUrls.Take(3))
                     : "Unknown relay";
-                KeyPackageStatus = $"Found {keyPackageList.Count} KeyPackage(s)";
-                _logger.LogInformation("Found {Count} KeyPackage(s) for {PubKey}", keyPackageList.Count, pubKey[..Math.Min(16, pubKey.Length)]);
+
+                if (unsupportedCount > 0 && supportedCount == 0)
+                {
+                    KeyPackageStatus = $"Found {keyPackageList.Count} KeyPackage(s) — none use a supported cipher suite";
+                    _logger.LogWarning("Found {Count} KeyPackage(s) for {PubKey} but none use a supported cipher suite (all use unsupported suites)",
+                        keyPackageList.Count, pubKey[..Math.Min(16, pubKey.Length)]);
+                }
+                else if (unsupportedCount > 0)
+                {
+                    KeyPackageStatus = $"Found {keyPackageList.Count} KeyPackage(s) ({unsupportedCount} unsupported)";
+                    _logger.LogInformation("Found {Count} KeyPackage(s) for {PubKey} ({Unsupported} unsupported cipher suite(s))",
+                        keyPackageList.Count, pubKey[..Math.Min(16, pubKey.Length)], unsupportedCount);
+                }
+                else
+                {
+                    KeyPackageStatus = $"Found {keyPackageList.Count} KeyPackage(s)";
+                    _logger.LogInformation("Found {Count} KeyPackage(s) for {PubKey}", keyPackageList.Count, pubKey[..Math.Min(16, pubKey.Length)]);
+                }
             }
             else
             {
@@ -567,6 +588,14 @@ public class ChatListViewModel : ViewModelBase
             {
                 NewChatError = "No KeyPackage selected — look up the user's KeyPackages first";
                 _logger.LogWarning("CreateNewChat: no KeyPackage selected");
+                return;
+            }
+
+            if (!keyPackage.IsCipherSuiteSupported)
+            {
+                NewChatError = $"Unsupported cipher suite 0x{keyPackage.CiphersuiteId:x4} ({keyPackage.CipherSuiteName}). Select a KeyPackage with a supported cipher suite.";
+                _logger.LogWarning("CreateNewChat: unsupported cipher suite 0x{CipherSuite:x4} on selected KeyPackage",
+                    keyPackage.CiphersuiteId);
                 return;
             }
             _logger.LogDebug("Using pre-selected KeyPackage {EventId} for {PubKey}",
@@ -1297,6 +1326,12 @@ public class KeyPackageItemViewModel : ViewModelBase
     /// <summary>Ciphersuite as hex string, e.g. "0x0001".</summary>
     public string CiphersuiteDisplay { get; }
 
+    /// <summary>Human-readable cipher suite name.</summary>
+    public string CiphersuiteName { get; }
+
+    /// <summary>Whether this KeyPackage uses a supported cipher suite.</summary>
+    public bool IsSupported { get; }
+
     /// <summary>First relay URL where this KeyPackage was found.</summary>
     public string RelaySource { get; }
 
@@ -1314,6 +1349,8 @@ public class KeyPackageItemViewModel : ViewModelBase
             : $"{(int)elapsed.TotalDays}d ago";
 
         CiphersuiteDisplay = $"0x{keyPackage.CiphersuiteId:x4}";
+        CiphersuiteName = keyPackage.CipherSuiteName;
+        IsSupported = keyPackage.IsCipherSuiteSupported;
 
         RelaySource = keyPackage.RelayUrls.Count > 0
             ? keyPackage.RelayUrls[0]
