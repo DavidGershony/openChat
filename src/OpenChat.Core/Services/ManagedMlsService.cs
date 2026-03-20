@@ -722,6 +722,15 @@ public class ManagedMlsService : IMlsService
         return _mdk!.GetNostrGroupId(groupId);
     }
 
+    /// <summary>
+    /// Get the MIP-03 exporter secret for a group (for diagnostic/comparison purposes).
+    /// </summary>
+    public byte[] GetExporterSecret(byte[] groupId)
+    {
+        EnsureInitialized();
+        return _mdk!.GetExporterSecret(groupId);
+    }
+
     public int GetStoredKeyPackageCount() => _storedKeyPackages.Count;
 
     public bool HasKeyMaterialForKeyPackage(byte[] keyPackageData)
