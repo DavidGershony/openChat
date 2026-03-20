@@ -722,6 +722,7 @@ public class ManagedMlsService : IMlsService
         return _mdk!.GetNostrGroupId(groupId);
     }
 
+    // TODO: DIAGNOSTIC ONLY — remove after cross-impl epoch divergence is resolved
     /// <summary>
     /// Get the MIP-03 exporter secret for a group (for diagnostic/comparison purposes).
     /// </summary>

@@ -95,7 +95,30 @@ Full NIP-59 unwrap verified: Gift Wrap → Seal → Rumor, all layers correct.
 - [x] Re-run all existing tests (178 pass, 3 skipped)
 
 ## Remaining Issue: Epoch Divergence (Issue 2)
-The exporter secret divergence between marmot-ts and OpenChat (different MLS implementations deriving different secrets at the same epoch) is likely caused by differences in how the C# MDK (marmot-cs) and TypeScript MDK (ts-mls) implement the MLS key schedule. This is a deeper cross-implementation bug requiring comparison of actual exporter secret bytes from both sides.
+
+### Analysis
+Code review confirms crypto primitives are identical between dotnet-mls and ts-mls:
+- HKDF Extract argument order: both use `extract(salt, ikm)`
+- ExpandWithLabel: both use VarInt (RFC 9000 16), "MLS 1.0 " prefix
+- Key schedule derivation chain: structurally identical
+- GroupContext serialization format: same field order and encoding
+- MIP-03 exporter: both call `mlsExporter(exporterSecret, "marmot", "group-event", 32)`
+- marmot-cs internal consistency verified: sender and receiver derive same exporter secret
+
+### Likely Root Cause: Missed Commits (NOW FIXED)
+The epoch divergence may have been caused by OpenChat failing to process commit events
+from the web app. When the web app commits (adds a member, updates keys), it publishes a
+kind 445 commit event. Previously OpenChat's DecryptMessageAsync threw on commits instead
+of processing them, so OpenChat stayed at an earlier epoch while the web app advanced.
+
+Our fix (Issues 4-6) now properly handles commits, which should resolve the epoch divergence
+in most cases. The interactive test `PublishKPAndWaitForWebAppWelcome` can verify this.
+
+### If Divergence Persists After Commit Fix
+If the issue persists even after proper commit handling, the divergence is in how the Welcome
+itself is processed (different GroupContext bytes from the same Welcome). Use the
+`ExporterSecretDiagnosticTests` to dump the exporter secret and compare with the web app's
+`clientState.keySchedule.exporterSecret` value in browser console.
 
 ## Files Changed
 - `src/OpenChat.Core/Services/IMlsService.cs` — Added `IsCommit` to `MlsDecryptedMessage`
