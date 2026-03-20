@@ -533,8 +533,24 @@ public class ManagedMlsService : IMlsService
             };
         }
 
+        // Handle commit messages — these advance the epoch but carry no user-visible content.
+        // This happens when another member adds/removes a user or updates keys.
+        if (result is CommitResult commitResult)
+        {
+            _logger.LogInformation("DecryptMessage: processed commit for group {GroupId}, epoch advanced (managed)",
+                groupIdHex[..Math.Min(16, groupIdHex.Length)]);
+            await SaveGroupStateAsync(groupId);
+            return new MlsDecryptedMessage
+            {
+                IsCommit = true,
+                Epoch = 0, // Epoch info not directly available from CommitResult
+                SenderPublicKey = string.Empty,
+                Plaintext = string.Empty
+            };
+        }
+
         var reason = result is UnprocessableResult ur ? ur.Reason : result.GetType().Name;
-        throw new InvalidOperationException($"Expected ApplicationMessageResult but got {result.GetType().Name}: {reason}");
+        throw new InvalidOperationException($"Expected ApplicationMessageResult or CommitResult but got {result.GetType().Name}: {reason}");
     }
 
     public async Task ProcessCommitAsync(byte[] groupId, byte[] commitData)

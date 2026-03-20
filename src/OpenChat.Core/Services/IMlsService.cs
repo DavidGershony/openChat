@@ -156,6 +156,12 @@ public class MlsDecryptedMessage
     public ulong Epoch { get; set; }
 
     /// <summary>
+    /// True if this was a commit message (epoch transition), not an application message.
+    /// When true, the MLS group state has been updated but there is no user-visible content.
+    /// </summary>
+    public bool IsCommit { get; set; }
+
+    /// <summary>
     /// Image URL extracted from imeta tags (MIP-04).
     /// </summary>
     public string? ImageUrl { get; set; }

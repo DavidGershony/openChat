@@ -407,7 +407,22 @@ public class MessageService : IMessageService, IDisposable
         _logger.LogInformation("AddMember: MLS add succeeded, welcome={WelcomeLen} bytes, commit={CommitLen} bytes",
             welcome.WelcomeData.Length, welcome.CommitData?.Length ?? 0);
 
-        // Publish Welcome message
+        // Publish commit event (kind 445) for existing group members to advance their epoch.
+        // Per MIP-03, the commit must be published BEFORE the welcome so existing members
+        // can process it and stay in sync with the group's MLS state.
+        if (_currentUser != null && welcome.CommitData != null && welcome.CommitData.Length > 0)
+        {
+            var nostrGroupId = _mlsService.GetNostrGroupId(chat.MlsGroupId);
+            var commitGroupId = nostrGroupId != null
+                ? Convert.ToHexString(nostrGroupId).ToLowerInvariant()
+                : groupIdHex;
+            var commitEventId = await _nostrService.PublishCommitAsync(
+                welcome.CommitData, commitGroupId, _currentUser.PrivateKeyHex);
+            _logger.LogInformation("AddMember: published kind 445 commit event {EventId} for group {GroupId}",
+                commitEventId, commitGroupId[..Math.Min(16, commitGroupId.Length)]);
+        }
+
+        // Publish Welcome message (NIP-59 gift wrapped kind 444)
         if (_currentUser != null)
         {
             var welcomeEventId = await _nostrService.PublishWelcomeAsync(
@@ -697,6 +712,15 @@ public class MessageService : IMessageService, IDisposable
                 ErrorMessage = ex.Message,
                 Timestamp = DateTime.UtcNow
             });
+            return;
+        }
+
+        // Commit messages advance the MLS epoch but carry no user-visible content.
+        // The DecryptMessageAsync call already updated the group state.
+        if (decrypted.IsCommit)
+        {
+            _logger.LogInformation("HandleGroupMessage: processed commit for group {GroupId}, epoch advanced",
+                groupIdHex[..Math.Min(16, groupIdHex.Length)]);
             return;
         }
 
