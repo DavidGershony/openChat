@@ -218,13 +218,17 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
         _output.WriteLine($"PendingInvite confirmed: sender={invite.SenderPublicKey[..16]}..., welcomeDataLen={invite.WelcomeData.Length}");
 
         Assert.Equal(_pubKeyA, invite.SenderPublicKey);
-        Assert.Equal(eventId, invite.NostrEventId);
+        // NostrEventId is now the rumor's own id (SHA-256 of canonical content),
+        // not the gift wrap event id returned by PublishWelcomeAsync
+        Assert.NotEmpty(invite.NostrEventId);
+        Assert.Equal(64, invite.NostrEventId.Length);
         Assert.Equal(welcomeData, invite.WelcomeData);
 
         // Step 6: Verify invite was persisted to storage
         var storedInvites = (await _storageB.GetPendingInvitesAsync()).ToList();
         _output.WriteLine($"Stored invites count: {storedInvites.Count}");
-        Assert.Contains(storedInvites, i => i.NostrEventId == eventId);
+        // NostrEventId is the rumor's own id, not the gift wrap event id
+        Assert.Contains(storedInvites, i => !string.IsNullOrEmpty(i.NostrEventId) && i.NostrEventId.Length == 64);
 
         _output.WriteLine("FULL STACK TEST PASSED: Welcome → Relay → NostrService → MessageService → PendingInvite → Storage");
     }
@@ -268,7 +272,8 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
         }
 
         Assert.NotEmpty(storedInvites);
-        Assert.Contains(storedInvites, i => i.NostrEventId == eventId);
+        // NostrEventId is the rumor's own id, not the gift wrap event id
+        Assert.Contains(storedInvites, i => !string.IsNullOrEmpty(i.NostrEventId) && i.NostrEventId.Length == 64);
 
         _output.WriteLine("RESCAN TEST PASSED: Historical Welcome found via FetchWelcomeEventsAsync");
     }

@@ -1114,11 +1114,12 @@ public class NostrService : INostrService, IDisposable
                 }
             }
 
-            // Use the gift wrap event ID as the event identifier (the rumor has no real ID)
+            // Use the rumor's own id if present, otherwise fall back to the gift wrap event ID
+            var rumorId = rumor.TryGetProperty("id", out var idProp) ? idProp.GetString() ?? "" : "";
             return new NostrEventReceived
             {
                 Kind = rumorKind,
-                EventId = giftWrapEvent.EventId,
+                EventId = !string.IsNullOrEmpty(rumorId) ? rumorId : giftWrapEvent.EventId,
                 PublicKey = rumorPubkey,
                 Content = rumorContent,
                 CreatedAt = DateTimeOffset.FromUnixTimeSeconds(rumorCreatedAt).UtcDateTime,
@@ -1139,9 +1140,17 @@ public class NostrService : INostrService, IDisposable
     /// </summary>
     private string SerializeRumor(string pubkey, long createdAt, int kind, List<List<string>> tags, string content)
     {
+        // Compute the event id (SHA-256 of NIP-01 canonical serialization).
+        // Rumors are unsigned (no sig) but MUST include id per NIP-59 — the web client
+        // uses rumor.id as a storage key and route parameter.
+        var serialized = SerializeForEventId(pubkey, createdAt, kind, tags, content);
+        var idBytes = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(serialized));
+        var idHex = Convert.ToHexString(idBytes).ToLowerInvariant();
+
         using var ms = new MemoryStream();
         using var w = new Utf8JsonWriter(ms);
         w.WriteStartObject();
+        w.WriteString("id", idHex);
         w.WriteString("pubkey", pubkey);
         w.WriteNumber("created_at", createdAt);
         w.WriteNumber("kind", kind);

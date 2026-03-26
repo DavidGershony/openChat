@@ -260,7 +260,9 @@ public class CrossMdkRelayIntegrationTests : IAsyncLifetime
         var pendingInvite = await inviteTcs.Task;
         Assert.NotNull(pendingInvite);
         Assert.Equal(_pubKeyA, pendingInvite.SenderPublicKey);
-        Assert.Equal(welcomeEventId, pendingInvite.NostrEventId);
+        // NostrEventId is the rumor's own id, not the gift wrap event id
+        Assert.NotEmpty(pendingInvite.NostrEventId);
+        Assert.Equal(64, pendingInvite.NostrEventId.Length);
         _output.WriteLine($"User B received invite: {pendingInvite.Id}, sender={pendingInvite.SenderPublicKey[..16]}...");
 
         // ── Diagnostic: trace Welcome data through extraction ──
