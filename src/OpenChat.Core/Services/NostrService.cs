@@ -899,6 +899,7 @@ public class NostrService : INostrService, IDisposable
         // Build the unsigned kind 444 rumor
         var rumorTags = new List<List<string>>
         {
+            new() { "p", recipientPublicKey },
             new() { "encoding", "base64" }
         };
         if (!string.IsNullOrEmpty(keyPackageEventId))
@@ -1501,9 +1502,14 @@ public class NostrService : INostrService, IDisposable
         return keyPackages;
     }
 
-    public async Task<IEnumerable<NostrEventReceived>> FetchWelcomeEventsAsync(string publicKeyHex)
+    public async Task<IEnumerable<NostrEventReceived>> FetchWelcomeEventsAsync(string publicKeyHex, string? privateKeyHex = null)
     {
         _logger.LogInformation("Fetching Welcome events for {PubKey}", publicKeyHex[..Math.Min(16, publicKeyHex.Length)] + "...");
+
+        // Temporarily set the private key for gift wrap decryption if not already set
+        var previousPrivKey = _subscribedUserPrivKey;
+        if (!string.IsNullOrEmpty(privateKeyHex) && string.IsNullOrEmpty(_subscribedUserPrivKey))
+            _subscribedUserPrivKey = privateKeyHex;
 
         var allEvents = new List<NostrEventReceived>();
 
@@ -1524,6 +1530,9 @@ public class NostrService : INostrService, IDisposable
                 _logger.LogWarning(ex, "Failed to fetch Welcome events from relay {Relay}", relayUrl);
             }
         }
+
+        // Restore previous state
+        _subscribedUserPrivKey = previousPrivKey;
 
         // Deduplicate by EventId
         var unique = allEvents.GroupBy(e => e.EventId).Select(g => g.First()).ToList();
@@ -1958,8 +1967,13 @@ public class NostrService : INostrService, IDisposable
     {
         _logger.LogInformation("Fetching NIP-65 relay list for {PubKey}", publicKeyHex[..Math.Min(16, publicKeyHex.Length)] + "...");
 
-        // Query all discovery relays in parallel instead of sequentially
-        var tasks = NostrConstants.DiscoveryRelays.Select(async relay =>
+        // Query discovery relays AND already-connected relays in parallel
+        var allRelays = NostrConstants.DiscoveryRelays
+            .Union(_connectedRelays.Keys)
+            .Distinct()
+            .ToList();
+
+        var tasks = allRelays.Select(async relay =>
         {
             try
             {

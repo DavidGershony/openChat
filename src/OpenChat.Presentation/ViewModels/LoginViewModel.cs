@@ -15,7 +15,6 @@ public class LoginViewModel : ViewModelBase
 {
     private readonly ILogger<LoginViewModel> _logger;
     private readonly INostrService _nostrService;
-    private readonly IStorageService _storageService;
     private readonly IQrCodeGenerator _qrCodeGenerator;
 
     /// <summary>
@@ -54,13 +53,12 @@ public class LoginViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> CopyNpubCommand { get; }
     public ReactiveCommand<LoginMethod, Unit> SelectLoginMethodCommand { get; }
 
-    public LoginViewModel(INostrService nostrService, IStorageService storageService, IQrCodeGenerator qrCodeGenerator, IExternalSigner? externalSigner = null)
+    public LoginViewModel(INostrService nostrService, IQrCodeGenerator qrCodeGenerator, IExternalSigner? externalSigner = null)
     {
         _logger = LoggingConfiguration.CreateLogger<LoginViewModel>();
         _logger.LogDebug("LoginViewModel initializing");
 
         _nostrService = nostrService;
-        _storageService = storageService;
         _qrCodeGenerator = qrCodeGenerator;
         ExternalSigner = externalSigner ?? new ExternalSignerService();
 
@@ -213,12 +211,6 @@ public class LoginViewModel : ViewModelBase
                 IsCurrentUser = true
             };
 
-            _logger.LogDebug("Initializing storage service");
-            await _storageService.InitializeAsync();
-
-            _logger.LogDebug("Saving current user to database");
-            await _storageService.SaveCurrentUserAsync(user);
-
             LoggedInUser = user;
             _logger.LogInformation("User successfully logged in with npub: {Npub}", npub);
         }
@@ -270,10 +262,6 @@ public class LoginViewModel : ViewModelBase
                 SignerLocalPublicKeyHex = ExternalSigner.LocalPublicKeyHex
             };
 
-            _logger.LogInformation("Persisting signer session (relay and keys redacted)");
-
-            await _storageService.InitializeAsync();
-            await _storageService.SaveCurrentUserAsync(user);
             LoggedInUser = user;
             _logger.LogInformation("Auto-logged in via external signer. Npub: {Npub}", npub);
         }
@@ -314,6 +302,27 @@ public class LoginViewModel : ViewModelBase
             IsLoading = false;
             IsExternalSignerConnecting = false;
         }
+    }
+
+    /// <summary>
+    /// Resets UI state for re-display after logout.
+    /// </summary>
+    public void Reset()
+    {
+        LoggedInUser = null;
+        PrivateKeyInput = string.Empty;
+        BunkerUrl = string.Empty;
+        ErrorMessage = null;
+        IsLoading = false;
+        GeneratedNsec = null;
+        GeneratedNpub = null;
+        ShowGeneratedKeys = false;
+        ShowExternalSigner = false;
+        IsExternalSignerConnecting = false;
+        ExternalSignerStatus = string.Empty;
+        NostrConnectUri = null;
+        NostrConnectQrPngBytes = null;
+        SelectedLoginMethod = LoginMethod.PrivateKey;
     }
 }
 

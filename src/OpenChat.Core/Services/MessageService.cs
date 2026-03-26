@@ -854,7 +854,7 @@ public class MessageService : IMessageService, IDisposable
             _currentUser.PublicKeyHex[..Math.Min(16, _currentUser.PublicKeyHex.Length)]);
 
         // Directly fetch kind 444 events from each relay (opens fresh connections)
-        var welcomeEvents = await _nostrService.FetchWelcomeEventsAsync(_currentUser.PublicKeyHex);
+        var welcomeEvents = await _nostrService.FetchWelcomeEventsAsync(_currentUser.PublicKeyHex, _currentUser.PrivateKeyHex);
 
         var newCount = 0;
         foreach (var nostrEvent in welcomeEvents)

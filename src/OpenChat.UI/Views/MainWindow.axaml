@@ -7,7 +7,7 @@
         xmlns:asyncImageLoader="using:AsyncImageLoader"
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
         x:Class="OpenChat.UI.Views.MainWindow"
-        x:DataType="vm:MainViewModel"
+        x:DataType="vm:ShellViewModel"
         Title="OpenChat"
         Width="1200" Height="800"
         MinWidth="800" MinHeight="600"
@@ -18,9 +18,7 @@
         TransparencyLevelHint="Transparent"
         Background="Transparent">
 
-    <Design.DataContext>
-        <vm:MainViewModel />
-    </Design.DataContext>
+    <!-- Design-time DataContext disabled (ShellViewModel requires runtime services) -->
 
     <Border CornerRadius="12" ClipToBounds="True"
             Background="{StaticResource BackgroundDarkBrush}">
@@ -59,7 +57,8 @@
 
     <Grid Grid.Row="1">
         <!-- Main Chat View (shown when logged in) -->
-        <Grid IsVisible="{Binding IsLoggedIn}" ColumnDefinitions="350,*">
+        <Grid x:Name="MainGrid" IsVisible="False" ColumnDefinitions="350,*"
+              DataContext="{Binding MainViewModel}" x:DataType="vm:MainViewModel">
 
             <!-- Left Sidebar -->
             <Border Grid.Column="0" Classes="sidebar">
@@ -223,11 +222,11 @@
             <Grid Grid.Column="1">
                 <!-- Settings View (when CurrentView is SettingsViewModel) -->
                 <views:SettingsView DataContext="{Binding SettingsViewModel}"
-                                    IsVisible="{Binding $parent[Window].DataContext.CurrentView, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                                    IsVisible="{Binding #MainGrid.DataContext.CurrentView, Converter={x:Static ObjectConverters.IsNotNull}}" />
 
                 <!-- Chat View (when no special view selected) -->
                 <views:ChatView DataContext="{Binding ChatViewModel}"
-                                IsVisible="{Binding $parent[Window].DataContext.CurrentView, Converter={x:Static ObjectConverters.IsNull}}" />
+                                IsVisible="{Binding #MainGrid.DataContext.CurrentView, Converter={x:Static ObjectConverters.IsNull}}" />
 
                 <!-- Empty State (when no chat selected and not in settings) -->
                 <StackPanel IsVisible="{Binding !ChatViewModel.HasChat}"
@@ -253,11 +252,11 @@
         </Grid>
 
         <!-- Login View (shown when not logged in) -->
-        <views:LoginView DataContext="{Binding LoginViewModel}"
-                         IsVisible="{Binding !DataContext.IsLoggedIn, RelativeSource={RelativeSource AncestorType=Window}}" />
+        <views:LoginView x:Name="LoginViewControl" DataContext="{Binding LoginViewModel}" />
 
-        <!-- My Profile / Export npub Dialog -->
-        <Border IsVisible="{Binding ShowMyProfileDialog}"
+        <!-- My Profile / Export npub Dialog (only when logged in and dialog open) -->
+        <Border IsVisible="{Binding MainViewModel.ShowMyProfileDialog, FallbackValue=False}"
+                DataContext="{Binding MainViewModel}" x:DataType="vm:MainViewModel"
                 Background="#80000000"
                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
             <Border Classes="card"

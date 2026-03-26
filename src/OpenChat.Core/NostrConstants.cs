@@ -11,9 +11,9 @@ public static class NostrConstants
     /// </summary>
     public static readonly string[] DefaultRelays =
     {
-        "wss://relay.damus.io",
-        "wss://nos.lol",
-        "wss://relay.nostr.band"
+        "wss://relay.angor.io",
+        "wss://relay2.angor.io",
+        "wss://nos.lol"
     };
 
     /// <summary>

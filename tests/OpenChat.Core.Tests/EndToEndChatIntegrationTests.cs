@@ -778,7 +778,7 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
             .ReturnsAsync((UserMetadata?)null);
         mockNostr.Setup(n => n.FetchKeyPackagesAsync(It.IsAny<string>()))
             .ReturnsAsync(Enumerable.Empty<KeyPackage>());
-        mockNostr.Setup(n => n.FetchWelcomeEventsAsync(It.IsAny<string>()))
+        mockNostr.Setup(n => n.FetchWelcomeEventsAsync(It.IsAny<string>(), It.IsAny<string?>()))
             .ReturnsAsync(Enumerable.Empty<NostrEventReceived>());
 
         mockNostr.Setup(n => n.ConnectAsync(It.IsAny<string>())).Returns(Task.CompletedTask);
@@ -829,7 +829,7 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
             .ReturnsAsync((UserMetadata?)null);
         mockNostr.Setup(n => n.FetchKeyPackagesAsync(It.IsAny<string>()))
             .ReturnsAsync(Enumerable.Empty<KeyPackage>());
-        mockNostr.Setup(n => n.FetchWelcomeEventsAsync(It.IsAny<string>()))
+        mockNostr.Setup(n => n.FetchWelcomeEventsAsync(It.IsAny<string>(), It.IsAny<string?>()))
             .ReturnsAsync(Enumerable.Empty<NostrEventReceived>());
 
         mockNostr.Setup(n => n.ConnectAsync(It.IsAny<string>())).Returns(Task.CompletedTask);

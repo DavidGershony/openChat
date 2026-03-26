@@ -20,6 +20,15 @@ public class MlsService : IMlsService
         _logger.LogDebug("MlsService instance created");
     }
 
+    public Task ResetAsync()
+    {
+        _logger.LogInformation("Resetting MLS service state (logout)");
+        _marmotClient = null;
+        _privateKeyHex = null;
+        _publicKeyHex = null;
+        return Task.CompletedTask;
+    }
+
     public async Task InitializeAsync(string privateKeyHex, string publicKeyHex)
     {
         _logger.LogInformation("Initializing MLS service");

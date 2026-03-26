@@ -13,6 +13,12 @@ public interface IMlsService
     Task InitializeAsync(string privateKeyHex, string publicKeyHex);
 
     /// <summary>
+    /// Resets the MLS service state, clearing signing keys, stored KeyPackages, and groups.
+    /// Must be called on logout so re-initialization uses the new user's identity.
+    /// </summary>
+    Task ResetAsync();
+
+    /// <summary>
     /// Generate a new KeyPackage for group invitations.
     /// </summary>
     Task<KeyPackage> GenerateKeyPackageAsync();

@@ -103,6 +103,9 @@ public class ChatViewModel : ViewModelBase
     // Sending image state
     [Reactive] public bool IsSendingImage { get; set; }
 
+    // Upload progress status (shown in chat area during file/voice sends)
+    [Reactive] public string? UploadStatus { get; set; }
+
     // Static service references (set by platform startup)
     public static IAudioRecordingService? AudioRecordingService { get; set; }
     public static IAudioPlaybackService? AudioPlaybackService { get; set; }
@@ -691,6 +694,8 @@ public class ChatViewModel : ViewModelBase
             _logger.LogInformation("AttachFile: {FileName} ({MimeType}, {Size} bytes)",
                 fileName, mimeType, fileData.Length);
 
+            UploadStatus = "Encrypting file...";
+
             // Compute SHA-256 of plaintext
             var sha256Hex = Convert.ToHexString(
                 System.Security.Cryptography.SHA256.HashData(fileData)).ToLowerInvariant();
@@ -706,8 +711,14 @@ public class ChatViewModel : ViewModelBase
             if (MediaUploadService == null)
                 throw new InvalidOperationException("Media upload service not configured");
 
-            var uploadResult = await MediaUploadService.UploadAsync(encrypted, _currentUserPrivateKeyHex);
+            UploadStatus = string.IsNullOrEmpty(_currentUserPrivateKeyHex)
+                ? "Waiting for signer approval..."
+                : "Uploading to Blossom...";
+
+            var uploadResult = await MediaUploadService.UploadAsync(encrypted, _currentUserPrivateKeyHex, mimeType);
             var nonceHex = Convert.ToHexString(nonce).ToLowerInvariant();
+
+            UploadStatus = "Sending encrypted message...";
 
             // Determine message type from mime
             var messageType = mimeType.StartsWith("image/") ? MessageType.Image : MessageType.File;
@@ -722,10 +733,18 @@ public class ChatViewModel : ViewModelBase
                 mimeType, fileName, messageType);
 
             _logger.LogInformation("Media sent: {FileName}, {Size} bytes encrypted", fileName, encrypted.Length);
+            UploadStatus = null;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to send media file");
+            UploadStatus = $"Upload failed: {ex.Message}";
+            // Clear error after 5 seconds
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(5000);
+                RxApp.MainThreadScheduler.Schedule(Unit.Default, (_, __) => { UploadStatus = null; return System.Reactive.Disposables.Disposable.Empty; });
+            });
         }
         finally
         {
@@ -790,13 +809,19 @@ public class ChatViewModel : ViewModelBase
             _recordingTimerSubscription?.Dispose();
             _recordingTimerSubscription = null;
 
+            UploadStatus = "Processing recording...";
+
             var recording = await AudioRecordingService.StopRecordingAsync();
             _logger.LogInformation("Recording stopped: {Duration}s, {Bytes} bytes PCM",
                 recording.Duration.TotalSeconds, recording.PcmData.Length);
 
+            UploadStatus = "Encoding audio...";
+
             // Encode to Opus
             var opusBytes = OpusCodec.Encode(recording.PcmData, recording.SampleRate, recording.Channels);
             var durationSeconds = recording.Duration.TotalSeconds;
+
+            UploadStatus = "Encrypting audio...";
 
             // MIP-04 encrypt
             var sha256Hex = Convert.ToHexString(
@@ -812,7 +837,11 @@ public class ChatViewModel : ViewModelBase
             if (MediaUploadService == null)
                 throw new InvalidOperationException("Media upload service not configured");
 
-            var uploadResult = await MediaUploadService.UploadAsync(encrypted, _currentUserPrivateKeyHex);
+            UploadStatus = "Waiting for signer approval...";
+
+            var uploadResult = await MediaUploadService.UploadAsync(encrypted, _currentUserPrivateKeyHex, "audio/opus");
+
+            UploadStatus = "Sending message...";
 
             // Build imeta tag and send as MLS message
             var nonceHex = Convert.ToHexString(nonce).ToLowerInvariant();
@@ -836,10 +865,17 @@ public class ChatViewModel : ViewModelBase
 
             _logger.LogInformation("Voice message sent: {Duration}s, {Size} bytes encrypted",
                 durationSeconds, encrypted.Length);
+            UploadStatus = null;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to send voice message");
+            UploadStatus = $"Voice send failed: {ex.Message}";
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(5000);
+                RxApp.MainThreadScheduler.Schedule(Unit.Default, (_, __) => { UploadStatus = null; return System.Reactive.Disposables.Disposable.Empty; });
+            });
         }
         finally
         {

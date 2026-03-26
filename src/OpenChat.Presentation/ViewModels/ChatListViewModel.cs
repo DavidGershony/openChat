@@ -313,7 +313,9 @@ public class ChatListViewModel : ViewModelBase
             var chats = await _messageService.GetChatsAsync();
 
             Chats.Clear();
-            foreach (var chat in chats.OrderByDescending(c => c.IsPinned).ThenByDescending(c => c.LastActivityAt))
+            foreach (var chat in chats
+                .Where(c => _currentUserPubKeyHex == null || c.ParticipantPublicKeys.Contains(_currentUserPubKeyHex))
+                .OrderByDescending(c => c.IsPinned).ThenByDescending(c => c.LastActivityAt))
             {
                 Chats.Add(new ChatItemViewModel(chat));
             }

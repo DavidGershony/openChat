@@ -127,7 +127,7 @@ public interface INostrService
     /// Directly fetch Welcome events (kind 444) for a user from relays.
     /// Opens fresh connections, queries, and returns results.
     /// </summary>
-    Task<IEnumerable<NostrEventReceived>> FetchWelcomeEventsAsync(string publicKeyHex);
+    Task<IEnumerable<NostrEventReceived>> FetchWelcomeEventsAsync(string publicKeyHex, string? privateKeyHex = null);
 
     /// <summary>
     /// Subscribe to group messages (kind 445) for specific groups.

@@ -44,10 +44,16 @@ public class MainViewModel : ViewModelBase
     [Reactive] public string? MyAbout { get; set; }
     [Reactive] public bool IsLoadingProfile { get; set; }
 
+    private readonly Action? _onLogoutRequested;
+
+    /// <summary>
+    /// External signer instance, set by ShellViewModel when the user logged in via Amber/NIP-46.
+    /// </summary>
+    public IExternalSigner? ExternalSigner { get; set; }
+
     public ChatListViewModel ChatListViewModel { get; }
     public ChatViewModel ChatViewModel { get; }
     public SettingsViewModel SettingsViewModel { get; }
-    public LoginViewModel LoginViewModel { get; }
 
     public ReactiveCommand<Unit, Unit> ShowSettingsCommand { get; }
     public ReactiveCommand<Unit, Unit> ShowChatsCommand { get; }
@@ -59,19 +65,20 @@ public class MainViewModel : ViewModelBase
     public ReactiveCommand<RelayStatusViewModel, Unit> ReconnectRelayCommand { get; }
 
     public MainViewModel(IMessageService messageService, INostrService nostrService, IStorageService storageService, IMlsService mlsService,
-        IPlatformClipboard clipboard, IQrCodeGenerator qrCodeGenerator, IPlatformLauncher launcher)
+        IPlatformClipboard clipboard, IQrCodeGenerator qrCodeGenerator, IPlatformLauncher launcher,
+        Action? onLogoutRequested = null)
     {
         _messageService = messageService;
         _nostrService = nostrService;
         _storageService = storageService;
         _mlsService = mlsService;
         _clipboard = clipboard;
+        _onLogoutRequested = onLogoutRequested;
 
         // Initialize child view models
         ChatListViewModel = new ChatListViewModel(messageService, storageService, mlsService, nostrService);
         ChatViewModel = new ChatViewModel(messageService, storageService, nostrService, mlsService, clipboard);
         SettingsViewModel = new SettingsViewModel(nostrService, storageService, mlsService, messageService, launcher);
-        LoginViewModel = new LoginViewModel(nostrService, storageService, qrCodeGenerator);
 
         // Set up commands
         ShowSettingsCommand = ReactiveCommand.Create(() =>
@@ -191,16 +198,6 @@ public class MainViewModel : ViewModelBase
             }
         });
 
-        // Subscribe to login events
-        LoginViewModel.WhenAnyValue(x => x.LoggedInUser)
-            .Where(user => user != null)
-            .Subscribe(user =>
-            {
-                CurrentUser = user;
-                IsLoggedIn = true;
-                InitializeAfterLoginAsync().ConfigureAwait(false);
-            });
-
         // Subscribe to chat selection
         ChatListViewModel.WhenAnyValue(x => x.SelectedChat)
             .Where(chat => chat != null)
@@ -245,24 +242,9 @@ public class MainViewModel : ViewModelBase
                 }
             });
 
-        // Check for existing user on startup
-        InitializeAsync().ConfigureAwait(false);
     }
 
-    private async Task InitializeAsync()
-    {
-        await _storageService.InitializeAsync();
-
-        var currentUser = await _storageService.GetCurrentUserAsync();
-        if (currentUser != null)
-        {
-            CurrentUser = currentUser;
-            IsLoggedIn = true;
-            await InitializeAfterLoginAsync();
-        }
-    }
-
-    private async Task InitializeAfterLoginAsync()
+    public async Task InitializeAfterLoginAsync()
     {
         if (CurrentUser == null) return;
 
@@ -283,7 +265,7 @@ public class MainViewModel : ViewModelBase
 
         // If using external signer (no private key), wire it into NostrService.
         // First, try auto-reconnect from persisted signer session if not already connected.
-        if (string.IsNullOrEmpty(CurrentUser.PrivateKeyHex) && LoginViewModel.ExternalSigner?.IsConnected != true)
+        if (string.IsNullOrEmpty(CurrentUser.PrivateKeyHex) && ExternalSigner?.IsConnected != true)
         {
             if (!string.IsNullOrEmpty(CurrentUser.SignerRelayUrl) &&
                 !string.IsNullOrEmpty(CurrentUser.SignerRemotePubKey) &&
@@ -296,7 +278,7 @@ public class MainViewModel : ViewModelBase
                 {
                     // Restore session using persisted ephemeral keypair — no connect request needed,
                     // Amber already authorized this keypair during initial login
-                    var connected = await LoginViewModel.ExternalSigner!.RestoreSessionAsync(
+                    var connected = await ExternalSigner!.RestoreSessionAsync(
                         CurrentUser.SignerRelayUrl,
                         CurrentUser.SignerRemotePubKey,
                         CurrentUser.SignerLocalPrivateKeyHex,
@@ -325,9 +307,11 @@ public class MainViewModel : ViewModelBase
             }
         }
 
-        if (string.IsNullOrEmpty(CurrentUser.PrivateKeyHex) && LoginViewModel.ExternalSigner?.IsConnected == true)
+        if (string.IsNullOrEmpty(CurrentUser.PrivateKeyHex) && ExternalSigner?.IsConnected == true)
         {
-            _nostrService.SetExternalSigner(LoginViewModel.ExternalSigner);
+            _nostrService.SetExternalSigner(ExternalSigner);
+            ChatViewModel.MediaUploadService?.SetExternalSigner(ExternalSigner);
+            _logger.LogInformation("External signer wired to NostrService and MediaUploadService");
         }
 
         // Initialize MLS service with user's keys (non-fatal if native library unavailable)
@@ -389,9 +373,9 @@ public class MainViewModel : ViewModelBase
                     _mlsService.SetNostrEventSigner(new LocalNostrEventSigner(CurrentUser.PrivateKeyHex));
                     _logger.LogInformation("MLS event signer set to LocalNostrEventSigner");
                 }
-                else if (LoginViewModel.ExternalSigner?.IsConnected == true)
+                else if (ExternalSigner?.IsConnected == true)
                 {
-                    _mlsService.SetNostrEventSigner(new ExternalNostrEventSigner(LoginViewModel.ExternalSigner));
+                    _mlsService.SetNostrEventSigner(new ExternalNostrEventSigner(ExternalSigner));
                     _logger.LogInformation("MLS event signer set to ExternalNostrEventSigner");
                 }
                 else
@@ -603,15 +587,18 @@ public class MainViewModel : ViewModelBase
         }
     }
 
-    private async Task LogoutAsync()
+    private Task LogoutAsync()
     {
-        await _nostrService.DisconnectAsync();
-        CurrentUser = null;
-        IsLoggedIn = false;
-        HeaderDisplayName = "OpenChat";
+        _logger.LogInformation("Logout requested — delegating to ShellViewModel");
         RelayStatuses.Clear();
         ChatListViewModel.ClearChats();
         ChatViewModel.ClearChat();
+        CurrentUser = null;
+        IsLoggedIn = false;
+        HeaderDisplayName = "OpenChat";
+
+        _onLogoutRequested?.Invoke();
+        return Task.CompletedTask;
     }
 }
 

@@ -298,6 +298,16 @@ public class StorageService : IStorageService
         await SaveUserAsync(user);
     }
 
+    public async Task ClearCurrentUserAsync() => await ExecuteWithWriteLockAsync(async () =>
+    {
+        _logger.LogInformation("Clearing current user flag (logout)");
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        var command = connection.CreateCommand();
+        command.CommandText = "UPDATE Users SET IsCurrentUser = 0 WHERE IsCurrentUser = 1";
+        await command.ExecuteNonQueryAsync();
+    });
+
     public async Task<User?> GetUserByPublicKeyAsync(string publicKeyHex)
     {
         await using var connection = new SqliteConnection(_connectionString);

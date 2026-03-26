@@ -17,8 +17,9 @@ public class BlossomUploadService : IMediaUploadService
     private readonly ILogger<BlossomUploadService> _logger;
     private readonly HttpClient _httpClient;
     private IExternalSigner? _externalSigner;
+    private string? _lastUploadError;
 
-    public string BlossomServerUrl { get; set; } = "https://blossom.nostr.build";
+    public string BlossomServerUrl { get; set; } = "https://blossom.band";
 
     public BlossomUploadService(IExternalSigner? externalSigner = null)
     {
@@ -33,42 +34,74 @@ public class BlossomUploadService : IMediaUploadService
         _externalSigner = signer;
     }
 
-    public async Task<BlobUploadResult> UploadAsync(byte[] encryptedData, string? privateKeyHex, CancellationToken ct = default)
+    public async Task<BlobUploadResult> UploadAsync(byte[] encryptedData, string? privateKeyHex, string? contentType = null, CancellationToken ct = default)
     {
         var sha256Hex = Convert.ToHexString(SHA256.HashData(encryptedData)).ToLowerInvariant();
         _logger.LogInformation("Uploading {Size} bytes to {Server} (sha256: {Hash})",
             encryptedData.Length, BlossomServerUrl, sha256Hex[..16]);
 
-        // Build NIP-98 authorization: signed kind 24242 event
-        var authHeader = await BuildAuthHeaderAsync(sha256Hex, privateKeyHex);
-
         var url = $"{BlossomServerUrl.TrimEnd('/')}/upload";
-        using var request = new HttpRequestMessage(HttpMethod.Put, url);
-        request.Content = new ByteArrayContent(encryptedData);
-        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
-        request.Headers.TryAddWithoutValidation("Authorization", $"Nostr {authHeader}");
+        string? lastError = null;
 
-        using var response = await _httpClient.SendAsync(request, ct);
-
-        if (!response.IsSuccessStatusCode)
+        // Skip anonymous upload when using external signer (auth is always required)
+        if (!string.IsNullOrEmpty(privateKeyHex) || _externalSigner?.IsConnected != true)
         {
-            var body = await response.Content.ReadAsStringAsync(ct);
-            _logger.LogError("Blossom upload failed: {Status} {Body}", response.StatusCode, body);
-            throw new InvalidOperationException($"Blossom upload failed: {response.StatusCode} — {body}");
+            var anonResult = await TryUploadAsync(url, encryptedData, sha256Hex, authHeader: null, ct);
+            if (anonResult != null) return anonResult;
+
+            lastError = _lastUploadError;
+            _logger.LogInformation("Anonymous upload rejected, retrying with NIP-98 auth");
         }
 
-        var json = await response.Content.ReadAsStringAsync(ct);
-        _logger.LogInformation("Blossom upload succeeded: {Response}", json[..Math.Min(200, json.Length)]);
+        // Authenticated upload (local key or external signer)
+        var authHeader = await BuildAuthHeaderAsync(sha256Hex, privateKeyHex);
+        var authResult = await TryUploadAsync(url, encryptedData, sha256Hex, authHeader, ct);
+        if (authResult != null) return authResult;
 
-        using var doc = JsonDocument.Parse(json);
-        var root = doc.RootElement;
+        lastError = _lastUploadError ?? lastError;
+        var errorDetail = !string.IsNullOrEmpty(lastError) ? lastError : "server returned an error";
+        throw new InvalidOperationException($"Blossom upload failed: {errorDetail}");
+    }
 
-        return new BlobUploadResult
+    private async Task<BlobUploadResult?> TryUploadAsync(string url, byte[] data, string sha256Hex, string? authHeader, CancellationToken ct)
+    {
+        try
         {
-            Sha256 = root.TryGetProperty("sha256", out var h) ? h.GetString() ?? sha256Hex : sha256Hex,
-            Url = root.TryGetProperty("url", out var u) ? u.GetString() ?? "" : $"{BlossomServerUrl}/{sha256Hex}",
-            Size = encryptedData.Length
-        };
+            using var request = new HttpRequestMessage(HttpMethod.Put, url);
+            request.Content = new ByteArrayContent(data);
+            request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+            if (authHeader != null)
+                request.Headers.TryAddWithoutValidation("Authorization", $"Nostr {authHeader}");
+
+            using var response = await _httpClient.SendAsync(request, ct);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(ct);
+                _lastUploadError = $"{(int)response.StatusCode} {response.StatusCode}: {body}";
+                _logger.LogWarning("Blossom upload attempt failed: {Status} {Body}", response.StatusCode, body);
+                return null;
+            }
+
+            var json = await response.Content.ReadAsStringAsync(ct);
+            _logger.LogInformation("Blossom upload succeeded: {Response}", json[..Math.Min(200, json.Length)]);
+
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            return new BlobUploadResult
+            {
+                Sha256 = root.TryGetProperty("sha256", out var h) ? h.GetString() ?? sha256Hex : sha256Hex,
+                Url = root.TryGetProperty("url", out var u) ? u.GetString() ?? "" : $"{BlossomServerUrl}/{sha256Hex}",
+                Size = data.Length
+            };
+        }
+        catch (HttpRequestException ex)
+        {
+            _lastUploadError = $"Connection failed: {ex.Message}";
+            _logger.LogWarning(ex, "Blossom upload connection failed to {Url}", url);
+            return null;
+        }
     }
 
     /// <summary>
@@ -119,6 +152,8 @@ public class BlossomUploadService : IMediaUploadService
                 CreatedAt = DateTimeOffset.FromUnixTimeSeconds(createdAt).UtcDateTime
             };
             var signedJson = await _externalSigner.SignEventAsync(unsignedEvent);
+            _logger.LogInformation("External signer returned auth event ({Length} chars)", signedJson.Length);
+            _logger.LogDebug("Signed auth event: {Event}", signedJson.Length > 500 ? signedJson[..500] + "..." : signedJson);
             return Convert.ToBase64String(Encoding.UTF8.GetBytes(signedJson));
         }
         else

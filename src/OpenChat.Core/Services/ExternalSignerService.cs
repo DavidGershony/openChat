@@ -240,7 +240,8 @@ public class ExternalSignerService : IExternalSigner, IDisposable
             created_at = new DateTimeOffset(unsignedEvent.CreatedAt).ToUnixTimeSeconds()
         });
 
-        var response = await SendRequestAsync("sign_event", new[] { eventJson });
+        // sign_event requires user approval on the signer app — use longer timeout
+        var response = await SendRequestAsync("sign_event", new[] { eventJson }, TimeSpan.FromMinutes(3));
         return response;
     }
 
@@ -416,7 +417,10 @@ public class ExternalSignerService : IExternalSigner, IDisposable
         await _webSocket.SendAsync(bytes, WebSocketMessageType.Text, true, _cts?.Token ?? CancellationToken.None);
     }
 
-    private async Task<string> SendRequestAsync(string method, string[] @params)
+    private Task<string> SendRequestAsync(string method, string[] @params)
+        => SendRequestAsync(method, @params, TimeSpan.FromSeconds(60));
+
+    private async Task<string> SendRequestAsync(string method, string[] @params, TimeSpan timeout)
     {
         if (_webSocket == null || _localPrivateKeyHex == null || _remotePubKey == null)
         {
@@ -472,16 +476,21 @@ public class ExternalSignerService : IExternalSigner, IDisposable
         var eventMessage = Encoding.UTF8.GetString(eventMs.ToArray());
         var bytes = Encoding.UTF8.GetBytes(eventMessage);
 
-        _logger.LogDebug("NIP-46 sending EVENT: {Event}", eventMessage.Length > 300 ? eventMessage[..300] + "..." : eventMessage);
+        _logger.LogDebug("NIP-46 sending {Method} request {Id}: {Event}", method, requestId[..8],
+            eventMessage.Length > 300 ? eventMessage[..300] + "..." : eventMessage);
 
         var tcs = new TaskCompletionSource<string>();
         _pendingRequests[requestId] = tcs;
 
         await _webSocket.SendAsync(bytes, WebSocketMessageType.Text, true, _cts?.Token ?? CancellationToken.None);
 
-        // Wait for response with timeout
-        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-        timeoutCts.Token.Register(() => tcs.TrySetException(new TimeoutException("Signer request timed out")));
+        // Wait for response with timeout (sign_event needs longer for user approval)
+        using var timeoutCts = new CancellationTokenSource(timeout);
+        timeoutCts.Token.Register(() =>
+        {
+            _pendingRequests.Remove(requestId);
+            tcs.TrySetException(new TimeoutException($"Signer request timed out after {timeout.TotalSeconds}s ({method})"));
+        });
 
         return await tcs.Task;
     }

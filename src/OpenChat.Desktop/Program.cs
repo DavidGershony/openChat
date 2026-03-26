@@ -24,7 +24,25 @@ class Program
                 allowLocalRelays = true;
         }
 
-        ProfileConfiguration.SetProfile(profileName);
+        if (profileName != null)
+        {
+            // Explicit --profile override
+            if (profileName.StartsWith("npub1", StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("--profile cannot be an npub. Profiles are auto-derived from npub on login.");
+
+            ProfileConfiguration.SetProfile(profileName, explicitOverride: true);
+        }
+        else
+        {
+            // Auto-derive profile from last active user, if available
+            var lastPubKey = ProfileConfiguration.ReadLastUserPubKey();
+            if (lastPubKey != null)
+            {
+                var derived = ProfileConfiguration.DeriveProfileName(lastPubKey);
+                ProfileConfiguration.SetProfile(derived);
+            }
+            // else: default profile (login screen)
+        }
 
         if (mdkBackendArg != null)
         {

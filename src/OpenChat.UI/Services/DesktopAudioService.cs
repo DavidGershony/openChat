@@ -87,7 +87,10 @@ public class DesktopAudioRecordingService : IAudioRecordingService
             {
                 _logger.LogInformation("ffmpeg not found, using PowerShell WaveIn recording");
                 // PowerShell script that uses .NET's interop to record via Windows waveIn API
-                // Records raw PCM to a WAV file until the process is killed
+                // Records raw PCM to a WAV file until the process is killed.
+                // WAVEHDR layout depends on pointer size (32-bit vs 64-bit):
+                //   lpData(IntPtr), dwBufferLength(4), dwBytesRecorded(4),
+                //   dwUser(IntPtr), dwFlags(4), dwLoops(4), lpNext(IntPtr), reserved(IntPtr)
                 var ps1 = $@"
 Add-Type -TypeDefinition @'
 using System;
@@ -105,6 +108,12 @@ public class WaveRecorder {{
     [DllImport(""winmm.dll"")] static extern int waveInReset(IntPtr h);
 
     public static void Record(string path) {{
+        int ps = IntPtr.Size;                  // 4 on 32-bit, 8 on 64-bit
+        int hdrSize = 4 * ps + 16;            // 32 on 32-bit, 48 on 64-bit
+        int bufLenOff = ps;                    // dwBufferLength offset
+        int bytesRecOff = ps + 4;             // dwBytesRecorded offset
+        int flagsOff = 2 * ps + 8;            // dwFlags offset
+
         var fmt = new byte[18];
         BitConverter.GetBytes((short)1).CopyTo(fmt, 0);  // PCM
         BitConverter.GetBytes((short)1).CopyTo(fmt, 2);  // mono
@@ -119,7 +128,7 @@ public class WaveRecorder {{
 
         int bufSize = 48000 * 2; // 1 second buffer
         var fs = new FileStream(path, FileMode.Create);
-        // Write WAV header placeholder
+        // Write WAV header placeholder (data size filled as 0; reader strips first 44 bytes)
         var hdr = new byte[44];
         System.Text.Encoding.ASCII.GetBytes(""RIFF"").CopyTo(hdr, 0);
         System.Text.Encoding.ASCII.GetBytes(""WAVE"").CopyTo(hdr, 8);
@@ -133,32 +142,33 @@ public class WaveRecorder {{
         var hdrs = new IntPtr[4];
         for (int i = 0; i < 4; i++) {{
             bufs[i] = Marshal.AllocHGlobal(bufSize);
-            var wh = new byte[32];
+            var wh = new byte[hdrSize];
             var gch = GCHandle.Alloc(wh, GCHandleType.Pinned);
             hdrs[i] = gch.AddrOfPinnedObject();
             Marshal.WriteIntPtr(hdrs[i], 0, bufs[i]);
-            Marshal.WriteInt32(hdrs[i], 8, bufSize);
-            waveInPrepareHeader(hWaveIn, hdrs[i], 32);
-            waveInAddBuffer(hWaveIn, hdrs[i], 32);
+            Marshal.WriteInt32(hdrs[i], bufLenOff, bufSize);
+            waveInPrepareHeader(hWaveIn, hdrs[i], hdrSize);
+            waveInAddBuffer(hWaveIn, hdrs[i], hdrSize);
         }}
 
         waveInStart(hWaveIn);
         Console.CancelKeyPress += (s,e) => {{ waveInStop(hWaveIn); }};
 
         while (true) {{
-            Thread.Sleep(500);
+            Thread.Sleep(250);
             for (int i = 0; i < 4; i++) {{
-                int flags = Marshal.ReadInt32(hdrs[i], 12);
+                int flags = Marshal.ReadInt32(hdrs[i], flagsOff);
                 if ((flags & 1) != 0) {{ // WHDR_DONE
-                    int recorded = Marshal.ReadInt32(hdrs[i], 16);
+                    int recorded = Marshal.ReadInt32(hdrs[i], bytesRecOff);
                     if (recorded > 0) {{
                         var data = new byte[recorded];
                         Marshal.Copy(bufs[i], data, 0, recorded);
                         fs.Write(data, 0, recorded);
+                        fs.Flush();
                     }}
-                    Marshal.WriteInt32(hdrs[i], 12, 0);
-                    Marshal.WriteInt32(hdrs[i], 16, 0);
-                    waveInAddBuffer(hWaveIn, hdrs[i], 32);
+                    Marshal.WriteInt32(hdrs[i], flagsOff, 0);
+                    Marshal.WriteInt32(hdrs[i], bytesRecOff, 0);
+                    waveInAddBuffer(hWaveIn, hdrs[i], hdrSize);
                 }}
             }}
         }}
@@ -292,14 +302,38 @@ public class WaveRecorder {{
             _recordProcess = null;
         }
 
-        // Read the WAV file
-        if (!File.Exists(_tempFilePath) || new FileInfo(_tempFilePath).Length < 44)
+        // Wait for the file to be released after process exit (PowerShell may hold the handle briefly)
+        byte[]? wavBytes = null;
+        for (int attempt = 0; attempt < 10; attempt++)
         {
-            _logger.LogWarning("Recording file missing or too small: {File}", _tempFilePath);
-            throw new InvalidOperationException("Recording failed — no audio captured. Check microphone permissions.");
+            if (!File.Exists(_tempFilePath) || new FileInfo(_tempFilePath).Length < 44)
+            {
+                if (attempt < 9)
+                {
+                    await Task.Delay(200);
+                    continue;
+                }
+                _logger.LogWarning("Recording file missing or too small: {File}", _tempFilePath);
+                throw new InvalidOperationException("Recording failed — no audio captured. Check microphone permissions.");
+            }
+
+            try
+            {
+                wavBytes = await File.ReadAllBytesAsync(_tempFilePath);
+                break;
+            }
+            catch (IOException) when (attempt < 9)
+            {
+                _logger.LogDebug("Recording file still locked, retrying ({Attempt}/10)...", attempt + 1);
+                await Task.Delay(300);
+            }
         }
 
-        var wavBytes = await File.ReadAllBytesAsync(_tempFilePath);
+        if (wavBytes == null || wavBytes.Length <= 44)
+        {
+            _logger.LogWarning("Recording file empty after retries: {File}", _tempFilePath);
+            throw new InvalidOperationException("Recording failed — no audio captured. Check microphone permissions.");
+        }
 
         // Clean up temp file
         try { File.Delete(_tempFilePath); } catch { }

@@ -9,12 +9,17 @@ public interface IMediaUploadService
     /// Uploads an encrypted blob to the configured Blossom server.
     /// Returns the URL and SHA-256 hash of the uploaded blob.
     /// </summary>
-    Task<BlobUploadResult> UploadAsync(byte[] encryptedData, string? privateKeyHex, CancellationToken ct = default);
+    Task<BlobUploadResult> UploadAsync(byte[] encryptedData, string? privateKeyHex, string? contentType = null, CancellationToken ct = default);
 
     /// <summary>
     /// The currently configured Blossom server URL.
     /// </summary>
     string BlossomServerUrl { get; set; }
+
+    /// <summary>
+    /// Sets the external signer for NIP-98 auth when the user has no local private key (NIP-46).
+    /// </summary>
+    void SetExternalSigner(IExternalSigner? signer);
 }
 
 public class BlobUploadResult

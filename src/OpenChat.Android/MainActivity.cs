@@ -19,7 +19,7 @@ namespace OpenChat.Android;
 [Activity(Label = "OpenChat", MainLauncher = true, Theme = "@style/AppTheme")]
 public class MainActivity : AppCompatActivity, IActivatableView
 {
-    private MainViewModel? _viewModel;
+    private ShellViewModel? _shellViewModel;
     private CompositeDisposable _disposables = new();
 
     public ViewModelActivator Activator { get; } = new ViewModelActivator();
@@ -43,10 +43,7 @@ public class MainActivity : AppCompatActivity, IActivatableView
         System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(dbPath)!);
 
         var secureStorage = new AndroidSecureStorage();
-        var storageService = new StorageService(dbPath, secureStorage);
         var nostrService = new NostrService();
-        IMlsService mlsService = new ManagedMlsService(storageService);
-        var messageService = new MessageService(storageService, nostrService, mlsService);
 
         // Create platform services
         var clipboard = new AndroidClipboardService(this);
@@ -61,36 +58,28 @@ public class MainActivity : AppCompatActivity, IActivatableView
         ChatViewModel.AudioPlaybackService = audioPlayback;
         ChatViewModel.MediaUploadService = blossomUpload;
 
-        // Create MainViewModel
-        _viewModel = new MainViewModel(
-            messageService, nostrService, storageService, mlsService,
-            clipboard, qrCodeGenerator, launcher);
+        // Create ShellViewModel (manages login → service creation → MainViewModel lifecycle)
+        _shellViewModel = new ShellViewModel(nostrService, secureStorage, clipboard, qrCodeGenerator, launcher);
+        _shellViewModel.MlsServiceFactory = storage => new ManagedMlsService(storage);
 
         // Observe login state and switch fragments
-        _viewModel.WhenAnyValue(x => x.IsLoggedIn)
+        _shellViewModel.WhenAnyValue(x => x.IsLoggedIn)
             .ObserveOn(RxApp.MainThreadScheduler)
             .Subscribe(isLoggedIn =>
             {
-                if (isLoggedIn)
+                if (isLoggedIn && _shellViewModel.MainViewModel != null)
                 {
-                    ShowFragment(new ChatListFragment(_viewModel), "chatlist");
+                    ShowFragment(new ChatListFragment(_shellViewModel.MainViewModel), "chatlist");
                 }
                 else
                 {
-                    ShowFragment(new LoginFragment(_viewModel), "login");
+                    ShowFragment(new LoginFragment(_shellViewModel), "login");
                 }
             })
             .DisposeWith(_disposables);
 
-        // Start with login or chat list based on initial state
-        if (_viewModel.IsLoggedIn)
-        {
-            ShowFragment(new ChatListFragment(_viewModel), "chatlist");
-        }
-        else
-        {
-            ShowFragment(new LoginFragment(_viewModel), "login");
-        }
+        // Start with login fragment
+        ShowFragment(new LoginFragment(_shellViewModel), "login");
     }
 
     private void ShowFragment(Fragment fragment, string tag)
@@ -102,8 +91,8 @@ public class MainActivity : AppCompatActivity, IActivatableView
 
     public void NavigateToChat()
     {
-        if (_viewModel == null) return;
-        var fragment = new ChatFragment(_viewModel);
+        if (_shellViewModel?.MainViewModel == null) return;
+        var fragment = new ChatFragment(_shellViewModel.MainViewModel);
         SupportFragmentManager.BeginTransaction()
             .Replace(Resource.Id.fragment_container, fragment, "chat")
             .AddToBackStack("chat")
@@ -112,8 +101,8 @@ public class MainActivity : AppCompatActivity, IActivatableView
 
     public void NavigateToSettings()
     {
-        if (_viewModel == null) return;
-        var fragment = new SettingsFragment(_viewModel);
+        if (_shellViewModel?.MainViewModel == null) return;
+        var fragment = new SettingsFragment(_shellViewModel.MainViewModel);
         SupportFragmentManager.BeginTransaction()
             .Replace(Resource.Id.fragment_container, fragment, "settings")
             .AddToBackStack("settings")
@@ -126,7 +115,7 @@ public class MainActivity : AppCompatActivity, IActivatableView
 
         // Reconnect external signer WebSocket after returning from background
         // (e.g. user switched to Amber to approve, then came back)
-        var signer = _viewModel?.LoginViewModel?.ExternalSigner;
+        var signer = _shellViewModel?.LoginViewModel?.ExternalSigner;
         if (signer != null && !signer.IsConnected)
         {
             _ = Task.Run(async () =>

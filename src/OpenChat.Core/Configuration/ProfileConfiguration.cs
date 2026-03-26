@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace OpenChat.Core.Configuration;
@@ -35,11 +36,23 @@ public static class ProfileConfiguration
     public static bool IsCustomProfile { get; private set; }
 
     /// <summary>
+    /// True when the profile was set explicitly via --profile CLI flag.
+    /// When false, the profile was auto-derived from the last user's npub.
+    /// </summary>
+    public static bool WasExplicitlySet { get; private set; }
+
+    /// <summary>
     /// Base data directory for this profile.
     /// Default profile: %LOCALAPPDATA%\OpenChat\
     /// Custom profile: %LOCALAPPDATA%\OpenChat\profiles\{name}\
     /// </summary>
     public static string DataDirectory { get; private set; } = GetDefaultDataDirectory();
+
+    /// <summary>
+    /// Root data directory, independent of active profile. Always %LOCALAPPDATA%\OpenChat\.
+    /// Used for the user registry file (last_user.json).
+    /// </summary>
+    public static string RootDataDirectory { get; } = GetDefaultDataDirectory();
 
     /// <summary>
     /// Full path to the SQLite database file.
@@ -60,9 +73,12 @@ public static class ProfileConfiguration
     /// Sets the active profile. Call once at startup before any services are created.
     /// </summary>
     /// <param name="profileName">Profile name from --profile argument, or null for the default profile.</param>
+    /// <param name="explicitOverride">True when set via --profile CLI flag (prevents auto-switching).</param>
     /// <exception cref="ArgumentException">Thrown when the profile name contains invalid characters.</exception>
-    public static void SetProfile(string? profileName)
+    public static void SetProfile(string? profileName, bool explicitOverride = false)
     {
+        WasExplicitlySet = explicitOverride;
+
         if (string.IsNullOrWhiteSpace(profileName))
         {
             // Default profile — backward-compatible paths
@@ -93,6 +109,75 @@ public static class ProfileConfiguration
             lowerName);
         // Title-case the first letter for display
         WindowTitleSuffix = " - " + char.ToUpperInvariant(profileName[0]) + profileName[1..].ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Derives a deterministic profile name from a Nostr public key hex string.
+    /// Uses the first 16 characters (64 bits of entropy — effectively collision-free).
+    /// </summary>
+    public static string DeriveProfileName(string publicKeyHex)
+        => publicKeyHex[..16].ToLowerInvariant();
+
+    /// <summary>
+    /// Reads the last active user's public key from the registry file (last_user.json).
+    /// Returns null if the file doesn't exist or can't be read.
+    /// </summary>
+    public static string? ReadLastUserPubKey()
+    {
+        try
+        {
+            var path = Path.Combine(RootDataDirectory, "last_user.json");
+            if (!File.Exists(path)) return null;
+
+            var json = File.ReadAllText(path);
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("public_key_hex", out var prop))
+            {
+                var value = prop.GetString();
+                if (!string.IsNullOrEmpty(value) && value.Length == 64)
+                    return value;
+            }
+        }
+        catch
+        {
+            // Silently ignore — registry is best-effort
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Saves the active user's public key to the registry file (last_user.json).
+    /// </summary>
+    public static void WriteLastUserPubKey(string publicKeyHex)
+    {
+        try
+        {
+            Directory.CreateDirectory(RootDataDirectory);
+            var path = Path.Combine(RootDataDirectory, "last_user.json");
+            var json = JsonSerializer.Serialize(new { public_key_hex = publicKeyHex });
+            File.WriteAllText(path, json);
+        }
+        catch
+        {
+            // Silently ignore — registry is best-effort
+        }
+    }
+
+    /// <summary>
+    /// Clears the last user registry. Called on logout so the next launch shows the login screen.
+    /// </summary>
+    public static void ClearLastUser()
+    {
+        try
+        {
+            var path = Path.Combine(RootDataDirectory, "last_user.json");
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        catch
+        {
+            // Silently ignore
+        }
     }
 
     private static string GetDefaultDataDirectory()

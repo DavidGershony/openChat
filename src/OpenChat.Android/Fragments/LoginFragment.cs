@@ -16,13 +16,13 @@ namespace OpenChat.Android.Fragments;
 
 public class LoginFragment : Fragment
 {
-    private readonly MainViewModel _mainViewModel;
-    private LoginViewModel ViewModel => _mainViewModel.LoginViewModel;
+    private readonly ShellViewModel _shellViewModel;
+    private LoginViewModel ViewModel => _shellViewModel.LoginViewModel;
     private CompositeDisposable _disposables = new();
 
-    public LoginFragment(MainViewModel mainViewModel)
+    public LoginFragment(ShellViewModel shellViewModel)
     {
-        _mainViewModel = mainViewModel;
+        _shellViewModel = shellViewModel;
     }
 
     public override View? OnCreateView(LayoutInflater inflater, ViewGroup? container, Bundle? savedInstanceState)

@@ -12,6 +12,7 @@ public interface IStorageService
     // User operations
     Task<User?> GetCurrentUserAsync();
     Task SaveCurrentUserAsync(User user);
+    Task ClearCurrentUserAsync();
     Task<User?> GetUserByPublicKeyAsync(string publicKeyHex);
     Task SaveUserAsync(User user);
     Task<IEnumerable<User>> GetAllUsersAsync();

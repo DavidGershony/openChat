@@ -11,7 +11,7 @@
 
     <Grid ColumnDefinitions="*,Auto" Background="{StaticResource BackgroundDarkBrush}">
         <!-- Main Chat Area -->
-        <Grid Grid.Column="0" RowDefinitions="Auto,*,Auto">
+        <Grid Grid.Column="0" RowDefinitions="Auto,*,Auto,Auto">
 
             <!-- Chat Header -->
             <Border Grid.Row="0" Padding="16" Background="{StaticResource BackgroundLightBrush}"
@@ -114,8 +114,16 @@
             </StackPanel>
         </Border>
 
+        <!-- Upload Status Banner -->
+        <Border Grid.Row="2" Padding="10,8"
+                Background="#1E3A5F" BorderBrush="#2563EB" BorderThickness="0,1"
+                IsVisible="{Binding UploadStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+            <TextBlock Text="{Binding UploadStatus}" FontSize="14" Foreground="White"
+                       FontWeight="SemiBold" HorizontalAlignment="Center" />
+        </Border>
+
         <!-- Message Input -->
-        <Border Grid.Row="2" Padding="16" Background="{StaticResource BackgroundLightBrush}"
+        <Border Grid.Row="3" Padding="16" Background="{StaticResource BackgroundLightBrush}"
                 BorderBrush="{StaticResource BorderDefaultBrush}" BorderThickness="0,1,0,0">
             <Grid ColumnDefinitions="Auto,*,Auto,Auto" Height="48">
                 <!-- Attachment Button (only visible when MIP-04 enabled and not recording) -->

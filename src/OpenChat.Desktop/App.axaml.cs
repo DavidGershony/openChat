@@ -45,22 +45,16 @@ public partial class App : Application
         {
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             {
-                _logger?.LogDebug("Creating services...");
-                var secureStorage = new DesktopSecureStorage();
-                var storageService = new StorageService(ProfileConfiguration.DatabasePath, secureStorage);
-                var nostrService = new NostrService();
-                IMlsService mlsService = ProfileConfiguration.ActiveMdkBackend == MdkBackend.Managed
-                    ? new ManagedMlsService(storageService)
-                    : new MlsService(storageService);
-                _logger?.LogInformation("Using {Backend} MLS backend", ProfileConfiguration.ActiveMdkBackend);
-                var messageService = new MessageService(storageService, nostrService, mlsService);
+                _logger?.LogDebug("Creating profile-independent services...");
 
-                _logger?.LogDebug("Creating platform services...");
+                // Profile-independent services (survive across logins)
+                var secureStorage = new DesktopSecureStorage();
+                var nostrService = new NostrService();
                 var clipboard = new AvaloniaClipboard();
                 var qrCodeGenerator = new AvaloniaQrCodeGenerator();
                 var launcher = new AvaloniaLauncher();
 
-                // Audio and upload services for voice messages
+                // Audio and upload services (profile-independent, set as static on ChatViewModel)
                 var audioRecording = new DesktopAudioRecordingService();
                 var audioPlayback = new DesktopAudioPlaybackService();
                 var blossomUpload = new BlossomUploadService();
@@ -68,7 +62,27 @@ public partial class App : Application
                 ChatViewModel.AudioPlaybackService = audioPlayback;
                 ChatViewModel.MediaUploadService = blossomUpload;
 
-                // File picker for image/media attach
+                // File picker (needs desktop.MainWindow, set after window creation)
+                // Will be set below after MainWindow is created.
+
+                _logger?.LogDebug("Creating ShellViewModel...");
+                var shellViewModel = new ShellViewModel(nostrService, secureStorage, clipboard, qrCodeGenerator, launcher);
+
+                // MLS service factory — platform-specific backend selection
+                shellViewModel.MlsServiceFactory = storage =>
+                    ProfileConfiguration.ActiveMdkBackend == MdkBackend.Managed
+                        ? new ManagedMlsService(storage)
+                        : new MlsService(storage);
+                _logger?.LogInformation("Using {Backend} MLS backend", ProfileConfiguration.ActiveMdkBackend);
+
+                _logger?.LogDebug("Creating MainWindow...");
+                desktop.MainWindow = new MainWindow
+                {
+                    DataContext = shellViewModel
+                };
+                desktop.MainWindow.Title = "OpenChat" + ProfileConfiguration.WindowTitleSuffix;
+
+                // File picker for image/media attach (needs MainWindow reference)
                 ChatViewModel.FilePickerFunc = async () =>
                 {
                     var topLevel = Avalonia.Controls.TopLevel.GetTopLevel(desktop.MainWindow);
@@ -110,16 +124,6 @@ public partial class App : Application
 
                     return (data, file.Name, mime);
                 };
-
-                _logger?.LogDebug("Creating MainViewModel...");
-                var mainViewModel = new MainViewModel(messageService, nostrService, storageService, mlsService, clipboard, qrCodeGenerator, launcher);
-
-                _logger?.LogDebug("Creating MainWindow...");
-                desktop.MainWindow = new MainWindow
-                {
-                    DataContext = mainViewModel
-                };
-                desktop.MainWindow.Title = "OpenChat" + ProfileConfiguration.WindowTitleSuffix;
 
                 _logger?.LogInformation("MainWindow created successfully (Profile: {Profile})", ProfileConfiguration.ProfileName);
 

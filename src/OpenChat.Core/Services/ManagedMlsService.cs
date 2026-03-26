@@ -55,8 +55,9 @@ public class ManagedMlsService : IMlsService
     private readonly SemaphoreSlim _initLock = new(1, 1);
 
     private const string ServiceStateKey = "__service__";
-    private const byte ServiceStateVersion = 2;
+    private const byte ServiceStateVersion = 3;
     private const byte ServiceStateVersion1 = 1;
+    private const byte ServiceStateVersion2 = 2;
 
     public ManagedMlsService(IStorageService? storageService = null)
     {
@@ -129,6 +130,40 @@ public class ManagedMlsService : IMlsService
             if (!restoredKeys)
             {
                 await SaveServiceStateAsync();
+            }
+        }
+        finally
+        {
+            _initLock.Release();
+        }
+    }
+
+    public async Task ResetAsync()
+    {
+        await _initLock.WaitAsync();
+        try
+        {
+            _logger.LogInformation("Resetting MLS service state (logout)");
+            _mdk = null;
+            _publicKeyHex = null;
+            _privateKeyHex = null;
+            _identity = null;
+            _signingPrivateKey = null;
+            _signingPublicKey = null;
+            _storedKeyPackages.Clear();
+            _nostrEventSigner = null;
+
+            // Clear persisted service state so next login starts fresh
+            if (_storageService != null)
+            {
+                try
+                {
+                    await _storageService.SaveMlsStateAsync(ServiceStateKey, Array.Empty<byte>());
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to clear persisted MLS service state");
+                }
             }
         }
         finally
@@ -652,6 +687,8 @@ public class ManagedMlsService : IMlsService
         var stateBytes = TlsCodec.Serialize(writer =>
         {
             writer.WriteUint8(ServiceStateVersion);
+            // v3: identity first, so we can verify on restore
+            writer.WriteOpaqueV(_identity ?? Array.Empty<byte>());
             writer.WriteOpaqueV(_signingPrivateKey);
             writer.WriteOpaqueV(_signingPublicKey);
 
@@ -673,28 +710,25 @@ public class ManagedMlsService : IMlsService
         var reader = new TlsReader(state);
         byte version = reader.ReadUint8();
 
-        _signingPrivateKey = reader.ReadOpaqueV();
-        _signingPublicKey = reader.ReadOpaqueV();
-
         _storedKeyPackages.Clear();
 
-        if (version == ServiceStateVersion1)
+        if (version == ServiceStateVersion)
         {
-            // v1 format: single optional KeyPackage
-            byte hasKp = reader.ReadUint8();
-            if (hasKp != 0)
+            // v3 format: identity + signing keys + KeyPackages
+            var storedIdentity = reader.ReadOpaqueV();
+
+            // Verify identity matches current user
+            if (_identity != null && !storedIdentity.SequenceEqual(_identity))
             {
-                _storedKeyPackages.Add(new StoredKeyPackageMaterial
-                {
-                    KeyPackageBytes = reader.ReadOpaqueV(),
-                    InitPrivateKey = reader.ReadOpaqueV(),
-                    HpkePrivateKey = reader.ReadOpaqueV()
-                });
+                _logger.LogWarning("Persisted MLS state identity mismatch (stored={Stored}, current={Current}). Discarding stale state.",
+                    Convert.ToHexString(storedIdentity).ToLowerInvariant()[..Math.Min(16, storedIdentity.Length * 2)],
+                    Convert.ToHexString(_identity).ToLowerInvariant()[..Math.Min(16, _identity.Length * 2)]);
+                return Task.CompletedTask; // Don't restore — will generate fresh keys
             }
-        }
-        else if (version == ServiceStateVersion)
-        {
-            // v2 format: list of KeyPackages
+
+            _signingPrivateKey = reader.ReadOpaqueV();
+            _signingPublicKey = reader.ReadOpaqueV();
+
             ushort count = reader.ReadUint16();
             for (int i = 0; i < count; i++)
             {
@@ -705,6 +739,18 @@ public class ManagedMlsService : IMlsService
                     HpkePrivateKey = reader.ReadOpaqueV()
                 });
             }
+        }
+        else if (version == ServiceStateVersion1)
+        {
+            // v1 format: signing keys + single optional KeyPackage (no identity — discard)
+            _logger.LogWarning("Discarding v1 MLS state (no identity verification). Will regenerate keys.");
+            return Task.CompletedTask;
+        }
+        else if (version == ServiceStateVersion2)
+        {
+            // v2 format: signing keys + KeyPackage list (no identity — discard)
+            _logger.LogWarning("Discarding v2 MLS state (no identity verification). Will regenerate keys.");
+            return Task.CompletedTask;
         }
         else
         {
