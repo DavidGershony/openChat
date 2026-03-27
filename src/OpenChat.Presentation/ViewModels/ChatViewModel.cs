@@ -981,6 +981,7 @@ public class MessageViewModel : ViewModelBase
     public bool ShowTapToLoad => (IsImage || IsAudio) && IsMip04Enabled && !IsMediaLoaded && !IsLoadingMedia && MediaError == null;
 
     public ReactiveCommand<Unit, Unit> LoadMediaCommand { get; }
+    public ReactiveCommand<Unit, Unit> ToggleAudioCommand { get; }
 
     public Message Message { get; }
 
@@ -1045,6 +1046,7 @@ public class MessageViewModel : ViewModelBase
         }
 
         LoadMediaCommand = ReactiveCommand.CreateFromTask(LoadMediaAsync);
+        ToggleAudioCommand = ReactiveCommand.CreateFromTask(ToggleAudioPlaybackAsync);
 
         // Notify computed properties when their dependencies change
         this.WhenAnyValue(x => x.IsMip04Enabled, x => x.IsMediaLoaded, x => x.IsLoadingMedia, x => x.MediaError)
@@ -1166,20 +1168,27 @@ public class MessageViewModel : ViewModelBase
             IsMediaLoaded = true;
             MediaSizeDisplay = fileInfo.SizeDisplay;
 
-            // Step 8: Auto-play audio messages (decode Opus → PCM, then play)
-            if (IsAudio && ChatViewModel.AudioPlaybackService != null)
+            // Step 8: For audio, decode Opus → PCM and store for playback
+            if (IsAudio)
             {
                 try
                 {
                     var (pcm, sampleRate, channels) = OpenChat.Core.Audio.OpusCodec.Decode(decrypted);
-                    await ChatViewModel.AudioPlaybackService.PlayAsync(pcm, sampleRate, channels);
-                    _logger.LogInformation("LoadMedia: playing audio for message {Id} ({Size} bytes Opus → {PcmSize} bytes PCM)",
-                        Id, decrypted.Length, pcm.Length);
+                    DecodedAudioPcm = pcm;
+                    _decodedSampleRate = sampleRate;
+                    _decodedChannels = channels;
+                    var totalSeconds = (double)pcm.Length / (sampleRate * channels * 2); // 16-bit samples
+                    AudioDurationText = TimeSpan.FromSeconds(totalSeconds).ToString(@"m\:ss");
+                    _logger.LogInformation("LoadMedia: decoded audio for message {Id} ({Size} bytes Opus → {PcmSize} bytes PCM, {Duration}s)",
+                        Id, decrypted.Length, pcm.Length, totalSeconds);
+
+                    // Auto-play on first load
+                    await PlayAudioAsync();
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "LoadMedia: audio playback failed for {Id}", Id);
-                    MediaError = $"Playback failed: {ex.Message}";
+                    _logger.LogError(ex, "LoadMedia: audio decode failed for {Id}", Id);
+                    MediaError = $"Audio decode failed: {ex.Message}";
                 }
             }
 
@@ -1209,6 +1218,65 @@ public class MessageViewModel : ViewModelBase
     /// Validates that decrypted bytes match the expected image MIME type.
     /// Rejects SVGs to prevent script injection.
     /// </summary>
+    // Audio playback state
+    private int _decodedSampleRate = 48000;
+    private int _decodedChannels = 1;
+    private IDisposable? _audioProgressTimer;
+
+    private async Task ToggleAudioPlaybackAsync()
+    {
+        if (DecodedAudioPcm == null) return;
+
+        var playback = ChatViewModel.AudioPlaybackService;
+        if (playback == null) return;
+
+        if (IsPlayingAudio)
+        {
+            await playback.StopAsync();
+            IsPlayingAudio = false;
+            _audioProgressTimer?.Dispose();
+            _audioProgressTimer = null;
+        }
+        else
+        {
+            await PlayAudioAsync();
+        }
+    }
+
+    private async Task PlayAudioAsync()
+    {
+        if (DecodedAudioPcm == null) return;
+
+        var playback = ChatViewModel.AudioPlaybackService;
+        if (playback == null) return;
+
+        IsPlayingAudio = true;
+        AudioProgress = 0;
+
+        // Update progress every 100ms
+        _audioProgressTimer?.Dispose();
+        _audioProgressTimer = System.Reactive.Linq.Observable
+            .Interval(TimeSpan.FromMilliseconds(100))
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(_ =>
+            {
+                if (playback.IsPlaying && playback.Duration.TotalSeconds > 0)
+                {
+                    AudioProgress = playback.Position.TotalSeconds / playback.Duration.TotalSeconds;
+                }
+                else if (!playback.IsPlaying && IsPlayingAudio)
+                {
+                    // Playback finished
+                    IsPlayingAudio = false;
+                    AudioProgress = 0;
+                    _audioProgressTimer?.Dispose();
+                    _audioProgressTimer = null;
+                }
+            });
+
+        await playback.PlayAsync(DecodedAudioPcm, _decodedSampleRate, _decodedChannels);
+    }
+
     private static bool ValidateImageMagicBytes(byte[] data, string mimeType)
     {
         if (data.Length < 4) return false;

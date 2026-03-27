@@ -114,23 +114,58 @@
                 </Border>
 
                 <!-- Audio Player (for voice messages) -->
-                <StackPanel IsVisible="{Binding IsAudio}" Orientation="Horizontal" Spacing="8">
-                    <Button Command="{Binding LoadMediaCommand}"
-                            Width="36" Height="36" CornerRadius="18"
-                            Padding="0" Classes="primary"
-                            IsVisible="{Binding ShowTapToLoad}">
-                        <PathIcon Data="M8 5v14l11-7z" Width="16" Height="16" Foreground="White" />
-                    </Button>
+                <StackPanel IsVisible="{Binding IsAudio}" Spacing="4">
+                    <!-- Load button (before download) -->
+                    <StackPanel Orientation="Horizontal" Spacing="8"
+                                IsVisible="{Binding ShowTapToLoad}">
+                        <Button Command="{Binding LoadMediaCommand}"
+                                Width="36" Height="36" CornerRadius="18"
+                                Padding="0" Classes="primary">
+                            <PathIcon Data="M8 5v14l11-7z" Width="16" Height="16" Foreground="White" />
+                        </Button>
+                        <TextBlock Text="{Binding ImageDisplayText}"
+                                   VerticalAlignment="Center" FontSize="13" />
+                    </StackPanel>
+
+                    <!-- Mini player (after download/decode) -->
+                    <StackPanel Orientation="Horizontal" Spacing="8"
+                                IsVisible="{Binding IsMediaLoaded}">
+                        <!-- Play/Pause button -->
+                        <Button Command="{Binding ToggleAudioCommand}"
+                                Width="32" Height="32" CornerRadius="16"
+                                Padding="0" Classes="primary">
+                            <Panel>
+                                <!-- Play icon -->
+                                <PathIcon Data="M8 5v14l11-7z" Width="14" Height="14"
+                                          Foreground="White"
+                                          IsVisible="{Binding !IsPlayingAudio}" />
+                                <!-- Pause icon -->
+                                <PathIcon Data="M6 19h4V5H6v14zm8-14v14h4V5h-4z" Width="14" Height="14"
+                                          Foreground="White"
+                                          IsVisible="{Binding IsPlayingAudio}" />
+                            </Panel>
+                        </Button>
+
+                        <!-- Progress bar -->
+                        <Slider Minimum="0" Maximum="1" Value="{Binding AudioProgress}"
+                                Width="120" VerticalAlignment="Center"
+                                IsHitTestVisible="False" />
+
+                        <!-- Duration -->
+                        <TextBlock Text="{Binding AudioDurationText}"
+                                   VerticalAlignment="Center" FontSize="12"
+                                   Foreground="{StaticResource TextMutedBrush}" />
+                    </StackPanel>
+
+                    <!-- Disabled state -->
                     <TextBlock Text="{Binding ImageDisplayText}"
-                               VerticalAlignment="Center" FontSize="13"
-                               Foreground="{StaticResource BubbleReceivedText}"
-                               IsVisible="{Binding ShowTapToLoad}" />
-                    <TextBlock Text="{Binding ImageDisplayText}"
-                               VerticalAlignment="Center" FontSize="13"
+                               FontSize="13"
                                Foreground="{StaticResource TextMutedBrush}"
                                IsVisible="{Binding ShowMediaDisabled}" />
+
+                    <!-- Error state -->
                     <TextBlock Text="{Binding MediaError}"
-                               VerticalAlignment="Center" FontSize="13"
+                               FontSize="13"
                                Foreground="{StaticResource StatusErrorBrush}"
                                IsVisible="{Binding MediaError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                 </StackPanel>
@@ -244,23 +279,49 @@
                 </Border>
 
                 <!-- Audio Player (for voice messages) -->
-                <StackPanel IsVisible="{Binding IsAudio}" Orientation="Horizontal" Spacing="8">
-                    <Button Command="{Binding LoadMediaCommand}"
-                            Width="36" Height="36" CornerRadius="18"
-                            Padding="0" Classes="primary"
-                            IsVisible="{Binding ShowTapToLoad}">
-                        <PathIcon Data="M8 5v14l11-7z" Width="16" Height="16" Foreground="White" />
-                    </Button>
+                <StackPanel IsVisible="{Binding IsAudio}" Spacing="4">
+                    <!-- Load button (before download) -->
+                    <StackPanel Orientation="Horizontal" Spacing="8"
+                                IsVisible="{Binding ShowTapToLoad}">
+                        <Button Command="{Binding LoadMediaCommand}"
+                                Width="36" Height="36" CornerRadius="18"
+                                Padding="0" Classes="primary">
+                            <PathIcon Data="M8 5v14l11-7z" Width="16" Height="16" Foreground="White" />
+                        </Button>
+                        <TextBlock Text="{Binding ImageDisplayText}"
+                                   VerticalAlignment="Center" FontSize="13" />
+                    </StackPanel>
+
+                    <!-- Mini player (after download/decode) -->
+                    <StackPanel Orientation="Horizontal" Spacing="8"
+                                IsVisible="{Binding IsMediaLoaded}">
+                        <Button Command="{Binding ToggleAudioCommand}"
+                                Width="32" Height="32" CornerRadius="16"
+                                Padding="0" Classes="primary">
+                            <Panel>
+                                <PathIcon Data="M8 5v14l11-7z" Width="14" Height="14"
+                                          Foreground="White"
+                                          IsVisible="{Binding !IsPlayingAudio}" />
+                                <PathIcon Data="M6 19h4V5H6v14zm8-14v14h4V5h-4z" Width="14" Height="14"
+                                          Foreground="White"
+                                          IsVisible="{Binding IsPlayingAudio}" />
+                            </Panel>
+                        </Button>
+                        <Slider Minimum="0" Maximum="1" Value="{Binding AudioProgress}"
+                                Width="120" VerticalAlignment="Center"
+                                IsHitTestVisible="False" />
+                        <TextBlock Text="{Binding AudioDurationText}"
+                                   VerticalAlignment="Center" FontSize="12"
+                                   Foreground="{StaticResource TextMutedBrush}" />
+                    </StackPanel>
+
+                    <!-- Disabled / Error states -->
                     <TextBlock Text="{Binding ImageDisplayText}"
-                               VerticalAlignment="Center" FontSize="13"
-                               Foreground="{StaticResource BubbleSentText}"
-                               IsVisible="{Binding ShowTapToLoad}" />
-                    <TextBlock Text="{Binding ImageDisplayText}"
-                               VerticalAlignment="Center" FontSize="13"
+                               FontSize="13"
                                Foreground="{StaticResource TextMutedBrush}"
                                IsVisible="{Binding ShowMediaDisabled}" />
                     <TextBlock Text="{Binding MediaError}"
-                               VerticalAlignment="Center" FontSize="13"
+                               FontSize="13"
                                Foreground="{StaticResource StatusErrorBrush}"
                                IsVisible="{Binding MediaError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                 </StackPanel>
