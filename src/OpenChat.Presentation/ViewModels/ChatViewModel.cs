@@ -1150,18 +1150,38 @@ public class MessageViewModel : ViewModelBase
             var decrypted = OpenChat.Core.Crypto.Mip04MediaCrypto.DecryptMediaFile(
                 encrypted, fileKey, Message.FileSha256, mimeType, filename, Message.EncryptionNonce);
 
-            // Step 6: Validate image magic bytes
-            if (!ValidateImageMagicBytes(decrypted, mimeType))
+            // Step 6: Validate magic bytes (skip for audio — no image header expected)
+            if (!mimeType.StartsWith("audio/"))
             {
-                MediaError = "File content does not match expected image format.";
-                _logger.LogWarning("LoadMedia: magic bytes mismatch for {Id}", Id);
-                return;
+                if (!ValidateImageMagicBytes(decrypted, mimeType))
+                {
+                    MediaError = "File content does not match expected image format.";
+                    _logger.LogWarning("LoadMedia: magic bytes mismatch for {Id}", Id);
+                    return;
+                }
             }
 
             // Step 7: Success
             DecryptedMediaBytes = decrypted;
             IsMediaLoaded = true;
             MediaSizeDisplay = fileInfo.SizeDisplay;
+
+            // Step 8: Auto-play audio messages (decode Opus → PCM, then play)
+            if (IsAudio && ChatViewModel.AudioPlaybackService != null)
+            {
+                try
+                {
+                    var (pcm, sampleRate, channels) = OpenChat.Core.Audio.OpusCodec.Decode(decrypted);
+                    await ChatViewModel.AudioPlaybackService.PlayAsync(pcm, sampleRate, channels);
+                    _logger.LogInformation("LoadMedia: playing audio for message {Id} ({Size} bytes Opus → {PcmSize} bytes PCM)",
+                        Id, decrypted.Length, pcm.Length);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "LoadMedia: audio playback failed for {Id}", Id);
+                    MediaError = $"Playback failed: {ex.Message}";
+                }
+            }
 
             // Cache
             MediaCacheSet?.Invoke(Id, decrypted);
