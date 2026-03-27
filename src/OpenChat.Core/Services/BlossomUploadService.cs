@@ -19,7 +19,7 @@ public class BlossomUploadService : IMediaUploadService
     private IExternalSigner? _externalSigner;
     private string? _lastUploadError;
 
-    public string BlossomServerUrl { get; set; } = "https://blossom.band";
+    public string BlossomServerUrl { get; set; } = "https://blossom.primal.net";
 
     public BlossomUploadService(IExternalSigner? externalSigner = null)
     {

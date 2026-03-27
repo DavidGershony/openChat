@@ -59,7 +59,7 @@ public class SettingsViewModel : ViewModelBase
     [Reactive] public string? Mip04DependencyWarning { get; set; }
 
     // Blossom server
-    [Reactive] public string BlossomServerUrl { get; set; } = "https://blossom.band";
+    [Reactive] public string BlossomServerUrl { get; set; } = "https://blossom.primal.net";
     [Reactive] public string? BlossomStatus { get; set; }
 
     public ObservableCollection<RelayViewModel> Relays { get; } = new();
