@@ -629,11 +629,13 @@ public class ChatListViewModel : ViewModelBase
             _logger.LogDebug("Adding member to MLS group");
             var welcome = await _mlsService.AddMemberAsync(chat.MlsGroupId, keyPackage);
 
-            // Publish Commit (kind 445) before Welcome (kind 444) per MIP-02
-            // CommitData from AddMemberAsync is already MIP-03 encrypted (managed backend).
-            if (welcome.CommitData != null && welcome.CommitData.Length > 0)
+            // MIP-02: For initial group creation (epoch 0), do NOT publish the Commit.
+            // There are no existing members who need it — the joiner gets full state via Welcome.
+            // Publishing it would confuse the joiner (encrypted with epoch 0 key they don't have).
+            // For adding members to existing groups (epoch > 0), publish Commit first and wait.
+            if (groupInfo.Epoch > 0 && welcome.CommitData != null && welcome.CommitData.Length > 0)
             {
-                _logger.LogDebug("Publishing Commit to Nostr (kind 445)");
+                _logger.LogDebug("Publishing Commit to Nostr (kind 445) — existing group, epoch {Epoch}", groupInfo.Epoch);
                 try
                 {
                     var commitEventJson = await _mlsService.EncryptCommitAsync(
@@ -651,6 +653,10 @@ public class ChatListViewModel : ViewModelBase
                         commitEventId[..Math.Min(16, commitEventId.Length)], groupIdHex[..Math.Min(16, groupIdHex.Length)]);
                 }
                 await Task.Delay(500);
+            }
+            else
+            {
+                _logger.LogInformation("Skipping Commit publish for initial group creation (epoch 0)");
             }
 
             // Publish Welcome (kind 444)
@@ -791,11 +797,11 @@ public class ChatListViewModel : ViewModelBase
                             // Add them to the MLS group
                             var welcome = await _mlsService.AddMemberAsync(chat.MlsGroupId, keyPackage);
 
-                            // MIP-02: Publish Commit (kind 445) BEFORE sending Welcome (kind 444)
-                            // CommitData is already MIP-03 encrypted by AddMemberAsync (managed backend).
-                            if (welcome.CommitData != null && welcome.CommitData.Length > 0)
+                            // MIP-02: For initial group creation (epoch 0), skip the Commit — only send Welcome.
+                            // For existing groups (epoch > 0), publish Commit first so existing members advance.
+                            if (groupInfo.Epoch > 0 && welcome.CommitData != null && welcome.CommitData.Length > 0)
                             {
-                                _logger.LogDebug("Publishing Commit to Nostr (kind 445)");
+                                _logger.LogDebug("Publishing Commit to Nostr (kind 445) — existing group, epoch {Epoch}", groupInfo.Epoch);
                                 try
                                 {
                                     var commitEventJson = await _mlsService.EncryptCommitAsync(
@@ -813,7 +819,12 @@ public class ChatListViewModel : ViewModelBase
                                 }
 
                                 // Small delay to allow commit to propagate to relays before welcome
+                                // TODO: Replace with actual relay OK confirmation per MIP-02
                                 await Task.Delay(500);
+                            }
+                            else if (welcome.CommitData != null && welcome.CommitData.Length > 0)
+                            {
+                                _logger.LogInformation("Skipping Commit publish for initial group creation (epoch {Epoch})", groupInfo.Epoch);
                             }
 
                             _logger.LogDebug("Publishing Welcome message to Nostr (kind 444)");
