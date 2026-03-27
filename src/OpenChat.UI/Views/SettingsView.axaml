@@ -9,7 +9,7 @@
 
     <Grid RowDefinitions="Auto,*">
         <!-- Fixed Header -->
-        <Border Grid.Row="0" Padding="24,16" Background="{StaticResource BackgroundDarkBrush}">
+        <Border Grid.Row="0" Padding="24,16" Background="{DynamicResource BackgroundDarkBrush}">
             <Grid ColumnDefinitions="Auto,*">
                 <Button Grid.Column="0" Classes="icon" Margin="0,0,12,0"
                         Command="{Binding $parent[Window].DataContext.MainViewModel.ShowChatsCommand}"
@@ -32,7 +32,7 @@
                     <!-- Avatar -->
                     <StackPanel Orientation="Horizontal" Spacing="16">
                         <Border Width="80" Height="80" CornerRadius="40"
-                                Background="{StaticResource NostrPurpleBrush}">
+                                Background="{DynamicResource NostrPurpleBrush}">
                             <TextBlock Text="U" FontSize="32" FontWeight="SemiBold" Foreground="White"
                                        HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
@@ -64,7 +64,7 @@
                             HorizontalAlignment="Left" />
 
                     <!-- Publish confirmation dialog -->
-                    <Border Background="{StaticResource BackgroundLightBrush}" CornerRadius="8"
+                    <Border Background="{DynamicResource BackgroundLightBrush}" CornerRadius="8"
                             Padding="16" Margin="0,8,0,0"
                             IsVisible="{Binding ShowPublishConfirmation}">
                         <StackPanel Spacing="12">
@@ -121,12 +121,12 @@
                         </Grid>
                     </StackPanel>
 
-                    <Border Background="#3DF59E0B" CornerRadius="8" Padding="12">
+                    <Border Background="{DynamicResource WarningBgBrush}" CornerRadius="8" Padding="12">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <PathIcon Data="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"
-                                      Width="18" Height="18" Foreground="{StaticResource StatusWarningBrush}" />
+                                      Width="18" Height="18" Foreground="{DynamicResource StatusWarningBrush}" />
                             <TextBlock Text="Never share your private key (nsec) with anyone!"
-                                       Foreground="{StaticResource StatusWarningBrush}" FontSize="13" />
+                                       Foreground="{DynamicResource StatusWarningBrush}" FontSize="13" />
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -143,13 +143,13 @@
                     <ItemsControl x:Name="RelaysItemsControl" ItemsSource="{Binding Relays}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:RelayViewModel">
-                                <Border Background="{StaticResource SurfaceSecondaryBrush}"
+                                <Border Background="{DynamicResource SurfaceSecondaryBrush}"
                                         CornerRadius="8" Padding="12" Margin="0,4">
                                     <Grid ColumnDefinitions="Auto,*,Auto,Auto">
                                         <!-- Status Indicator -->
                                         <Panel Grid.Column="0" Width="10" Height="10" Margin="0,0,12,0">
-                                            <Ellipse Fill="{StaticResource StatusOnlineBrush}" IsVisible="{Binding IsConnected}" />
-                                            <Ellipse Fill="{StaticResource StatusErrorBrush}" IsVisible="{Binding !IsConnected}" />
+                                            <Ellipse Fill="{DynamicResource StatusOnlineBrush}" IsVisible="{Binding IsConnected}" />
+                                            <Ellipse Fill="{DynamicResource StatusErrorBrush}" IsVisible="{Binding !IsConnected}" />
                                         </Panel>
 
                                         <!-- Relay URL -->
@@ -217,15 +217,15 @@
 
                         <!-- Status Message -->
                         <Border IsVisible="{Binding KeyPackageStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                Background="{StaticResource SurfaceSecondaryBrush}"
+                                Background="{DynamicResource SurfaceSecondaryBrush}"
                                 CornerRadius="8" Padding="12">
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <PathIcon IsVisible="{Binding KeyPackageSuccess}"
                                           Data="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"
-                                          Width="18" Height="18" Foreground="{StaticResource StatusOnlineBrush}" />
+                                          Width="18" Height="18" Foreground="{DynamicResource StatusOnlineBrush}" />
                                 <PathIcon IsVisible="{Binding !KeyPackageSuccess}"
                                           Data="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"
-                                          Width="18" Height="18" Foreground="{StaticResource StatusWarningBrush}" />
+                                          Width="18" Height="18" Foreground="{DynamicResource StatusWarningBrush}" />
                                 <TextBlock Text="{Binding KeyPackageStatus}"
                                            FontSize="13" TextWrapping="Wrap" VerticalAlignment="Center" />
                             </StackPanel>
@@ -257,13 +257,13 @@
                                           VerticalAlignment="Center" />
                         </Grid>
 
-                        <Border Background="#3DF59E0B" CornerRadius="8" Padding="12">
+                        <Border Background="{DynamicResource WarningBgBrush}" CornerRadius="8" Padding="12">
                             <StackPanel Spacing="4">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <PathIcon Data="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"
-                                              Width="16" Height="16" Foreground="{StaticResource StatusWarningBrush}" />
+                                              Width="16" Height="16" Foreground="{DynamicResource StatusWarningBrush}" />
                                     <TextBlock Text="Risk: Medium" FontWeight="SemiBold" FontSize="13"
-                                               Foreground="{StaticResource StatusWarningBrush}" />
+                                               Foreground="{DynamicResource StatusWarningBrush}" />
                                 </StackPanel>
                                 <TextBlock Text="Enabling media loading allows the app to download files from URLs in messages. This exposes your IP address to the hosting server and increases attack surface. Only enable if you trust your group members."
                                            TextWrapping="Wrap" FontSize="12" Classes="muted" />
@@ -273,16 +273,16 @@
 
                     <!-- Dependency warning -->
                     <Border IsVisible="{Binding Mip04DependencyWarning, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                            Background="#3DEF4444" CornerRadius="8" Padding="12" Margin="0,4,0,0">
+                            Background="{DynamicResource ErrorBgBrush}" CornerRadius="8" Padding="12" Margin="0,4,0,0">
                         <StackPanel Spacing="4">
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <PathIcon Data="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"
-                                          Width="16" Height="16" Foreground="#EF4444" />
+                                          Width="16" Height="16" Foreground="{DynamicResource StatusErrorBrush}" />
                                 <TextBlock Text="Missing dependency" FontWeight="SemiBold" FontSize="13"
-                                           Foreground="#EF4444" />
+                                           Foreground="{DynamicResource StatusErrorBrush}" />
                             </StackPanel>
                             <TextBlock Text="{Binding Mip04DependencyWarning}"
-                                       TextWrapping="Wrap" FontSize="12" Foreground="#EF4444"
+                                       TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource StatusErrorBrush}"
                                        FontFamily="Consolas,monospace" />
                         </StackPanel>
                     </Border>
@@ -317,6 +317,19 @@
                 </StackPanel>
             </Border>
 
+            <!-- Theme Section -->
+            <Border Classes="card">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="Theme" FontWeight="SemiBold" FontSize="16" />
+                    <TextBlock Text="Customize the app appearance" Classes="secondary" />
+                    <ComboBox SelectedIndex="{Binding SelectedThemeIndex}"
+                              HorizontalAlignment="Stretch">
+                        <ComboBoxItem Content="Nostr" />
+                        <ComboBoxItem Content="Golden Axe" />
+                    </ComboBox>
+                </StackPanel>
+            </Border>
+
             <!-- About Section -->
             <Border Classes="card">
                 <StackPanel Spacing="12">
@@ -332,7 +345,7 @@
 
             <!-- Logout -->
             <Button Content="Log Out" HorizontalAlignment="Stretch" Height="44"
-                    Background="#DC2626" Foreground="White" FontWeight="SemiBold"
+                    Background="{DynamicResource DangerButtonBrush}" Foreground="White" FontWeight="SemiBold"
                     HorizontalContentAlignment="Center"
                     Command="{Binding $parent[Window].DataContext.MainViewModel.LogoutCommand}" />
         </StackPanel>
@@ -343,7 +356,7 @@
             Background="#E0000000"
             HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
         <Border Classes="card"
-                Background="{StaticResource BackgroundCardBrush}"
+                Background="{DynamicResource BackgroundCardBrush}"
                 CornerRadius="12"
                 Padding="20"
                 Margin="24"
@@ -366,7 +379,7 @@
                 </Grid>
 
                 <!-- Log Content -->
-                <Border Grid.Row="1" Background="{StaticResource SurfaceSecondaryBrush}"
+                <Border Grid.Row="1" Background="{DynamicResource SurfaceSecondaryBrush}"
                         CornerRadius="8" Padding="12">
                     <ScrollViewer HorizontalScrollBarVisibility="Auto"
                                   VerticalScrollBarVisibility="Auto">

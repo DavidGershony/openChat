@@ -6,8 +6,8 @@
              x:Class="OpenChat.UI.Controls.MessageInput"
              x:Name="Root">
 
-    <Border Padding="12" Background="{StaticResource BackgroundLightBrush}"
-            BorderBrush="{StaticResource BorderDefaultBrush}" BorderThickness="0,1,0,0">
+    <Border Padding="12" Background="{DynamicResource BackgroundLightBrush}"
+            BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0">
         <Grid ColumnDefinitions="Auto,*,Auto" Height="40">
             <!-- Attachment Button -->
             <Button Grid.Column="0" Classes="icon" Margin="0,0,8,0" ToolTip.Tip="Attach file"

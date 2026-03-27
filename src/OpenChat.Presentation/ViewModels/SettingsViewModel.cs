@@ -62,6 +62,11 @@ public class SettingsViewModel : ViewModelBase
     [Reactive] public string BlossomServerUrl { get; set; } = "https://blossom.primal.net";
     [Reactive] public string? BlossomStatus { get; set; }
 
+    // Theme selection
+    [Reactive] public int SelectedThemeIndex { get; set; }
+    public static string[] AvailableThemeNames { get; set; } = Array.Empty<string>();
+    public static Action<int>? OnThemeChanged { get; set; }
+
     public ObservableCollection<RelayViewModel> Relays { get; } = new();
 
     public ReactiveCommand<Unit, Unit> SaveProfileCommand { get; }
@@ -200,6 +205,15 @@ public class SettingsViewModel : ViewModelBase
                 {
                     _logger.LogError(ex, "Failed to save MIP-04 setting");
                 }
+            });
+
+        // Theme change handler
+        this.WhenAnyValue(x => x.SelectedThemeIndex)
+            .Skip(1)
+            .Subscribe(index =>
+            {
+                _logger.LogInformation("Theme changed to index {Index}", index);
+                OnThemeChanged?.Invoke(index);
             });
 
         LoadSettingsAsync().ConfigureAwait(false);

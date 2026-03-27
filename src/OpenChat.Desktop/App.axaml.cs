@@ -1,6 +1,8 @@
 using System;
+using System.Linq;
 using System.Reactive.Concurrency;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
@@ -18,6 +20,13 @@ namespace OpenChat.Desktop;
 public partial class App : Application
 {
     private static ILogger? _logger;
+
+    private static readonly string[] ThemeNames = { "Nostr", "Golden Axe" };
+    private static readonly string[] ThemeUris =
+    {
+        "avares://OpenChat.UI/Themes/NostrColors.axaml",
+        "avares://OpenChat.UI/Themes/GoldenAxeTheme.axaml",
+    };
 
     public override void Initialize()
     {
@@ -125,6 +134,10 @@ public partial class App : Application
                     return (data, file.Name, mime);
                 };
 
+                // Theme switching
+                SettingsViewModel.AvailableThemeNames = ThemeNames;
+                SettingsViewModel.OnThemeChanged = index => Dispatcher.UIThread.Post(() => ApplyTheme(index));
+
                 _logger?.LogInformation("MainWindow created successfully (Profile: {Profile})", ProfileConfiguration.ProfileName);
 
                 // Handle application shutdown
@@ -143,6 +156,36 @@ public partial class App : Application
             _logger?.LogCritical(ex, "FATAL: Exception in OnFrameworkInitializationCompleted");
             LoggingConfiguration.Shutdown();
             throw;
+        }
+    }
+
+    private void ApplyTheme(int index)
+    {
+        if (index < 0 || index >= ThemeUris.Length) return;
+
+        try
+        {
+            var uri = new Uri(ThemeUris[index]);
+            var resources = Resources as Avalonia.Controls.ResourceDictionary;
+            if (resources == null) return;
+
+            // Remove old color dictionary
+            var existing = resources.MergedDictionaries
+                .OfType<Avalonia.Markup.Xaml.Styling.ResourceInclude>()
+                .FirstOrDefault(r => r.Source?.ToString().Contains("/Themes/") == true);
+
+            if (existing != null)
+                resources.MergedDictionaries.Remove(existing);
+
+            // Add new color dictionary
+            var newTheme = new Avalonia.Markup.Xaml.Styling.ResourceInclude(uri) { Source = uri };
+            resources.MergedDictionaries.Add(newTheme);
+
+            _logger?.LogInformation("Theme applied: {Theme} ({Uri})", ThemeNames[index], ThemeUris[index]);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to apply theme index {Index}", index);
         }
     }
 

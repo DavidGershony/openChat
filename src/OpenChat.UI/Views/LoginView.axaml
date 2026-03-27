@@ -12,7 +12,7 @@
         <converters:PngBytesToBitmapConverter x:Key="PngBytesToBitmapConverter" />
     </UserControl.Resources>
 
-    <Grid Background="{StaticResource BackgroundDarkBrush}">
+    <Grid Background="{DynamicResource BackgroundDarkBrush}">
         <ScrollViewer VerticalScrollBarVisibility="Auto">
             <Border Classes="card" MaxWidth="480" MinHeight="500"
                     VerticalAlignment="Center" HorizontalAlignment="Center"
@@ -22,7 +22,7 @@
                     <!-- Logo/Header -->
                     <StackPanel Spacing="8" HorizontalAlignment="Center">
                         <Border Width="80" Height="80" CornerRadius="40"
-                                Background="{StaticResource NostrPurpleBrush}">
+                                Background="{DynamicResource NostrPurpleBrush}">
                             <PathIcon Data="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"
                                       Width="40" Height="40" Foreground="White" />
                         </Border>
@@ -33,7 +33,7 @@
                     </StackPanel>
 
                     <!-- Login Method Tabs -->
-                    <Border Background="{StaticResource SurfaceSecondaryBrush}" CornerRadius="8" Padding="4">
+                    <Border Background="{DynamicResource SurfaceSecondaryBrush}" CornerRadius="8" Padding="4">
                         <Grid ColumnDefinitions="*,*,*">
                             <Button Grid.Column="0" Classes="tab"
                                     Command="{Binding SelectLoginMethodCommand}"
@@ -41,13 +41,13 @@
                                 <Button.Styles>
                                     <Style Selector="Button.tab">
                                         <Setter Property="Background" Value="Transparent" />
-                                        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
                                         <Setter Property="Padding" Value="12,8" />
                                         <Setter Property="CornerRadius" Value="6" />
                                         <Setter Property="HorizontalAlignment" Value="Stretch" />
                                     </Style>
                                     <Style Selector="Button.tab:pointerover /template/ ContentPresenter">
-                                        <Setter Property="Background" Value="{StaticResource SurfaceTertiaryBrush}" />
+                                        <Setter Property="Background" Value="{DynamicResource SurfaceTertiaryBrush}" />
                                     </Style>
                                 </Button.Styles>
                                 <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
@@ -62,7 +62,7 @@
                                 <Button.Styles>
                                     <Style Selector="Button.tab">
                                         <Setter Property="Background" Value="Transparent" />
-                                        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
                                         <Setter Property="Padding" Value="12,8" />
                                         <Setter Property="CornerRadius" Value="6" />
                                         <Setter Property="HorizontalAlignment" Value="Stretch" />
@@ -80,7 +80,7 @@
                                 <Button.Styles>
                                     <Style Selector="Button.tab">
                                         <Setter Property="Background" Value="Transparent" />
-                                        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
                                         <Setter Property="Padding" Value="12,8" />
                                         <Setter Property="CornerRadius" Value="6" />
                                         <Setter Property="HorizontalAlignment" Value="Stretch" />
@@ -97,8 +97,8 @@
 
                     <!-- Error Message -->
                     <Border IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                            Background="#3DEF4444" CornerRadius="8" Padding="12">
-                        <TextBlock Text="{Binding ErrorMessage}" Foreground="{StaticResource StatusErrorBrush}"
+                            Background="{DynamicResource ErrorBgBrush}" CornerRadius="8" Padding="12">
+                        <TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource StatusErrorBrush}"
                                    TextWrapping="Wrap" />
                     </Border>
 
@@ -142,11 +142,11 @@
 
                         <!-- Generated Keys Display -->
                         <Border IsVisible="{Binding ShowGeneratedKeys}"
-                                Background="{StaticResource SurfaceSecondaryBrush}"
+                                Background="{DynamicResource SurfaceSecondaryBrush}"
                                 CornerRadius="8" Padding="16">
                             <StackPanel Spacing="12">
                                 <TextBlock Text="Your new Nostr identity" FontWeight="SemiBold"
-                                           Foreground="{StaticResource NostrPurpleLightBrush}" />
+                                           Foreground="{DynamicResource NostrPurpleLightBrush}" />
 
                                 <StackPanel Spacing="4">
                                     <TextBlock Text="Public Key (npub)" Classes="muted" FontSize="12" />
@@ -176,9 +176,9 @@
                                     </Grid>
                                 </StackPanel>
 
-                                <Border Background="#3DF59E0B" CornerRadius="4" Padding="8">
+                                <Border Background="{DynamicResource WarningBgBrush}" CornerRadius="4" Padding="8">
                                     <TextBlock Text="Save your private key securely! You will need it to recover your account."
-                                               Foreground="{StaticResource StatusWarning}" FontSize="12"
+                                               Foreground="{DynamicResource StatusWarningBrush}" FontSize="12"
                                                TextWrapping="Wrap" />
                                 </Border>
 
@@ -214,7 +214,7 @@
                         <TextBlock IsVisible="{Binding NostrConnectQrPngBytes, Converter={x:Static ObjectConverters.IsNotNull}}"
                                    Text="Do not screenshot — this QR code contains a secret"
                                    HorizontalAlignment="Center" Margin="0,4,0,0"
-                                   FontSize="11" Foreground="#FF8800" />
+                                   FontSize="11" Foreground="{DynamicResource WarningTextBrush}" />
 
                         <!-- Scanning for request label (visible when waiting for signer) -->
                         <TextBlock Text="Scanning for request..."
@@ -223,10 +223,10 @@
                                    Classes="secondary" FontSize="13" FontStyle="Italic" />
 
                         <!-- Help Text -->
-                        <Border Background="#3D8B5CF6" CornerRadius="4" Padding="8">
+                        <Border Background="{DynamicResource AccentBgBrush}" CornerRadius="4" Padding="8">
                             <StackPanel Spacing="4">
                                 <TextBlock Text="How to connect:" FontWeight="SemiBold" FontSize="12"
-                                           Foreground="{StaticResource NostrPurpleLightBrush}" />
+                                           Foreground="{DynamicResource NostrPurpleLightBrush}" />
                                 <TextBlock Text="1. Open your signer app (Amber, etc.)" FontSize="12" Classes="secondary" />
                                 <TextBlock Text="2. Scan the QR code above" FontSize="12" Classes="secondary" />
                                 <TextBlock Text="3. Approve the connection in your signer app" FontSize="12" Classes="secondary" />

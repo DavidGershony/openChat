@@ -21,10 +21,10 @@
     <!-- Design-time DataContext disabled (ShellViewModel requires runtime services) -->
 
     <Border CornerRadius="12" ClipToBounds="True"
-            Background="{StaticResource BackgroundDarkBrush}">
+            Background="{DynamicResource BackgroundDarkBrush}">
     <Grid RowDefinitions="38,*">
         <!-- Custom Title Bar -->
-        <Border Grid.Row="0" Background="{StaticResource BackgroundLightBrush}"
+        <Border Grid.Row="0" Background="{DynamicResource BackgroundLightBrush}"
                 CornerRadius="12,12,0,0">
             <Grid ColumnDefinitions="*,Auto">
                 <!-- Drag region -->
@@ -33,7 +33,7 @@
                        PointerPressed="TitleBar_PointerPressed">
                     <TextBlock Text="OpenChat" FontSize="13" FontWeight="SemiBold"
                                VerticalAlignment="Center" Margin="16,0"
-                               Foreground="{StaticResource TextSecondaryBrush}" />
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
                 </Panel>
                 <!-- Window controls -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="0"
@@ -65,7 +65,7 @@
                 <Grid RowDefinitions="Auto,*,Auto">
 
                     <!-- Header -->
-                    <Border Grid.Row="0" Padding="16,12" Background="{StaticResource BackgroundLightBrush}">
+                    <Border Grid.Row="0" Padding="16,12" Background="{DynamicResource BackgroundLightBrush}">
                         <StackPanel Spacing="10">
                             <!-- Top row: avatar + name + action buttons -->
                             <Grid ColumnDefinitions="Auto,*,Auto">
@@ -74,7 +74,7 @@
                                     <Panel Width="40" Height="40">
                                         <!-- Fallback avatar (no picture) -->
                                         <Border Width="40" Height="40" CornerRadius="20"
-                                                Background="{StaticResource NostrPurpleBrush}"
+                                                Background="{DynamicResource NostrPurpleBrush}"
                                                 IsVisible="{Binding MyPictureUrl, Converter={x:Static StringConverters.IsNullOrEmpty}}">
                                             <TextBlock Text="U" FontSize="18" FontWeight="SemiBold"
                                                        HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -134,10 +134,10 @@
                                             <Panel Grid.Column="0" Width="7" Height="7"
                                                    VerticalAlignment="Center" Margin="0,0,6,0">
                                                 <Ellipse Width="7" Height="7"
-                                                         Fill="{StaticResource StatusOnlineBrush}"
+                                                         Fill="{DynamicResource StatusOnlineBrush}"
                                                          IsVisible="{Binding IsConnected}" />
                                                 <Ellipse Width="7" Height="7"
-                                                         Fill="{StaticResource StatusErrorBrush}"
+                                                         Fill="{DynamicResource StatusErrorBrush}"
                                                          IsVisible="{Binding !IsConnected}" />
                                             </Panel>
                                             <!-- Relay name -->
@@ -182,7 +182,7 @@
                     <views:ChatListView Grid.Row="1" DataContext="{Binding ChatListViewModel}" />
 
                     <!-- Footer Buttons -->
-                    <Border Grid.Row="2" Padding="12" Background="{StaticResource BackgroundLightBrush}">
+                    <Border Grid.Row="2" Padding="12" Background="{DynamicResource BackgroundLightBrush}">
                         <StackPanel Spacing="8">
                             <!-- New Chat Button -->
                             <Button Classes="primary" HorizontalAlignment="Stretch"
@@ -239,9 +239,9 @@
                         </MultiBinding>
                     </StackPanel.IsVisible>
                     <Border Width="120" Height="120" CornerRadius="60"
-                            Background="{StaticResource SurfaceSecondaryBrush}">
+                            Background="{DynamicResource SurfaceSecondaryBrush}">
                         <PathIcon Data="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"
-                                  Width="60" Height="60" Foreground="{StaticResource TextMutedBrush}" />
+                                  Width="60" Height="60" Foreground="{DynamicResource TextMutedBrush}" />
                     </Border>
                     <TextBlock Text="Select a chat to start messaging"
                                Classes="secondary" FontSize="16" HorizontalAlignment="Center" />
@@ -260,7 +260,7 @@
                 Background="#80000000"
                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
             <Border Classes="card"
-                    Background="{StaticResource BackgroundCardBrush}"
+                    Background="{DynamicResource BackgroundCardBrush}"
                     CornerRadius="16"
                     Padding="24"
                     Margin="20"
@@ -285,7 +285,7 @@
                     <Panel Width="80" Height="80" HorizontalAlignment="Center">
                         <!-- Fallback avatar -->
                         <Border Width="80" Height="80" CornerRadius="40"
-                                Background="{StaticResource NostrPurpleBrush}"
+                                Background="{DynamicResource NostrPurpleBrush}"
                                 IsVisible="{Binding MyPictureUrl, Converter={x:Static StringConverters.IsNullOrEmpty}}">
                             <TextBlock Text="U" FontSize="32" FontWeight="Bold" Foreground="White"
                                        HorizontalAlignment="Center" VerticalAlignment="Center" />
@@ -330,7 +330,7 @@
                     </TextBlock>
 
                     <!-- About -->
-                    <Border Background="{StaticResource SurfaceSecondaryBrush}"
+                    <Border Background="{DynamicResource SurfaceSecondaryBrush}"
                             CornerRadius="8" Padding="12"
                             IsVisible="{Binding MyAbout, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
                         <TextBlock Text="{Binding MyAbout}"
@@ -342,12 +342,12 @@
                     <StackPanel Spacing="8">
                         <TextBlock Text="Your Public Key (npub)"
                                    Classes="secondary" FontSize="13" FontWeight="SemiBold" />
-                        <Border Background="{StaticResource SurfaceSecondaryBrush}"
+                        <Border Background="{DynamicResource SurfaceSecondaryBrush}"
                                 CornerRadius="8" Padding="12">
                             <SelectableTextBlock Text="{Binding MyNpub}"
                                                  FontSize="12" FontFamily="Consolas, Courier New"
                                                  TextWrapping="Wrap"
-                                                 Foreground="{StaticResource TextSecondaryBrush}" />
+                                                 Foreground="{DynamicResource TextSecondaryBrush}" />
                         </Border>
                         <TextBlock Text="Share this key with others so they can message you on Nostr."
                                    Classes="muted" FontSize="12" TextWrapping="Wrap" />
@@ -367,7 +367,7 @@
 
                     <!-- Copy Status -->
                     <TextBlock Text="{Binding CopyStatusMessage}"
-                               Foreground="{StaticResource StatusOnlineBrush}"
+                               Foreground="{DynamicResource StatusOnlineBrush}"
                                FontSize="13"
                                HorizontalAlignment="Center"
                                IsVisible="{Binding CopyStatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />

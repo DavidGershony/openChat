@@ -1,0 +1,89 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Golden Axe Theme — Dark fantasy arcade inspired -->
+    <!-- Deep purple/black backgrounds, fiery gold/orange text, teal accents -->
+
+    <!-- Primary Colors - Golden Fire -->
+    <Color x:Key="NostrPurple">#FF8C00</Color>
+    <Color x:Key="NostrPurpleLight">#FFB347</Color>
+    <Color x:Key="NostrPurpleDark">#CC7000</Color>
+    <Color x:Key="NostrPurpleAccent">#FFD700</Color>
+
+    <!-- Background Colors - Deep Purple/Black -->
+    <Color x:Key="BackgroundDark">#0D0815</Color>
+    <Color x:Key="BackgroundMedium">#1A0F25</Color>
+    <Color x:Key="BackgroundLight">#251A30</Color>
+    <Color x:Key="BackgroundCard">#2D1B3D</Color>
+
+    <!-- Surface Colors -->
+    <Color x:Key="SurfacePrimary">#1A0F25</Color>
+    <Color x:Key="SurfaceSecondary">#251A30</Color>
+    <Color x:Key="SurfaceTertiary">#3D2550</Color>
+    <Color x:Key="SurfaceHover">#3D2550</Color>
+
+    <!-- Text Colors - Fiery Gold -->
+    <Color x:Key="TextPrimary">#FFB347</Color>
+    <Color x:Key="TextSecondary">#B8860B</Color>
+    <Color x:Key="TextMuted">#8B6914</Color>
+
+    <!-- Message Bubble Colors -->
+    <Color x:Key="BubbleSent">#CC7000</Color>
+    <Color x:Key="BubbleReceived">#2D1B3D</Color>
+    <Color x:Key="BubbleSentText">#FFFFFF</Color>
+    <Color x:Key="BubbleReceivedText">#FFB347</Color>
+
+    <!-- Status Colors - Arcade Style -->
+    <Color x:Key="StatusOnline">#00CED1</Color>
+    <Color x:Key="StatusOffline">#6B4D0A</Color>
+    <Color x:Key="StatusError">#FF4500</Color>
+    <Color x:Key="StatusWarning">#FFD700</Color>
+
+    <!-- Border Colors - Warm Purple -->
+    <Color x:Key="BorderDefault">#4A2D5C</Color>
+    <Color x:Key="BorderFocused">#FF8C00</Color>
+
+    <!-- Brushes -->
+    <SolidColorBrush x:Key="NostrPurpleBrush" Color="{StaticResource NostrPurple}" />
+    <SolidColorBrush x:Key="NostrPurpleLightBrush" Color="{StaticResource NostrPurpleLight}" />
+    <SolidColorBrush x:Key="NostrPurpleDarkBrush" Color="{StaticResource NostrPurpleDark}" />
+    <SolidColorBrush x:Key="NostrPurpleAccentBrush" Color="{StaticResource NostrPurpleAccent}" />
+
+    <SolidColorBrush x:Key="BackgroundDarkBrush" Color="{StaticResource BackgroundDark}" />
+    <SolidColorBrush x:Key="BackgroundMediumBrush" Color="{StaticResource BackgroundMedium}" />
+    <SolidColorBrush x:Key="BackgroundLightBrush" Color="{StaticResource BackgroundLight}" />
+    <SolidColorBrush x:Key="BackgroundCardBrush" Color="{StaticResource BackgroundCard}" />
+
+    <SolidColorBrush x:Key="SurfacePrimaryBrush" Color="{StaticResource SurfacePrimary}" />
+    <SolidColorBrush x:Key="SurfaceSecondaryBrush" Color="{StaticResource SurfaceSecondary}" />
+    <SolidColorBrush x:Key="SurfaceTertiaryBrush" Color="{StaticResource SurfaceTertiary}" />
+    <SolidColorBrush x:Key="SurfaceHoverBrush" Color="{StaticResource SurfaceHover}" />
+
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimary}" />
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondary}" />
+    <SolidColorBrush x:Key="TextMutedBrush" Color="{StaticResource TextMuted}" />
+
+    <SolidColorBrush x:Key="BubbleSentBrush" Color="{StaticResource BubbleSent}" />
+    <SolidColorBrush x:Key="BubbleReceivedBrush" Color="{StaticResource BubbleReceived}" />
+    <SolidColorBrush x:Key="BubbleSentTextBrush" Color="{StaticResource BubbleSentText}" />
+    <SolidColorBrush x:Key="BubbleReceivedTextBrush" Color="{StaticResource BubbleReceivedText}" />
+
+    <SolidColorBrush x:Key="BorderDefaultBrush" Color="{StaticResource BorderDefault}" />
+    <SolidColorBrush x:Key="BorderFocusedBrush" Color="{StaticResource BorderFocused}" />
+
+    <SolidColorBrush x:Key="StatusOnlineBrush" Color="{StaticResource StatusOnline}" />
+    <SolidColorBrush x:Key="StatusErrorBrush" Color="{StaticResource StatusError}" />
+    <SolidColorBrush x:Key="StatusWarningBrush" Color="{StaticResource StatusWarning}" />
+    <SolidColorBrush x:Key="StatusOfflineBrush" Color="{StaticResource StatusOffline}" />
+
+    <!-- Semi-transparent themed backgrounds -->
+    <SolidColorBrush x:Key="ErrorBgBrush" Color="#3DFF4500" />
+    <SolidColorBrush x:Key="WarningBgBrush" Color="#3DFFD700" />
+    <SolidColorBrush x:Key="AccentBgBrush" Color="#3DFF8C00" />
+    <SolidColorBrush x:Key="UploadBannerBrush" Color="#2D1B3D" />
+    <SolidColorBrush x:Key="UploadBannerBorderBrush" Color="#FF8C00" />
+    <SolidColorBrush x:Key="DangerButtonBrush" Color="#FF4500" />
+    <SolidColorBrush x:Key="WarningTextBrush" Color="#FFD700" />
+    <SolidColorBrush x:Key="ResetButtonBrush" Color="#CC7000" />
+
+</ResourceDictionary>

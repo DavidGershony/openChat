@@ -9,7 +9,7 @@
     <Border Width="{Binding Size, ElementName=Root}"
             Height="{Binding Size, ElementName=Root}"
             CornerRadius="24"
-            Background="{StaticResource NostrPurpleBrush}"
+            Background="{DynamicResource NostrPurpleBrush}"
             ClipToBounds="True">
         <Panel>
             <!-- Fallback Initial -->

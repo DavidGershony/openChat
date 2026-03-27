@@ -16,12 +16,12 @@
         <!-- Received Message (left aligned) -->
         <Border HorizontalAlignment="Left" MaxWidth="480"
                 IsVisible="{Binding !IsFromCurrentUser}"
-                Background="{StaticResource BubbleReceivedBrush}"
+                Background="{DynamicResource BubbleReceivedBrush}"
                 CornerRadius="16,16,16,4" Padding="12,8">
             <StackPanel Spacing="4">
                 <!-- Sender Name (for groups) -->
                 <TextBlock Text="{Binding SenderName}"
-                           Foreground="{StaticResource NostrPurpleLightBrush}"
+                           Foreground="{DynamicResource NostrPurpleLightBrush}"
                            FontSize="12" FontWeight="SemiBold"
                            IsVisible="{Binding IsFirstInGroup}" />
 
@@ -32,32 +32,32 @@
 
                         <!-- State 1: MIP-04 Disabled -->
                         <Border IsVisible="{Binding ShowMediaDisabled}"
-                                Background="{StaticResource SurfaceSecondaryBrush}"
+                                Background="{DynamicResource SurfaceSecondaryBrush}"
                                 CornerRadius="8" Padding="12,8">
                             <StackPanel Spacing="2">
                                 <TextBlock Text="Media loading disabled"
-                                           Foreground="{StaticResource TextMutedBrush}"
+                                           Foreground="{DynamicResource TextMutedBrush}"
                                            FontSize="13" FontStyle="Italic" />
                                 <TextBlock Text="Enable in Settings > Privacy"
-                                           Foreground="{StaticResource TextMutedBrush}"
+                                           Foreground="{DynamicResource TextMutedBrush}"
                                            FontSize="11" />
                             </StackPanel>
                         </Border>
 
                         <!-- State 2: Tap to Load -->
                         <Border IsVisible="{Binding ShowTapToLoad}"
-                                Background="{StaticResource SurfaceSecondaryBrush}"
+                                Background="{DynamicResource SurfaceSecondaryBrush}"
                                 CornerRadius="8" Padding="12,8">
                             <StackPanel Spacing="6">
                                 <Grid ColumnDefinitions="Auto,*">
                                     <PathIcon Grid.Column="0"
                                               Data="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"
                                               Width="18" Height="18" Margin="0,0,8,0"
-                                              Foreground="{StaticResource TextMutedBrush}"
+                                              Foreground="{DynamicResource TextMutedBrush}"
                                               VerticalAlignment="Center" />
                                     <TextBlock Grid.Column="1"
                                                Text="{Binding ImageDisplayText}"
-                                               Foreground="{StaticResource TextMutedBrush}"
+                                               Foreground="{DynamicResource TextMutedBrush}"
                                                FontSize="13" FontStyle="Italic"
                                                TextWrapping="Wrap"
                                                VerticalAlignment="Center" />
@@ -67,16 +67,16 @@
                                         HorizontalAlignment="Left"
                                         Padding="12,4" FontSize="12" />
                                 <TextBlock Text="(your IP will be visible to the host)"
-                                           Foreground="{StaticResource TextMutedBrush}"
+                                           Foreground="{DynamicResource TextMutedBrush}"
                                            FontSize="10" />
                                 <!-- Unknown server warning -->
                                 <StackPanel Orientation="Horizontal" Spacing="4"
                                             IsVisible="{Binding IsUnknownServer}">
                                     <PathIcon Data="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"
                                               Width="14" Height="14"
-                                              Foreground="{StaticResource StatusWarningBrush}" />
+                                              Foreground="{DynamicResource StatusWarningBrush}" />
                                     <TextBlock Text="{Binding ServerHostname, StringFormat='Unknown server: {0}'}"
-                                               Foreground="{StaticResource StatusWarningBrush}"
+                                               Foreground="{DynamicResource StatusWarningBrush}"
                                                FontSize="11" />
                                 </StackPanel>
                             </StackPanel>
@@ -84,12 +84,12 @@
 
                         <!-- State 3: Loading -->
                         <Border IsVisible="{Binding IsLoadingMedia}"
-                                Background="{StaticResource SurfaceSecondaryBrush}"
+                                Background="{DynamicResource SurfaceSecondaryBrush}"
                                 CornerRadius="8" Padding="12,8">
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <TextBlock Text="Loading..." Classes="muted" FontSize="13" />
                                 <TextBlock Text="{Binding MediaSizeDisplay}"
-                                           Foreground="{StaticResource TextMutedBrush}"
+                                           Foreground="{DynamicResource TextMutedBrush}"
                                            FontSize="12" />
                             </StackPanel>
                         </Border>
@@ -103,10 +103,10 @@
 
                         <!-- State 5: Error -->
                         <Border IsVisible="{Binding MediaError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                Background="{StaticResource SurfaceSecondaryBrush}"
+                                Background="{DynamicResource SurfaceSecondaryBrush}"
                                 CornerRadius="8" Padding="12,8">
                             <TextBlock Text="{Binding MediaError}"
-                                       Foreground="{StaticResource StatusErrorBrush}"
+                                       Foreground="{DynamicResource StatusErrorBrush}"
                                        FontSize="12" TextWrapping="Wrap" />
                         </Border>
 
@@ -156,31 +156,31 @@
                         <!-- Duration -->
                         <TextBlock Text="{Binding AudioDurationText}"
                                    VerticalAlignment="Center" FontSize="12"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                     </StackPanel>
 
                     <!-- Disabled state -->
                     <TextBlock Text="{Binding ImageDisplayText}"
                                FontSize="13"
-                               Foreground="{StaticResource TextMutedBrush}"
+                               Foreground="{DynamicResource TextMutedBrush}"
                                IsVisible="{Binding ShowMediaDisabled}" />
 
                     <!-- Error state -->
                     <TextBlock Text="{Binding MediaError}"
                                FontSize="13"
-                               Foreground="{StaticResource StatusErrorBrush}"
+                               Foreground="{DynamicResource StatusErrorBrush}"
                                IsVisible="{Binding MediaError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                 </StackPanel>
 
                 <!-- Text Content (for non-image/non-audio messages) -->
                 <TextBlock Text="{Binding Content}"
-                           Foreground="{StaticResource BubbleReceivedText}"
+                           Foreground="{DynamicResource BubbleReceivedTextBrush}"
                            TextWrapping="Wrap" FontSize="14"
                            IsVisible="{Binding IsTextMessage}" />
 
                 <!-- Timestamp -->
                 <TextBlock Text="{Binding Timestamp, StringFormat={}{0:HH:mm}}"
-                           Foreground="{StaticResource TextMutedBrush}"
+                           Foreground="{DynamicResource TextMutedBrush}"
                            FontSize="11" HorizontalAlignment="Right" />
             </StackPanel>
         </Border>
@@ -188,7 +188,7 @@
         <!-- Sent Message (right aligned) -->
         <Border HorizontalAlignment="Right" MaxWidth="480"
                 IsVisible="{Binding IsFromCurrentUser}"
-                Background="{StaticResource BubbleSentBrush}"
+                Background="{DynamicResource BubbleSentBrush}"
                 CornerRadius="16,16,4,16" Padding="12,8">
             <StackPanel Spacing="4">
 
@@ -199,32 +199,32 @@
 
                         <!-- State 1: MIP-04 Disabled -->
                         <Border IsVisible="{Binding ShowMediaDisabled}"
-                                Background="{StaticResource SurfaceSecondaryBrush}"
+                                Background="{DynamicResource SurfaceSecondaryBrush}"
                                 CornerRadius="8" Padding="12,8">
                             <StackPanel Spacing="2">
                                 <TextBlock Text="Media loading disabled"
-                                           Foreground="{StaticResource TextMutedBrush}"
+                                           Foreground="{DynamicResource TextMutedBrush}"
                                            FontSize="13" FontStyle="Italic" />
                                 <TextBlock Text="Enable in Settings > Privacy"
-                                           Foreground="{StaticResource TextMutedBrush}"
+                                           Foreground="{DynamicResource TextMutedBrush}"
                                            FontSize="11" />
                             </StackPanel>
                         </Border>
 
                         <!-- State 2: Tap to Load -->
                         <Border IsVisible="{Binding ShowTapToLoad}"
-                                Background="{StaticResource SurfaceSecondaryBrush}"
+                                Background="{DynamicResource SurfaceSecondaryBrush}"
                                 CornerRadius="8" Padding="12,8">
                             <StackPanel Spacing="6">
                                 <Grid ColumnDefinitions="Auto,*">
                                     <PathIcon Grid.Column="0"
                                               Data="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"
                                               Width="18" Height="18" Margin="0,0,8,0"
-                                              Foreground="{StaticResource TextMutedBrush}"
+                                              Foreground="{DynamicResource TextMutedBrush}"
                                               VerticalAlignment="Center" />
                                     <TextBlock Grid.Column="1"
                                                Text="{Binding ImageDisplayText}"
-                                               Foreground="{StaticResource TextMutedBrush}"
+                                               Foreground="{DynamicResource TextMutedBrush}"
                                                FontSize="13" FontStyle="Italic"
                                                TextWrapping="Wrap"
                                                VerticalAlignment="Center" />
@@ -234,16 +234,16 @@
                                         HorizontalAlignment="Left"
                                         Padding="12,4" FontSize="12" />
                                 <TextBlock Text="(your IP will be visible to the host)"
-                                           Foreground="{StaticResource TextMutedBrush}"
+                                           Foreground="{DynamicResource TextMutedBrush}"
                                            FontSize="10" />
                                 <!-- Unknown server warning -->
                                 <StackPanel Orientation="Horizontal" Spacing="4"
                                             IsVisible="{Binding IsUnknownServer}">
                                     <PathIcon Data="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"
                                               Width="14" Height="14"
-                                              Foreground="{StaticResource StatusWarningBrush}" />
+                                              Foreground="{DynamicResource StatusWarningBrush}" />
                                     <TextBlock Text="{Binding ServerHostname, StringFormat='Unknown server: {0}'}"
-                                               Foreground="{StaticResource StatusWarningBrush}"
+                                               Foreground="{DynamicResource StatusWarningBrush}"
                                                FontSize="11" />
                                 </StackPanel>
                             </StackPanel>
@@ -251,12 +251,12 @@
 
                         <!-- State 3: Loading -->
                         <Border IsVisible="{Binding IsLoadingMedia}"
-                                Background="{StaticResource SurfaceSecondaryBrush}"
+                                Background="{DynamicResource SurfaceSecondaryBrush}"
                                 CornerRadius="8" Padding="12,8">
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <TextBlock Text="Loading..." Classes="muted" FontSize="13" />
                                 <TextBlock Text="{Binding MediaSizeDisplay}"
-                                           Foreground="{StaticResource TextMutedBrush}"
+                                           Foreground="{DynamicResource TextMutedBrush}"
                                            FontSize="12" />
                             </StackPanel>
                         </Border>
@@ -270,10 +270,10 @@
 
                         <!-- State 5: Error -->
                         <Border IsVisible="{Binding MediaError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                Background="{StaticResource SurfaceSecondaryBrush}"
+                                Background="{DynamicResource SurfaceSecondaryBrush}"
                                 CornerRadius="8" Padding="12,8">
                             <TextBlock Text="{Binding MediaError}"
-                                       Foreground="{StaticResource StatusErrorBrush}"
+                                       Foreground="{DynamicResource StatusErrorBrush}"
                                        FontSize="12" TextWrapping="Wrap" />
                         </Border>
 
@@ -316,29 +316,29 @@
                                 IsHitTestVisible="False" />
                         <TextBlock Text="{Binding AudioDurationText}"
                                    VerticalAlignment="Center" FontSize="12"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                     </StackPanel>
 
                     <!-- Disabled / Error states -->
                     <TextBlock Text="{Binding ImageDisplayText}"
                                FontSize="13"
-                               Foreground="{StaticResource TextMutedBrush}"
+                               Foreground="{DynamicResource TextMutedBrush}"
                                IsVisible="{Binding ShowMediaDisabled}" />
                     <TextBlock Text="{Binding MediaError}"
                                FontSize="13"
-                               Foreground="{StaticResource StatusErrorBrush}"
+                               Foreground="{DynamicResource StatusErrorBrush}"
                                IsVisible="{Binding MediaError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                 </StackPanel>
 
                 <!-- Text Content (for non-image/non-audio messages) -->
                 <TextBlock Text="{Binding Content}"
-                           Foreground="{StaticResource BubbleSentText}"
+                           Foreground="{DynamicResource BubbleSentTextBrush}"
                            TextWrapping="Wrap" FontSize="14"
                            IsVisible="{Binding IsTextMessage}" />
 
                 <!-- Timestamp -->
                 <TextBlock Text="{Binding Timestamp, StringFormat={}{0:HH:mm}}"
-                           Foreground="{StaticResource NostrPurpleAccent}"
+                           Foreground="{DynamicResource NostrPurpleAccentBrush}"
                            FontSize="11" HorizontalAlignment="Right" Opacity="0.8" />
             </StackPanel>
         </Border>

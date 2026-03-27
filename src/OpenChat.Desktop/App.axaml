@@ -6,4 +6,11 @@
         <FluentTheme />
         <StyleInclude Source="avares://OpenChat.UI/Themes/NostrTheme.axaml" />
     </Application.Styles>
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceInclude Source="avares://OpenChat.UI/Themes/NostrColors.axaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
 </Application>
