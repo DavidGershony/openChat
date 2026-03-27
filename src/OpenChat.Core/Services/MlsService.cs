@@ -65,11 +65,11 @@ public class MlsService : IMlsService
         return keyPackage;
     }
 
-    public async Task<MlsGroupInfo> CreateGroupAsync(string groupName)
+    public async Task<MlsGroupInfo> CreateGroupAsync(string groupName, string[] relayUrls)
     {
         EnsureInitialized();
 
-        _logger.LogInformation("CreateGroup: creating MLS group '{GroupName}'", groupName);
+        _logger.LogInformation("CreateGroup: creating MLS group '{GroupName}' with {RelayCount} relays", groupName, relayUrls.Length);
         var (groupId, epoch) = await _marmotClient!.CreateGroupAsync(groupName);
         await PersistGroupStateAsync(groupId);
         var groupIdHex = Convert.ToHexString(groupId).ToLowerInvariant();

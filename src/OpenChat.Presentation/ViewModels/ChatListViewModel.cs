@@ -606,7 +606,14 @@ public class ChatListViewModel : ViewModelBase
 
             // Create MLS group (only after we've confirmed a KeyPackage exists)
             _logger.LogDebug("Creating MLS group for chat...");
-            var groupInfo = await _mlsService.CreateGroupAsync(chatName);
+            var connectedRelays = _nostrService.ConnectedRelayUrls.ToArray();
+            if (connectedRelays.Length == 0)
+            {
+                _logger.LogError("Cannot create group: no relays connected");
+                StatusMessage = "Cannot create chat: no relays connected";
+                return;
+            }
+            var groupInfo = await _mlsService.CreateGroupAsync(chatName, connectedRelays);
             var nostrGroupId = _mlsService.GetNostrGroupId(groupInfo.GroupId);
             var groupIdHex = Convert.ToHexString(groupInfo.GroupId).ToLowerInvariant();
 
@@ -740,7 +747,14 @@ public class ChatListViewModel : ViewModelBase
             if (_mlsService != null)
             {
                 _logger.LogDebug("Creating MLS group...");
-                var groupInfo = await _mlsService.CreateGroupAsync(NewGroupName.Trim());
+                var connectedRelays = _nostrService.ConnectedRelayUrls.ToArray();
+                if (connectedRelays.Length == 0)
+                {
+                    _logger.LogError("Cannot create group: no relays connected");
+                    NewGroupError = "Cannot create group: no relays connected";
+                    return;
+                }
+                var groupInfo = await _mlsService.CreateGroupAsync(NewGroupName.Trim(), connectedRelays);
                 var nostrGroupId = _mlsService.GetNostrGroupId(groupInfo.GroupId);
 
                 chat = new Chat

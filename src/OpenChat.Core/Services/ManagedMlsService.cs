@@ -214,15 +214,19 @@ public class ManagedMlsService : IMlsService
         return keyPackage;
     }
 
-    public async Task<MlsGroupInfo> CreateGroupAsync(string groupName)
+    public async Task<MlsGroupInfo> CreateGroupAsync(string groupName, string[] relayUrls)
     {
         EnsureInitialized();
 
-        _logger.LogInformation("CreateGroup: creating MLS group '{GroupName}' (managed)", groupName);
+        if (relayUrls.Length == 0)
+            throw new ArgumentException("At least one relay URL is required for group creation.", nameof(relayUrls));
+
+        _logger.LogInformation("CreateGroup: creating MLS group '{GroupName}' with {RelayCount} relays (managed)",
+            groupName, relayUrls.Length);
 
         var result = await _mdk!.CreateGroupAsync(
             _identity!, _signingPrivateKey!, _signingPublicKey!,
-            groupName, Array.Empty<string>());
+            groupName, relayUrls);
 
         var groupId = result.Group.Id.Value;
         var groupIdHex = Convert.ToHexString(groupId).ToLowerInvariant();

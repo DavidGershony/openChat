@@ -34,6 +34,8 @@ public class NostrService : INostrService, IDisposable
     private DateTimeOffset? _groupMessagesSince;
     private string? _subscribedUserPubKey;
     private string? _subscribedUserPrivKey;
+
+    public IReadOnlyList<string> ConnectedRelayUrls => _connectedRelays.Keys.ToList();
     private IExternalSigner? _externalSigner;
     private bool _disposed;
 

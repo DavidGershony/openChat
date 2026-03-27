@@ -312,8 +312,11 @@ public class MessageService : IMessageService, IDisposable
         _logger.LogInformation("CreateGroup: creating group '{Name}' with {MemberCount} initial members",
             name, memberPublicKeys.Count());
 
-        // Create MLS group
-        var groupInfo = await _mlsService.CreateGroupAsync(name);
+        // Create MLS group with connected relay URLs
+        var relayUrls = _nostrService.ConnectedRelayUrls.ToArray();
+        if (relayUrls.Length == 0)
+            throw new InvalidOperationException("Cannot create group: no relays connected");
+        var groupInfo = await _mlsService.CreateGroupAsync(name, relayUrls);
         var groupIdHex = Convert.ToHexString(groupInfo.GroupId).ToLowerInvariant();
         _logger.LogInformation("CreateGroup: MLS group created {GroupId}, epoch={Epoch}",
             groupIdHex[..Math.Min(16, groupIdHex.Length)], groupInfo.Epoch);

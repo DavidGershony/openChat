@@ -24,9 +24,10 @@ public interface IMlsService
     Task<KeyPackage> GenerateKeyPackageAsync();
 
     /// <summary>
-    /// Create a new MLS group.
+    /// Create a new MLS group. Relay URLs are required — the group's MarmotGroupData
+    /// extension includes them so other members know where to publish/subscribe.
     /// </summary>
-    Task<MlsGroupInfo> CreateGroupAsync(string groupName);
+    Task<MlsGroupInfo> CreateGroupAsync(string groupName, string[] relayUrls);
 
     /// <summary>
     /// Add a member to a group using their KeyPackage.

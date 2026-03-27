@@ -8,6 +8,11 @@ namespace OpenChat.Core.Services;
 public interface INostrService
 {
     /// <summary>
+    /// URLs of currently connected relays.
+    /// </summary>
+    IReadOnlyList<string> ConnectedRelayUrls { get; }
+
+    /// <summary>
     /// Observable stream of connection status changes.
     /// </summary>
     IObservable<NostrConnectionStatus> ConnectionStatus { get; }
