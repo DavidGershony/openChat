@@ -251,6 +251,23 @@ public class StorageService : IStorageService
                 }
             }
 
+            // Migration: add MIP-04 media columns to Messages
+            var mediaColumns = new[] { "ImageUrl", "FileName", "FileSha256", "EncryptionNonce", "MediaType", "EncryptionVersion", "AudioDurationSeconds" };
+            foreach (var col in mediaColumns)
+            {
+                try
+                {
+                    var migrate = connection.CreateCommand();
+                    var colType = col == "AudioDurationSeconds" ? "REAL" : "TEXT";
+                    migrate.CommandText = $"ALTER TABLE Messages ADD COLUMN {col} {colType}";
+                    await migrate.ExecuteNonQueryAsync();
+                }
+                catch (SqliteException)
+                {
+                    // Column already exists — ignore
+                }
+            }
+
             _initialized = true;
             _logger.LogInformation("Database schema initialized successfully");
         }
@@ -586,9 +603,9 @@ public class StorageService : IStorageService
         var command = connection.CreateCommand();
         command.CommandText = @"
             INSERT OR REPLACE INTO Messages
-            (Id, ChatId, SenderPublicKey, Type, Content, EncryptedContent, NostrEventId, MlsEpoch, Timestamp, ReceivedAt, Status, ReplyToMessageId, IsFromCurrentUser, IsEdited, IsDeleted)
+            (Id, ChatId, SenderPublicKey, Type, Content, EncryptedContent, NostrEventId, MlsEpoch, Timestamp, ReceivedAt, Status, ReplyToMessageId, IsFromCurrentUser, IsEdited, IsDeleted, ImageUrl, FileName, FileSha256, EncryptionNonce, MediaType, EncryptionVersion, AudioDurationSeconds)
             VALUES
-            (@Id, @ChatId, @SenderPublicKey, @Type, @Content, @EncryptedContent, @NostrEventId, @MlsEpoch, @Timestamp, @ReceivedAt, @Status, @ReplyToMessageId, @IsFromCurrentUser, @IsEdited, @IsDeleted)";
+            (@Id, @ChatId, @SenderPublicKey, @Type, @Content, @EncryptedContent, @NostrEventId, @MlsEpoch, @Timestamp, @ReceivedAt, @Status, @ReplyToMessageId, @IsFromCurrentUser, @IsEdited, @IsDeleted, @ImageUrl, @FileName, @FileSha256, @EncryptionNonce, @MediaType, @EncryptionVersion, @AudioDurationSeconds)";
 
         command.Parameters.AddWithValue("@Id", message.Id);
         command.Parameters.AddWithValue("@ChatId", message.ChatId);
@@ -605,6 +622,13 @@ public class StorageService : IStorageService
         command.Parameters.AddWithValue("@IsFromCurrentUser", message.IsFromCurrentUser ? 1 : 0);
         command.Parameters.AddWithValue("@IsEdited", message.IsEdited ? 1 : 0);
         command.Parameters.AddWithValue("@IsDeleted", message.IsDeleted ? 1 : 0);
+        command.Parameters.AddWithValue("@ImageUrl", message.ImageUrl ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@FileName", message.FileName ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@FileSha256", message.FileSha256 ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@EncryptionNonce", message.EncryptionNonce ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@MediaType", message.MediaType ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@EncryptionVersion", message.EncryptionVersion ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@AudioDurationSeconds", message.AudioDurationSeconds.HasValue ? message.AudioDurationSeconds.Value : (object)DBNull.Value);
 
         await command.ExecuteNonQueryAsync();
 
@@ -1126,8 +1150,35 @@ public class StorageService : IStorageService
             ReplyToMessageId = reader.IsDBNull(reader.GetOrdinal("ReplyToMessageId")) ? null : reader.GetString(reader.GetOrdinal("ReplyToMessageId")),
             IsFromCurrentUser = reader.GetInt32(reader.GetOrdinal("IsFromCurrentUser")) == 1,
             IsEdited = reader.GetInt32(reader.GetOrdinal("IsEdited")) == 1,
-            IsDeleted = reader.GetInt32(reader.GetOrdinal("IsDeleted")) == 1
+            IsDeleted = reader.GetInt32(reader.GetOrdinal("IsDeleted")) == 1,
+            ImageUrl = TryGetString(reader, "ImageUrl"),
+            FileName = TryGetString(reader, "FileName"),
+            FileSha256 = TryGetString(reader, "FileSha256"),
+            EncryptionNonce = TryGetString(reader, "EncryptionNonce"),
+            MediaType = TryGetString(reader, "MediaType"),
+            EncryptionVersion = TryGetString(reader, "EncryptionVersion"),
+            AudioDurationSeconds = TryGetDouble(reader, "AudioDurationSeconds")
         };
+    }
+
+    private static string? TryGetString(SqliteDataReader reader, string column)
+    {
+        try
+        {
+            var ordinal = reader.GetOrdinal(column);
+            return reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
+        }
+        catch (ArgumentOutOfRangeException) { return null; } // Column doesn't exist yet
+    }
+
+    private static double? TryGetDouble(SqliteDataReader reader, string column)
+    {
+        try
+        {
+            var ordinal = reader.GetOrdinal(column);
+            return reader.IsDBNull(ordinal) ? null : reader.GetDouble(ordinal);
+        }
+        catch (ArgumentOutOfRangeException) { return null; }
     }
 
     private static KeyPackage ReadKeyPackage(SqliteDataReader reader)

@@ -765,9 +765,18 @@ public class MessageService : IMessageService, IDisposable
         var content = decrypted.Plaintext;
         if (!string.IsNullOrEmpty(decrypted.ImageUrl))
         {
-            messageType = MessageType.Image;
-            if (string.IsNullOrEmpty(content))
-                content = "[Image]";
+            if (decrypted.MediaType?.StartsWith("audio/") == true)
+            {
+                messageType = MessageType.Audio;
+                if (string.IsNullOrEmpty(content))
+                    content = "[Voice message]";
+            }
+            else
+            {
+                messageType = MessageType.Image;
+                if (string.IsNullOrEmpty(content))
+                    content = "[Image]";
+            }
         }
 
         var message = new Message
@@ -1146,9 +1155,18 @@ public class MessageService : IMessageService, IDisposable
             var olderContent = decrypted.Plaintext;
             if (!string.IsNullOrEmpty(decrypted.ImageUrl))
             {
-                olderMsgType = MessageType.Image;
-                if (string.IsNullOrEmpty(olderContent))
-                    olderContent = "[Image]";
+                if (decrypted.MediaType?.StartsWith("audio/") == true)
+                {
+                    olderMsgType = MessageType.Audio;
+                    if (string.IsNullOrEmpty(olderContent))
+                        olderContent = "[Voice message]";
+                }
+                else
+                {
+                    olderMsgType = MessageType.Image;
+                    if (string.IsNullOrEmpty(olderContent))
+                        olderContent = "[Image]";
+                }
             }
 
             var message = new Message
