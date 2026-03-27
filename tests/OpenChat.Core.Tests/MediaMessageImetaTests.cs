@@ -70,14 +70,14 @@ public class MediaMessageImetaTests
                     $"url {mediaUrl}",
                     $"m {mimeType}",
                     $"x {sha256}",
-                    $"nonce {nonce}",
-                    $"enc mip04-v2",
-                    $"n {filename}" }
+                    $"n {nonce}",
+                    $"v mip04-v2",
+                    $"filename {filename}" }
             };
 
-            // Encrypt with tags
+            // Content is empty per MIP-04 — metadata is in imeta tags
             var eventJson = await mlsA.EncryptMessageAsync(
-                group.GroupId, $"[Encrypted image: {filename}]", tags);
+                group.GroupId, "", tags);
 
             // Decrypt on other side
             using var doc = JsonDocument.Parse(eventJson);
@@ -117,7 +117,9 @@ public class MediaMessageImetaTests
                     Assert.Contains(tagValues, v => v.StartsWith("url "));
                     Assert.Contains(tagValues, v => v.StartsWith("m "));
                     Assert.Contains(tagValues, v => v.StartsWith("x "));
-                    Assert.Contains(tagValues, v => v.StartsWith("nonce "));
+                    Assert.Contains(tagValues, v => v.StartsWith("n ") && !v.StartsWith("n ") == false); // nonce
+                    Assert.Contains(tagValues, v => v.StartsWith("v ")); // version
+                    Assert.Contains(tagValues, v => v.StartsWith("filename ")); // filename
                     break;
                 }
             }

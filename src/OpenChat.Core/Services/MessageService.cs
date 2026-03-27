@@ -276,17 +276,19 @@ public class MessageService : IMessageService, IDisposable
             {
                 // Build imeta tags for MIP-04 media metadata so cross-impl clients
                 // can download and decrypt the file
+                // MIP-04 v2 imeta field names: n=nonce, v=version, filename=filename
                 var imetaTags = new List<List<string>>
                 {
                     new() { "imeta",
                         $"url {mediaUrl}",
                         $"m {mimeType}",
                         $"x {sha256Hex}",
-                        $"nonce {nonceHex}",
-                        $"enc mip04-v2",
-                        $"n {filename}" }
+                        $"n {nonceHex}",
+                        $"v mip04-v2",
+                        $"filename {filename}" }
                 };
-                var eventJsonBytes = await _mlsService.EncryptMessageAsync(chat.MlsGroupId, content, imetaTags);
+                // Content is empty per MIP-04 — all metadata is in the imeta tag
+                var eventJsonBytes = await _mlsService.EncryptMessageAsync(chat.MlsGroupId, "", imetaTags);
                 message.NostrEventId = await _nostrService.PublishRawEventJsonAsync(eventJsonBytes);
                 _logger.LogInformation("Media message published with imeta tags: event {EventId}", message.NostrEventId);
             }
