@@ -671,8 +671,13 @@ public class ChatListViewModel : ViewModelBase
             await _storageService.SaveChatAsync(chat);
             _logger.LogInformation("Saved chat: {ChatId} - {ChatName}", chat.Id, chatName);
 
-            // Subscribe to group messages for the new group
-            await _nostrService.SubscribeToGroupMessagesAsync(new[] { groupIdHex });
+            // Subscribe to group messages using NostrGroupId (from MarmotGroupData extension)
+            var subIdHex = nostrGroupId != null
+                ? Convert.ToHexString(nostrGroupId).ToLowerInvariant()
+                : groupIdHex; // Rust backend: NostrGroupId not available from C# side
+            if (nostrGroupId == null)
+                _logger.LogWarning("NostrGroupId unavailable for group {GroupId} — using MLS GroupId for subscription (Rust backend)", groupIdHex[..Math.Min(16, groupIdHex.Length)]);
+            await _nostrService.SubscribeToGroupMessagesAsync(new[] { subIdHex });
 
             // Add to list and select it
             var chatItem = new ChatItemViewModel(chat);

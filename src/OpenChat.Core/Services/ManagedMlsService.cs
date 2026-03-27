@@ -407,10 +407,7 @@ public class ManagedMlsService : IMlsService
         // MIP-03: kind 445 events SHOULD use ephemeral keys so relay operators
         // cannot link group messages to user identities. The sender identity is
         // inside the MLS-encrypted rumor, not in the Nostr event pubkey.
-        var nostrGroupId = _mdk!.GetNostrGroupId(groupId);
-        var hTagValue = nostrGroupId != null
-            ? Convert.ToHexString(nostrGroupId).ToLowerInvariant()
-            : groupIdHex;
+        var hTagValue = Convert.ToHexString(GetNostrGroupId(groupId)).ToLowerInvariant();
         var tags = new List<List<string>> { new() { "h", hTagValue }, new() { "encoding", "base64" } };
         var eventJson = BuildEphemeralSignedEvent(445, base64Content, tags);
 
@@ -762,10 +759,20 @@ public class ManagedMlsService : IMlsService
         return Task.CompletedTask;
     }
 
-    public byte[]? GetNostrGroupId(byte[] groupId)
+    public byte[] GetNostrGroupId(byte[] groupId)
     {
         EnsureInitialized();
-        return _mdk!.GetNostrGroupId(groupId);
+        var nostrGroupId = _mdk!.GetNostrGroupId(groupId);
+        if (nostrGroupId == null)
+        {
+            var hex = Convert.ToHexString(groupId).ToLowerInvariant();
+            _logger.LogError("GetNostrGroupId: NostrGroupData extension (0xF2EE) not found in GroupContext for group {GroupId}. " +
+                "This means the MarmotGroupData extension was not preserved across epochs.", hex[..Math.Min(16, hex.Length)]);
+            throw new InvalidOperationException(
+                $"NostrGroupId not found for group {hex[..Math.Min(16, hex.Length)]}. " +
+                "The MarmotGroupData extension (0xF2EE) is missing from the GroupContext.");
+        }
+        return nostrGroupId;
     }
 
     // TODO: DIAGNOSTIC ONLY — remove after cross-impl epoch divergence is resolved
@@ -1167,10 +1174,7 @@ public class ManagedMlsService : IMlsService
         // Just wrap in base64 + ephemeral-signed kind 445 event.
         var base64Content = Convert.ToBase64String(mip03EncryptedCommitData);
 
-        var nostrGroupId = _mdk!.GetNostrGroupId(groupId);
-        var hTagValue = nostrGroupId != null
-            ? Convert.ToHexString(nostrGroupId).ToLowerInvariant()
-            : groupIdHex;
+        var hTagValue = Convert.ToHexString(GetNostrGroupId(groupId)).ToLowerInvariant();
         var tags = new List<List<string>> { new() { "h", hTagValue }, new() { "encoding", "base64" } };
         var eventJson = BuildEphemeralSignedEvent(445, base64Content, tags);
 

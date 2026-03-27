@@ -94,7 +94,8 @@ public interface IMlsService
     /// <summary>
     /// Get the Nostr group ID (from 0xF2EE extension) for a given MLS group.
     /// This is the value used in the 'h' tag for kind 445 events.
-    /// Returns null if the extension is not present.
+    /// Returns null only if the backend doesn't support MarmotGroupData (e.g., Rust MDK).
+    /// The managed C# backend always returns a value or throws.
     /// </summary>
     byte[]? GetNostrGroupId(byte[] groupId);
 
