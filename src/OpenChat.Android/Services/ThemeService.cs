@@ -24,6 +24,7 @@ public static class ThemeService
         new ThemeInfo("midnight_blue", "Midnight Blue", Resource.Style.AppTheme_MidnightBlue),
         new ThemeInfo("forest_green", "Forest Green", Resource.Style.AppTheme_ForestGreen),
         new ThemeInfo("blood_orange", "Blood Orange", Resource.Style.AppTheme_BloodOrange),
+        new ThemeInfo("golden_axe", "Golden Axe", Resource.Style.AppTheme_GoldenAxe),
         new ThemeInfo("monochrome", "Monochrome", Resource.Style.AppTheme_Monochrome),
     };
 

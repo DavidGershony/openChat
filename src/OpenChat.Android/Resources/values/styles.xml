@@ -68,6 +68,23 @@
         <item name="android:windowBackground">#FF1C0F06</item>
     </style>
 
+    <!-- Golden Axe (from nostruserfeed) -->
+    <style name="AppTheme.GoldenAxe" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">#FFFF8C00</item>
+        <item name="colorPrimaryVariant">#FFCC7000</item>
+        <item name="colorOnPrimary">#FFFFFFFF</item>
+        <item name="colorSecondary">#FFFFB347</item>
+        <item name="colorOnSecondary">#FF000000</item>
+        <item name="colorSurface">#FF1A0F25</item>
+        <item name="colorOnSurface">#FFFFB347</item>
+        <item name="colorSurfaceVariant">#FF251A30</item>
+        <item name="colorOnSurfaceVariant">#FFB8860B</item>
+        <item name="android:colorBackground">#FF0D0815</item>
+        <item name="android:statusBarColor">#FF0D0815</item>
+        <item name="android:navigationBarColor">#FF0D0815</item>
+        <item name="android:windowBackground">#FF0D0815</item>
+    </style>
+
     <!-- Monochrome -->
     <style name="AppTheme.Monochrome" parent="Theme.Material3.Dark.NoActionBar">
         <item name="colorPrimary">#FFA0A0A0</item>

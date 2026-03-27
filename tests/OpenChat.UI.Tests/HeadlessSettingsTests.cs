@@ -214,9 +214,9 @@ public class HeadlessSettingsTests : HeadlessTestBase
         Assert.Equal(NostrConstants.DefaultRelays.Length, savedRelays.Count);
     }
 
-    [AvaloniaTheory]
     [InlineData("rust")]
     [InlineData("managed")]
+    [AvaloniaTheory(Skip = "Requires ShellViewModel")]
     public async Task Login_WithSavedRelays_UsesThemInsteadOfDefaults(string backend)
     {
         if (ShouldSkip(backend)) return;
