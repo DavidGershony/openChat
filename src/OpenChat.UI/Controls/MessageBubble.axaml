@@ -156,7 +156,7 @@
                         <!-- Duration -->
                         <TextBlock Text="{Binding AudioDurationText}"
                                    VerticalAlignment="Center" FontSize="12"
-                                   Foreground="{StaticResource TextMutedBrush}" />
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
                     </StackPanel>
 
                     <!-- Disabled state -->
@@ -316,7 +316,7 @@
                                 IsHitTestVisible="False" />
                         <TextBlock Text="{Binding AudioDurationText}"
                                    VerticalAlignment="Center" FontSize="12"
-                                   Foreground="{StaticResource TextMutedBrush}" />
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
                     </StackPanel>
 
                     <!-- Disabled / Error states -->
