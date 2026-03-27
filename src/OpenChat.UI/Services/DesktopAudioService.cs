@@ -405,9 +405,10 @@ public class DesktopAudioPlaybackService : IAudioPlaybackService
     private readonly ILogger<DesktopAudioPlaybackService> _logger;
     private Process? _playProcess;
     private TimeSpan _duration;
+    private readonly Stopwatch _positionWatch = new();
 
     public bool IsPlaying => _playProcess != null && !_playProcess.HasExited;
-    public TimeSpan Position => TimeSpan.Zero; // Approximate — subprocess doesn't report position
+    public TimeSpan Position => _positionWatch.Elapsed;
     public TimeSpan Duration => _duration;
 
     public event EventHandler? PlaybackCompleted;
@@ -463,6 +464,7 @@ public class DesktopAudioPlaybackService : IAudioPlaybackService
         }
 
         _playProcess = Process.Start(psi);
+        _positionWatch.Restart();
         _logger.LogInformation("Playing audio: {Duration:F1}s", _duration.TotalSeconds);
 
         // Wait for completion in background, clean up
@@ -474,6 +476,7 @@ public class DesktopAudioPlaybackService : IAudioPlaybackService
                 _playProcess.Dispose();
                 _playProcess = null;
             }
+            _positionWatch.Stop();
             try { File.Delete(tempPath); } catch { }
             PlaybackCompleted?.Invoke(this, EventArgs.Empty);
         });
@@ -481,6 +484,7 @@ public class DesktopAudioPlaybackService : IAudioPlaybackService
 
     public Task StopAsync()
     {
+        _positionWatch.Stop();
         if (_playProcess != null && !_playProcess.HasExited)
         {
             try { _playProcess.Kill(); } catch { }
