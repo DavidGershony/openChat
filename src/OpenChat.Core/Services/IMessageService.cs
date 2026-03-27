@@ -115,6 +115,11 @@ public interface IMessageService
     Task AddReactionAsync(string messageId, string emoji);
 
     /// <summary>
+    /// Send a reaction to the MLS group and update local storage.
+    /// </summary>
+    Task SendReactionAsync(string messageId, string emoji);
+
+    /// <summary>
     /// Remove a reaction from a message.
     /// </summary>
     Task RemoveReactionAsync(string messageId, string emoji);

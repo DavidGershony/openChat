@@ -178,6 +178,24 @@
                            TextWrapping="Wrap" FontSize="14"
                            IsVisible="{Binding IsTextMessage}" />
 
+                <!-- Emoji reaction picker (hover) -->
+                <StackPanel Orientation="Horizontal" Spacing="2"
+                            IsVisible="{Binding IsHovering}"
+                            HorizontalAlignment="Right" Margin="0,2,0,0">
+                    <Button Content="👍" Classes="icon" Padding="4,2" FontSize="14"
+                            Command="{Binding ReactCommand}" CommandParameter="👍" />
+                    <Button Content="❤️" Classes="icon" Padding="4,2" FontSize="14"
+                            Command="{Binding ReactCommand}" CommandParameter="❤️" />
+                    <Button Content="😂" Classes="icon" Padding="4,2" FontSize="14"
+                            Command="{Binding ReactCommand}" CommandParameter="😂" />
+                    <Button Content="😮" Classes="icon" Padding="4,2" FontSize="14"
+                            Command="{Binding ReactCommand}" CommandParameter="😮" />
+                    <Button Content="😢" Classes="icon" Padding="4,2" FontSize="14"
+                            Command="{Binding ReactCommand}" CommandParameter="😢" />
+                    <Button Content="🔥" Classes="icon" Padding="4,2" FontSize="14"
+                            Command="{Binding ReactCommand}" CommandParameter="🔥" />
+                </StackPanel>
+
                 <!-- Timestamp -->
                 <TextBlock Text="{Binding Timestamp, StringFormat={}{0:HH:mm}}"
                            Foreground="{DynamicResource TextMutedBrush}"
@@ -344,6 +362,24 @@
                            Foreground="{DynamicResource BubbleSentTextBrush}"
                            TextWrapping="Wrap" FontSize="14"
                            IsVisible="{Binding IsTextMessage}" />
+
+                <!-- Emoji reaction picker (hover) -->
+                <StackPanel Orientation="Horizontal" Spacing="2"
+                            IsVisible="{Binding IsHovering}"
+                            HorizontalAlignment="Right" Margin="0,2,0,0">
+                    <Button Content="👍" Classes="icon" Padding="4,2" FontSize="14"
+                            Command="{Binding ReactCommand}" CommandParameter="👍" />
+                    <Button Content="❤️" Classes="icon" Padding="4,2" FontSize="14"
+                            Command="{Binding ReactCommand}" CommandParameter="❤️" />
+                    <Button Content="😂" Classes="icon" Padding="4,2" FontSize="14"
+                            Command="{Binding ReactCommand}" CommandParameter="😂" />
+                    <Button Content="😮" Classes="icon" Padding="4,2" FontSize="14"
+                            Command="{Binding ReactCommand}" CommandParameter="😮" />
+                    <Button Content="😢" Classes="icon" Padding="4,2" FontSize="14"
+                            Command="{Binding ReactCommand}" CommandParameter="😢" />
+                    <Button Content="🔥" Classes="icon" Padding="4,2" FontSize="14"
+                            Command="{Binding ReactCommand}" CommandParameter="🔥" />
+                </StackPanel>
 
                 <!-- Timestamp -->
                 <TextBlock Text="{Binding Timestamp, StringFormat={}{0:HH:mm}}"

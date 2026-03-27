@@ -544,6 +544,48 @@ public class MessageService : IMessageService, IDisposable
         }
     }
 
+    public async Task SendReactionAsync(string messageId, string emoji)
+    {
+        if (_currentUser == null)
+            throw new InvalidOperationException("User not logged in");
+
+        var message = await _storageService.GetMessageAsync(messageId);
+        if (message == null)
+        {
+            _logger.LogWarning("SendReaction: message {MessageId} not found", messageId);
+            return;
+        }
+
+        var targetRumorId = message.RumorEventId ?? message.NostrEventId;
+        if (string.IsNullOrEmpty(targetRumorId))
+        {
+            _logger.LogWarning("SendReaction: message {MessageId} has no event ID to target", messageId);
+            return;
+        }
+
+        var chat = await _storageService.GetChatAsync(message.ChatId);
+        if (chat?.MlsGroupId == null)
+        {
+            _logger.LogWarning("SendReaction: chat {ChatId} has no MLS group", message.ChatId);
+            return;
+        }
+
+        try
+        {
+            var eventJsonBytes = await _mlsService.EncryptReactionAsync(chat.MlsGroupId, emoji, targetRumorId);
+            await _nostrService.PublishRawEventJsonAsync(eventJsonBytes);
+            _logger.LogInformation("SendReaction: published {Emoji} reaction on message {MessageId}", emoji, messageId);
+
+            // Update local storage
+            await AddReactionAsync(messageId, emoji);
+            _reactionUpdates.OnNext((messageId, emoji, _currentUser.PublicKeyHex));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "SendReaction: failed to send {Emoji} reaction on message {MessageId}", emoji, messageId);
+        }
+    }
+
     public async Task RemoveReactionAsync(string messageId, string emoji)
     {
         if (_currentUser == null)

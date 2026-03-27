@@ -428,6 +428,43 @@ public class ManagedMlsService : IMlsService
         return eventJson;
     }
 
+    public async Task<byte[]> EncryptReactionAsync(byte[] groupId, string emoji, string targetRumorEventId)
+    {
+        EnsureInitialized();
+
+        // Map emoji to NIP-25 content for interop
+        var content = emoji switch
+        {
+            "\U0001F44D" => "+", // 👍
+            "\U0001F44E" => "-", // 👎
+            _ => emoji
+        };
+
+        _logger.LogInformation("EncryptReaction: emoji={Emoji}, target={Target}", emoji, targetRumorEventId[..Math.Min(16, targetRumorEventId.Length)]);
+
+        // Build kind 7 rumor with "e" tag pointing to target message
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var rumorId = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        LastEncryptedRumorEventId = rumorId;
+        var escapedContent = JsonSerializer.Serialize(content);
+        var reactionTags = JsonSerializer.Serialize(new List<List<string>> { new() { "e", targetRumorEventId } });
+        var rumorJson = $"{{\"id\":\"{rumorId}\",\"pubkey\":\"{_publicKeyHex}\",\"created_at\":{now},\"kind\":7,\"tags\":{reactionTags},\"content\":{escapedContent}}}";
+
+        // MLS-encrypt, MIP-03 encrypt, build kind 445 event (same as EncryptMessageAsync)
+        var mlsBytes = await _mdk!.CreateMessageAsync(groupId, Encoding.UTF8.GetBytes(rumorJson));
+        var exporterSecret = _mdk!.GetExporterSecret(groupId);
+        var mip03Encrypted = Mip03Crypto.Encrypt(exporterSecret, mlsBytes);
+        var base64Content = Convert.ToBase64String(mip03Encrypted);
+
+        var hTagValue = Convert.ToHexString(GetNostrGroupId(groupId)).ToLowerInvariant();
+        var tags = new List<List<string>> { new() { "h", hTagValue }, new() { "encoding", "base64" } };
+        var eventJson = BuildEphemeralSignedEvent(445, base64Content, tags);
+
+        await SaveGroupStateAsync(groupId);
+
+        return eventJson;
+    }
+
     public async Task<MlsDecryptedMessage> DecryptMessageAsync(byte[] groupId, byte[] ciphertext)
     {
         EnsureInitialized();

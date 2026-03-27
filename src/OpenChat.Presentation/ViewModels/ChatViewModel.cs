@@ -131,6 +131,7 @@ public class ChatViewModel : ViewModelBase
         MessageViewModel.MediaDownloadService = mediaDownloadService ?? new MediaDownloadService();
         MessageViewModel.MlsServiceRef = mlsService;
         MessageViewModel.StorageServiceRef = storageService;
+        MessageViewModel.MessageServiceRef = messageService;
         MessageViewModel.MediaCacheGet = id => _mediaCache.TryGetValue(id, out var bytes) ? bytes : null;
         MessageViewModel.MediaCacheSet = (id, bytes) => _mediaCache[id] = bytes;
 
@@ -933,6 +934,7 @@ public class MessageViewModel : ViewModelBase
     internal static IMediaDownloadService? MediaDownloadService { get; set; }
     internal static IMlsService? MlsServiceRef { get; set; }
     internal static IStorageService? StorageServiceRef { get; set; }
+    internal static IMessageService? MessageServiceRef { get; set; }
     internal static Func<string, byte[]?>? MediaCacheGet { get; set; }
     internal static Action<string, byte[]>? MediaCacheSet { get; set; }
 
@@ -1005,7 +1007,9 @@ public class MessageViewModel : ViewModelBase
     // Reactions
     [Reactive] public string? ReactionsDisplay { get; set; }
     [Reactive] public bool HasReactions { get; set; }
+    [Reactive] public bool IsHovering { get; set; }
 
+    public ReactiveCommand<string, Unit> ReactCommand { get; }
     public ReactiveCommand<Unit, Unit> LoadMediaCommand { get; }
     public ReactiveCommand<Unit, Unit> ToggleAudioCommand { get; }
 
@@ -1072,6 +1076,19 @@ public class MessageViewModel : ViewModelBase
         }
 
         UpdateReactionsDisplay();
+
+        ReactCommand = ReactiveCommand.CreateFromTask<string>(async emoji =>
+        {
+            if (MessageServiceRef == null) return;
+            try
+            {
+                await MessageServiceRef.SendReactionAsync(Id, emoji);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to send reaction {Emoji} on message {Id}", emoji, Id);
+            }
+        });
 
         LoadMediaCommand = ReactiveCommand.CreateFromTask(LoadMediaAsync);
         ToggleAudioCommand = ReactiveCommand.CreateFromTask(ToggleAudioPlaybackAsync);

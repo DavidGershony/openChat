@@ -47,6 +47,11 @@ public interface IMlsService
     Task<byte[]> EncryptMessageAsync(byte[] groupId, string plaintext, List<List<string>>? rumorTags = null);
 
     /// <summary>
+    /// Encrypt a reaction event (kind 7) targeting a specific message.
+    /// </summary>
+    Task<byte[]> EncryptReactionAsync(byte[] groupId, string emoji, string targetRumorEventId);
+
+    /// <summary>
     /// The rumor event ID from the most recent EncryptMessageAsync call.
     /// Used to store alongside the message for reaction targeting.
     /// </summary>

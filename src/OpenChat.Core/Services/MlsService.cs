@@ -205,6 +205,14 @@ public class MlsService : IMlsService
         return result;
     }
 
+    public Task<byte[]> EncryptReactionAsync(byte[] groupId, string emoji, string targetRumorEventId)
+    {
+        // Rust backend delegates to EncryptMessageAsync with reaction content
+        // TODO: Implement proper kind 7 support in Rust MDK
+        _logger.LogWarning("EncryptReactionAsync not fully implemented for Rust backend");
+        throw new NotSupportedException("Reactions are not yet supported with the Rust MLS backend");
+    }
+
     public async Task<MlsDecryptedMessage> DecryptMessageAsync(byte[] groupId, byte[] ciphertext)
     {
         EnsureInitialized();
