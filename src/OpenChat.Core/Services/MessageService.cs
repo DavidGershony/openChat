@@ -217,9 +217,21 @@ public class MessageService : IMessageService, IDisposable
         {
             if (chat.MlsGroupId != null)
             {
-                var eventJsonBytes = await _mlsService.EncryptMessageAsync(chat.MlsGroupId, content);
+                // MIP-04 v2 imeta tags for voice messages
+                var imetaTags = new List<List<string>>
+                {
+                    new() { "imeta",
+                        $"url {mediaUrl}",
+                        $"m {mimeType}",
+                        $"x {sha256Hex}",
+                        $"n {nonceHex}",
+                        $"v mip04-v2",
+                        $"filename {filename}",
+                        $"duration {durationSeconds:F1}" }
+                };
+                var eventJsonBytes = await _mlsService.EncryptMessageAsync(chat.MlsGroupId, "", imetaTags);
                 message.NostrEventId = await _nostrService.PublishRawEventJsonAsync(eventJsonBytes);
-                _logger.LogInformation("Voice message published: event {EventId}", message.NostrEventId);
+                _logger.LogInformation("Voice message published with imeta tags: event {EventId}", message.NostrEventId);
             }
 
             message.Status = MessageStatus.Sent;
