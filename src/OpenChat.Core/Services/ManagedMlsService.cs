@@ -484,6 +484,7 @@ public class ManagedMlsService : IMlsService
             string? encryptionNonce = null;
             string? encryptionVersion = null;
             int rumorKind = 9;
+            string? rumorEventId = null;
             string? reactionTargetEventId = null;
             string? reactionEmoji = null;
 
@@ -503,7 +504,11 @@ public class ManagedMlsService : IMlsService
                         }
                     }
 
-                    // Extract rumor kind
+                    // Extract rumor id and kind
+                    if (doc.RootElement.TryGetProperty("id", out var idProp))
+                    {
+                        rumorEventId = idProp.GetString();
+                    }
                     if (doc.RootElement.TryGetProperty("kind", out var kindProp))
                     {
                         rumorKind = kindProp.GetInt32();
@@ -599,6 +604,7 @@ public class ManagedMlsService : IMlsService
                 FileSha256 = fileSha256,
                 EncryptionNonce = encryptionNonce,
                 EncryptionVersion = encryptionVersion,
+                RumorEventId = rumorEventId,
                 RumorKind = rumorKind,
                 ReactionTargetEventId = reactionTargetEventId,
                 ReactionEmoji = reactionEmoji

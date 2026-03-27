@@ -116,6 +116,7 @@ public class StorageService : IStorageService
                 Content TEXT NOT NULL,
                 EncryptedContent TEXT,
                 NostrEventId TEXT,
+                RumorEventId TEXT,
                 MlsEpoch INTEGER NOT NULL DEFAULT 0,
                 Timestamp TEXT NOT NULL,
                 ReceivedAt TEXT,
@@ -250,6 +251,15 @@ public class StorageService : IStorageService
                     // Column already exists — ignore
                 }
             }
+
+            // Migration: add RumorEventId column to Messages (for reaction targeting)
+            try
+            {
+                var migrate = connection.CreateCommand();
+                migrate.CommandText = "ALTER TABLE Messages ADD COLUMN RumorEventId TEXT";
+                await migrate.ExecuteNonQueryAsync();
+            }
+            catch (SqliteException) { /* Column already exists */ }
 
             // Migration: add MIP-04 media columns to Messages
             var mediaColumns = new[] { "ImageUrl", "FileName", "FileSha256", "EncryptionNonce", "MediaType", "EncryptionVersion", "AudioDurationSeconds" };
@@ -603,9 +613,9 @@ public class StorageService : IStorageService
         var command = connection.CreateCommand();
         command.CommandText = @"
             INSERT OR REPLACE INTO Messages
-            (Id, ChatId, SenderPublicKey, Type, Content, EncryptedContent, NostrEventId, MlsEpoch, Timestamp, ReceivedAt, Status, ReplyToMessageId, IsFromCurrentUser, IsEdited, IsDeleted, ImageUrl, FileName, FileSha256, EncryptionNonce, MediaType, EncryptionVersion, AudioDurationSeconds)
+            (Id, ChatId, SenderPublicKey, Type, Content, EncryptedContent, NostrEventId, RumorEventId, MlsEpoch, Timestamp, ReceivedAt, Status, ReplyToMessageId, IsFromCurrentUser, IsEdited, IsDeleted, ImageUrl, FileName, FileSha256, EncryptionNonce, MediaType, EncryptionVersion, AudioDurationSeconds)
             VALUES
-            (@Id, @ChatId, @SenderPublicKey, @Type, @Content, @EncryptedContent, @NostrEventId, @MlsEpoch, @Timestamp, @ReceivedAt, @Status, @ReplyToMessageId, @IsFromCurrentUser, @IsEdited, @IsDeleted, @ImageUrl, @FileName, @FileSha256, @EncryptionNonce, @MediaType, @EncryptionVersion, @AudioDurationSeconds)";
+            (@Id, @ChatId, @SenderPublicKey, @Type, @Content, @EncryptedContent, @NostrEventId, @RumorEventId, @MlsEpoch, @Timestamp, @ReceivedAt, @Status, @ReplyToMessageId, @IsFromCurrentUser, @IsEdited, @IsDeleted, @ImageUrl, @FileName, @FileSha256, @EncryptionNonce, @MediaType, @EncryptionVersion, @AudioDurationSeconds)";
 
         command.Parameters.AddWithValue("@Id", message.Id);
         command.Parameters.AddWithValue("@ChatId", message.ChatId);
@@ -614,6 +624,7 @@ public class StorageService : IStorageService
         command.Parameters.AddWithValue("@Content", message.Content);
         command.Parameters.AddWithValue("@EncryptedContent", message.EncryptedContent ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("@NostrEventId", message.NostrEventId ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@RumorEventId", message.RumorEventId ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("@MlsEpoch", (long)message.MlsEpoch);
         command.Parameters.AddWithValue("@Timestamp", message.Timestamp.ToString("O"));
         command.Parameters.AddWithValue("@ReceivedAt", message.ReceivedAt?.ToString("O") ?? (object)DBNull.Value);
@@ -694,8 +705,8 @@ public class StorageService : IStorageService
         await connection.OpenAsync();
 
         var command = connection.CreateCommand();
-        command.CommandText = "SELECT * FROM Messages WHERE NostrEventId = @NostrEventId LIMIT 1";
-        command.Parameters.AddWithValue("@NostrEventId", nostrEventId);
+        command.CommandText = "SELECT * FROM Messages WHERE NostrEventId = @EventId OR RumorEventId = @EventId LIMIT 1";
+        command.Parameters.AddWithValue("@EventId", nostrEventId);
 
         await using var reader = await command.ExecuteReaderAsync();
         if (await reader.ReadAsync())
@@ -1163,6 +1174,7 @@ public class StorageService : IStorageService
             Content = reader.GetString(reader.GetOrdinal("Content")),
             EncryptedContent = reader.IsDBNull(reader.GetOrdinal("EncryptedContent")) ? null : reader.GetString(reader.GetOrdinal("EncryptedContent")),
             NostrEventId = reader.IsDBNull(reader.GetOrdinal("NostrEventId")) ? null : reader.GetString(reader.GetOrdinal("NostrEventId")),
+            RumorEventId = TryGetString(reader, "RumorEventId"),
             MlsEpoch = (ulong)reader.GetInt64(reader.GetOrdinal("MlsEpoch")),
             Timestamp = DateTime.Parse(reader.GetString(reader.GetOrdinal("Timestamp"))),
             ReceivedAt = reader.IsDBNull(reader.GetOrdinal("ReceivedAt")) ? null : DateTime.Parse(reader.GetString(reader.GetOrdinal("ReceivedAt"))),

@@ -840,6 +840,7 @@ public class MessageService : IMessageService, IDisposable
             MediaType = decrypted.MediaType,
             EncryptionVersion = decrypted.EncryptionVersion,
             NostrEventId = nostrEvent.EventId,
+            RumorEventId = decrypted.RumorEventId,
             MlsEpoch = decrypted.Epoch,
             Timestamp = nostrEvent.CreatedAt,
             ReceivedAt = DateTime.UtcNow,

@@ -203,6 +203,11 @@ public class MlsDecryptedMessage
     public string? EncryptionVersion { get; set; }
 
     /// <summary>
+    /// The event ID of the inner rumor event (used by other clients for reaction targeting).
+    /// </summary>
+    public string? RumorEventId { get; set; }
+
+    /// <summary>
     /// The Nostr kind of the inner rumor event (e.g. 9 for regular message, 7 for reaction).
     /// </summary>
     public int RumorKind { get; set; } = 9;

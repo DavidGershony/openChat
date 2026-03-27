@@ -73,9 +73,14 @@ public class Message
     public double? AudioDurationSeconds { get; set; }
 
     /// <summary>
-    /// Nostr event ID for this message.
+    /// Nostr event ID for this message (outer kind 445 event).
     /// </summary>
     public string? NostrEventId { get; set; }
+
+    /// <summary>
+    /// Inner rumor event ID (used by other clients for reaction targeting).
+    /// </summary>
+    public string? RumorEventId { get; set; }
 
     /// <summary>
     /// MLS epoch when this message was sent.
