@@ -47,6 +47,12 @@ public interface IMlsService
     Task<byte[]> EncryptMessageAsync(byte[] groupId, string plaintext, List<List<string>>? rumorTags = null);
 
     /// <summary>
+    /// The rumor event ID from the most recent EncryptMessageAsync call.
+    /// Used to store alongside the message for reaction targeting.
+    /// </summary>
+    string? LastEncryptedRumorEventId { get; }
+
+    /// <summary>
     /// Decrypt a message from a group.
     /// </summary>
     Task<MlsDecryptedMessage> DecryptMessageAsync(byte[] groupId, byte[] ciphertext);

@@ -33,6 +33,8 @@ public class ManagedMlsService : IMlsService
     private byte[]? _signingPrivateKey;
     private byte[]? _signingPublicKey;
 
+    public string? LastEncryptedRumorEventId { get; private set; }
+
     /// <summary>
     /// Private key material for a stored KeyPackage.
     /// MLS allows multiple KeyPackages per user (RFC 9420 Section 16.8).
@@ -396,6 +398,7 @@ public class ManagedMlsService : IMlsService
         // Step 1: Create rumor event JSON (kind 9, pubkey, content, tags)
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var rumorId = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        LastEncryptedRumorEventId = rumorId;
         var escapedContent = JsonSerializer.Serialize(plaintext);
         var rumorTagsJson = rumorTags != null && rumorTags.Count > 0
             ? JsonSerializer.Serialize(rumorTags)

@@ -13,6 +13,8 @@ public class MlsService : IMlsService
     private string? _privateKeyHex;
     private string? _publicKeyHex;
 
+    public string? LastEncryptedRumorEventId { get; private set; }
+
     public MlsService(IStorageService? storageService = null)
     {
         _logger = LoggingConfiguration.CreateLogger<MlsService>();

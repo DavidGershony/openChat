@@ -145,8 +145,10 @@ public class MessageService : IMessageService, IDisposable
                 var eventJsonBytes = await _mlsService.EncryptMessageAsync(chat.MlsGroupId, content);
                 _logger.LogDebug("SendMessage: encrypted to {Len} bytes, publishing kind 445", eventJsonBytes.Length);
 
+                message.RumorEventId = _mlsService.LastEncryptedRumorEventId;
                 message.NostrEventId = await _nostrService.PublishRawEventJsonAsync(eventJsonBytes);
-                _logger.LogInformation("SendMessage: published kind 445 event {EventId}", message.NostrEventId);
+                _logger.LogInformation("SendMessage: published kind 445 event {EventId}, rumorId={RumorId}",
+                    message.NostrEventId, message.RumorEventId?[..Math.Min(16, message.RumorEventId?.Length ?? 0)]);
             }
             else
             {
@@ -232,6 +234,7 @@ public class MessageService : IMessageService, IDisposable
                         $"duration {durationSeconds:F1}" }
                 };
                 var eventJsonBytes = await _mlsService.EncryptMessageAsync(chat.MlsGroupId, "", imetaTags);
+                message.RumorEventId = _mlsService.LastEncryptedRumorEventId;
                 message.NostrEventId = await _nostrService.PublishRawEventJsonAsync(eventJsonBytes);
                 _logger.LogInformation("Voice message published with imeta tags: event {EventId}", message.NostrEventId);
             }
@@ -303,6 +306,7 @@ public class MessageService : IMessageService, IDisposable
                 };
                 // Content is empty per MIP-04 — all metadata is in the imeta tag
                 var eventJsonBytes = await _mlsService.EncryptMessageAsync(chat.MlsGroupId, "", imetaTags);
+                message.RumorEventId = _mlsService.LastEncryptedRumorEventId;
                 message.NostrEventId = await _nostrService.PublishRawEventJsonAsync(eventJsonBytes);
                 _logger.LogInformation("Media message published with imeta tags: event {EventId}", message.NostrEventId);
             }
