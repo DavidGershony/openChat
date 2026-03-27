@@ -56,6 +56,41 @@
                 android:scaleType="fitCenter"
                 android:visibility="gone" />
 
+            <!-- Audio player -->
+            <LinearLayout
+                android:id="@+id/audio_player"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:visibility="gone">
+
+                <ImageButton
+                    android:id="@+id/audio_play_button"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:src="@android:drawable/ic_media_play"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Play/Pause"
+                    android:scaleType="centerInside" />
+
+                <SeekBar
+                    android:id="@+id/audio_progress"
+                    android:layout_width="120dp"
+                    android:layout_height="wrap_content"
+                    android:max="100"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginEnd="4dp" />
+
+                <TextView
+                    android:id="@+id/audio_duration"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textSize="12sp"
+                    android:textColor="@color/text_muted"
+                    android:text="0:00" />
+            </LinearLayout>
+
             <TextView
                 android:id="@+id/message_content"
                 android:layout_width="wrap_content"

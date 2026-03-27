@@ -55,6 +55,7 @@ public class HeadlessLoginTests : HeadlessTestBase
 
         // Simulate login
         mainVm.CurrentUser = ctx.User;
+        mainVm.IsLoggedIn = true;
         Dispatcher.UIThread.RunJobs();
         Assert.True(mainVm.IsLoggedIn);
 

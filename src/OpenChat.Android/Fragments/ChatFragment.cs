@@ -1,9 +1,12 @@
 using Android;
+using Android.App;
 using Android.Content;
 using Android.Content.PM;
 using Android.OS;
 using Android.Views;
 using Android.Widget;
+using AndroidX.Activity.Result;
+using AndroidX.Activity.Result.Contract;
 using AndroidX.Core.App;
 using AndroidX.Core.Content;
 using AndroidX.RecyclerView.Widget;
@@ -12,7 +15,9 @@ using Google.Android.Material.Button;
 using Google.Android.Material.Dialog;
 using Google.Android.Material.FloatingActionButton;
 using Google.Android.Material.TextField;
+using Microsoft.Extensions.Logging;
 using OpenChat.Android.Adapters;
+using OpenChat.Core.Logging;
 using OpenChat.Presentation.ViewModels;
 using ReactiveUI;
 using System.Reactive.Disposables;
@@ -24,14 +29,31 @@ namespace OpenChat.Android.Fragments;
 public class ChatFragment : Fragment
 {
     private readonly MainViewModel _mainViewModel;
+    private readonly ILogger<ChatFragment> _logger;
     private ChatViewModel ViewModel => _mainViewModel.ChatViewModel;
     private CompositeDisposable _disposables = new();
     private MessageAdapter? _adapter;
     private LinearLayoutManager? _layoutManager;
+    private ActivityResultLauncher? _filePickerLauncher;
+    private TaskCompletionSource<(byte[] Data, string FileName, string MimeType)?>? _filePickerTcs;
 
     public ChatFragment(MainViewModel mainViewModel)
     {
         _mainViewModel = mainViewModel;
+        _logger = LoggingConfiguration.CreateLogger<ChatFragment>();
+    }
+
+    public override void OnCreate(Bundle? savedInstanceState)
+    {
+        base.OnCreate(savedInstanceState);
+
+        // Register file picker launcher
+        _filePickerLauncher = RegisterForActivityResult(
+            new ActivityResultContracts.GetContent(),
+            new FilePickerCallback(this));
+
+        // Set the file picker function on the ViewModel
+        ChatViewModel.FilePickerFunc = PickFileAsync;
     }
 
     public override View? OnCreateView(LayoutInflater inflater, ViewGroup? container, Bundle? savedInstanceState)
@@ -46,9 +68,15 @@ public class ChatFragment : Fragment
         var toolbar = view.FindViewById<MaterialToolbar>(Resource.Id.chat_toolbar)!;
         var recyclerView = view.FindViewById<RecyclerView>(Resource.Id.messages_recycler)!;
         var messageInput = view.FindViewById<TextInputEditText>(Resource.Id.message_input)!;
+        var messageInputLayout = view.FindViewById<TextInputLayout>(Resource.Id.message_input_layout)!;
         var sendButton = view.FindViewById<FloatingActionButton>(Resource.Id.send_button)!;
+        var uploadStatus = view.FindViewById<TextView>(Resource.Id.upload_status)!;
+        var recordingIndicator = view.FindViewById<LinearLayout>(Resource.Id.recording_indicator)!;
+        var recordingDuration = view.FindViewById<TextView>(Resource.Id.recording_duration)!;
+        var cancelRecordingButton = view.FindViewById<ImageButton>(Resource.Id.cancel_recording_button)!;
+        var attachButton = view.FindViewById<ImageButton>(Resource.Id.attach_button)!;
 
-        // Toolbar setup - back navigation (use Java listener for reliable click handling)
+        // Toolbar setup - back navigation
         toolbar.SetNavigationOnClickListener(new ActionClickListener(() =>
         {
             ParentFragmentManager.PopBackStack();
@@ -87,6 +115,18 @@ public class ChatFragment : Fragment
                 return;
             }
             ViewModel.ToggleRecordingCommand.Execute().Subscribe().DisposeWith(_disposables);
+        };
+
+        // Cancel recording button
+        cancelRecordingButton.Click += (s, e) =>
+        {
+            ViewModel.CancelRecordingCommand.Execute().Subscribe().DisposeWith(_disposables);
+        };
+
+        // Attach file button
+        attachButton.Click += (s, e) =>
+        {
+            ViewModel.AttachFileCommand.Execute().Subscribe().DisposeWith(_disposables);
         };
 
         // Send button
@@ -140,8 +180,117 @@ public class ChatFragment : Fragment
             })
             .DisposeWith(_disposables);
 
+        // Bind upload status banner
+        ViewModel.WhenAnyValue(x => x.UploadStatus)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(status =>
+            {
+                uploadStatus.Text = status ?? "";
+                uploadStatus.Visibility = string.IsNullOrEmpty(status) ? ViewStates.Gone : ViewStates.Visible;
+            })
+            .DisposeWith(_disposables);
+
+        // Bind recording state
+        ViewModel.WhenAnyValue(x => x.IsRecording)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(recording =>
+            {
+                recordingIndicator.Visibility = recording ? ViewStates.Visible : ViewStates.Gone;
+                messageInputLayout.Visibility = recording ? ViewStates.Gone : ViewStates.Visible;
+                sendButton.Visibility = recording ? ViewStates.Gone : ViewStates.Visible;
+            })
+            .DisposeWith(_disposables);
+
+        // Bind recording duration
+        ViewModel.WhenAnyValue(x => x.RecordingDuration)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(dur =>
+            {
+                recordingDuration.Text = dur;
+            })
+            .DisposeWith(_disposables);
+
+        // Bind MIP-04 enabled state for attach button visibility
+        ViewModel.WhenAnyValue(x => x.IsMip04Enabled)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(enabled =>
+            {
+                attachButton.Visibility = enabled ? ViewStates.Visible : ViewStates.Gone;
+            })
+            .DisposeWith(_disposables);
+
         // Initial load
         _adapter.UpdateItems(ViewModel.Messages.ToList());
+    }
+
+    private Task<(byte[] Data, string FileName, string MimeType)?> PickFileAsync()
+    {
+        _filePickerTcs = new TaskCompletionSource<(byte[] Data, string FileName, string MimeType)?>();
+        try
+        {
+            _filePickerLauncher?.Launch("image/*");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to launch file picker");
+            _filePickerTcs.TrySetResult(null);
+        }
+        return _filePickerTcs.Task;
+    }
+
+    private void OnFilePickerResult(global::Android.Net.Uri? uri)
+    {
+        if (uri == null || Context == null)
+        {
+            _filePickerTcs?.TrySetResult(null);
+            return;
+        }
+
+        try
+        {
+            var contentResolver = Context.ContentResolver!;
+            var mimeType = contentResolver.GetType(uri) ?? "application/octet-stream";
+            var fileName = GetFileName(uri) ?? "image";
+
+            using var stream = contentResolver.OpenInputStream(uri);
+            if (stream == null)
+            {
+                _filePickerTcs?.TrySetResult(null);
+                return;
+            }
+
+            using var memStream = new MemoryStream();
+            stream.CopyTo(memStream);
+            var data = memStream.ToArray();
+
+            _logger.LogInformation("File picked: {Name}, {Size} bytes, {Mime}", fileName, data.Length, mimeType);
+            _filePickerTcs?.TrySetResult((data, fileName, mimeType));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to read picked file");
+            _filePickerTcs?.TrySetResult(null);
+        }
+    }
+
+    private string? GetFileName(global::Android.Net.Uri uri)
+    {
+        if (Context == null) return null;
+        try
+        {
+            using var cursor = Context.ContentResolver?.Query(uri, null, null, null, null);
+            if (cursor != null && cursor.MoveToFirst())
+            {
+                var nameIndex = cursor.GetColumnIndex(global::Android.Provider.OpenableColumns.DisplayName);
+                if (nameIndex >= 0)
+                    return cursor.GetString(nameIndex);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to get file name from URI");
+        }
+        return null;
     }
 
     private void ShowContactInfoBottomSheet()
@@ -343,5 +492,21 @@ public class ChatFragment : Fragment
         _disposables.Dispose();
         _disposables = new CompositeDisposable();
         base.OnDestroyView();
+    }
+
+    /// <summary>
+    /// Callback for the Android file picker activity result.
+    /// </summary>
+    private class FilePickerCallback : Java.Lang.Object, IActivityResultCallback
+    {
+        private readonly ChatFragment _fragment;
+
+        public FilePickerCallback(ChatFragment fragment) => _fragment = fragment;
+
+        public void OnActivityResult(Java.Lang.Object? result)
+        {
+            var uri = result as global::Android.Net.Uri;
+            _fragment.OnFilePickerResult(uri);
+        }
     }
 }

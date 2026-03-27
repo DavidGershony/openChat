@@ -27,6 +27,7 @@ public class HeadlessSettingsTests : HeadlessTestBase
         var mainVm = CreateMainViewModel(ctx);
         Dispatcher.UIThread.RunJobs();
         mainVm.CurrentUser = ctx.User;
+        mainVm.IsLoggedIn = true;
         Dispatcher.UIThread.RunJobs();
         await Task.Delay(200);
         Dispatcher.UIThread.RunJobs();
@@ -63,6 +64,7 @@ public class HeadlessSettingsTests : HeadlessTestBase
         var mainVm = CreateMainViewModel(ctx);
         Dispatcher.UIThread.RunJobs();
         mainVm.CurrentUser = ctx.User;
+        mainVm.IsLoggedIn = true;
         Dispatcher.UIThread.RunJobs();
         await Task.Delay(200);
         Dispatcher.UIThread.RunJobs();
@@ -91,6 +93,7 @@ public class HeadlessSettingsTests : HeadlessTestBase
         var mainVm = CreateMainViewModel(ctx);
         Dispatcher.UIThread.RunJobs();
         mainVm.CurrentUser = ctx.User;
+        mainVm.IsLoggedIn = true;
         Dispatcher.UIThread.RunJobs();
         await Task.Delay(200);
         Dispatcher.UIThread.RunJobs();
@@ -126,6 +129,7 @@ public class HeadlessSettingsTests : HeadlessTestBase
         var mainVm = CreateMainViewModel(ctx);
         Dispatcher.UIThread.RunJobs();
         mainVm.CurrentUser = ctx.User;
+        mainVm.IsLoggedIn = true;
         Dispatcher.UIThread.RunJobs();
         await Task.Delay(200);
         Dispatcher.UIThread.RunJobs();
@@ -188,6 +192,7 @@ public class HeadlessSettingsTests : HeadlessTestBase
         var mainVm = CreateMainViewModel(ctx);
         Dispatcher.UIThread.RunJobs();
         mainVm.CurrentUser = ctx.User;
+        mainVm.IsLoggedIn = true;
         Dispatcher.UIThread.RunJobs();
         await Task.Delay(200);
         Dispatcher.UIThread.RunJobs();
@@ -230,6 +235,7 @@ public class HeadlessSettingsTests : HeadlessTestBase
         var mainVm = CreateMainViewModel(ctx);
         Dispatcher.UIThread.RunJobs();
         mainVm.CurrentUser = ctx.User;
+        mainVm.IsLoggedIn = true;
         Dispatcher.UIThread.RunJobs();
         await Task.Delay(500);
         Dispatcher.UIThread.RunJobs();

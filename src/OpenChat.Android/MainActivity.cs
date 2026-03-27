@@ -26,6 +26,9 @@ public class MainActivity : AppCompatActivity, IActivatableView
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
+        // Apply saved theme before calling base.OnCreate and SetContentView
+        SetTheme(Services.ThemeService.GetSavedStyleResource(this));
+
         base.OnCreate(savedInstanceState);
 
         // Initialize logging

@@ -156,11 +156,10 @@ public class ViewModelTests
         // Wait a bit for async operation to complete
         Thread.Sleep(100);
 
-        // Assert
-        Assert.NotNull(savedUser);
-        Assert.Equal("publicHex", savedUser.PublicKeyHex);
-        Assert.True(savedUser.IsCurrentUser);
+        // Assert — LoginViewModel now only sets LoggedInUser, doesn't save to DB
+        // (ShellViewModel handles persistence after profile switch)
         Assert.NotNull(viewModel.LoggedInUser);
+        Assert.Equal("publicHex", viewModel.LoggedInUser!.PublicKeyHex);
     }
 
     [Fact]

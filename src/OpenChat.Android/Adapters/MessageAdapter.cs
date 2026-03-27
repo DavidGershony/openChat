@@ -1,5 +1,6 @@
 using Android.Graphics;
 using Android.Views;
+using Android.Widget;
 using AndroidX.RecyclerView.Widget;
 using Google.Android.Material.Button;
 using OpenChat.Presentation.ViewModels;
@@ -57,25 +58,30 @@ public class MessageAdapter : RecyclerView.Adapter
         }
     }
 
-    private static void BindMediaViews(View itemView, MessageViewModel item)
+    private static void BindMediaViews(View itemView, MessageViewModel item, CompositeDisposable disposables)
     {
         var mediaStatus = itemView.FindViewById<TextView>(Resource.Id.media_status)!;
         var loadButton = itemView.FindViewById<MaterialButton>(Resource.Id.load_media_button)!;
         var mediaImage = itemView.FindViewById<ImageView>(Resource.Id.media_image)!;
         var content = itemView.FindViewById<TextView>(Resource.Id.message_content)!;
+        var audioPlayer = itemView.FindViewById<LinearLayout>(Resource.Id.audio_player)!;
+        var audioPlayButton = itemView.FindViewById<ImageButton>(Resource.Id.audio_play_button)!;
+        var audioProgress = itemView.FindViewById<SeekBar>(Resource.Id.audio_progress)!;
+        var audioDuration = itemView.FindViewById<TextView>(Resource.Id.audio_duration)!;
 
-        if (!item.IsImage)
+        if (item.IsTextMessage)
         {
             // Text message — hide all media views
             mediaStatus.Visibility = ViewStates.Gone;
             loadButton.Visibility = ViewStates.Gone;
             mediaImage.Visibility = ViewStates.Gone;
+            audioPlayer.Visibility = ViewStates.Gone;
             content.Visibility = ViewStates.Visible;
             content.Text = item.Content;
             return;
         }
 
-        // Image message — show appropriate state
+        // Media message (image or audio) — hide text content
         content.Visibility = ViewStates.Gone;
 
         if (item.ShowMediaDisabled)
@@ -84,12 +90,59 @@ public class MessageAdapter : RecyclerView.Adapter
             mediaStatus.Visibility = ViewStates.Visible;
             loadButton.Visibility = ViewStates.Gone;
             mediaImage.Visibility = ViewStates.Gone;
+            audioPlayer.Visibility = ViewStates.Gone;
         }
-        else if (item.IsMediaLoaded && item.DecryptedMediaBytes != null)
+        else if (item.IsAudio && item.IsMediaLoaded)
         {
+            // Audio loaded — show player
+            mediaStatus.Visibility = ViewStates.Gone;
+            loadButton.Visibility = ViewStates.Gone;
+            mediaImage.Visibility = ViewStates.Gone;
+            audioPlayer.Visibility = ViewStates.Visible;
+
+            audioDuration.Text = item.AudioDurationText ?? "0:00";
+
+            audioPlayButton.SetOnClickListener(new ActionClickListener(() =>
+            {
+                item.ToggleAudioCommand.Execute().Subscribe();
+            }));
+
+            // Observe playing state
+            item.WhenAnyValue(x => x.IsPlayingAudio)
+                .ObserveOn(RxApp.MainThreadScheduler)
+                .Subscribe(playing =>
+                {
+                    audioPlayButton.SetImageResource(playing
+                        ? global::Android.Resource.Drawable.IcMediaPause
+                        : global::Android.Resource.Drawable.IcMediaPlay);
+                })
+                .DisposeWith(disposables);
+
+            // Observe progress
+            item.WhenAnyValue(x => x.AudioProgress)
+                .ObserveOn(RxApp.MainThreadScheduler)
+                .Subscribe(progress =>
+                {
+                    audioProgress.Progress = (int)(progress * 100);
+                })
+                .DisposeWith(disposables);
+
+            // Observe duration text updates
+            item.WhenAnyValue(x => x.AudioDurationText)
+                .ObserveOn(RxApp.MainThreadScheduler)
+                .Subscribe(dur =>
+                {
+                    audioDuration.Text = dur ?? "0:00";
+                })
+                .DisposeWith(disposables);
+        }
+        else if (item.IsImage && item.IsMediaLoaded && item.DecryptedMediaBytes != null)
+        {
+            // Image loaded — show bitmap
             mediaStatus.Visibility = ViewStates.Gone;
             loadButton.Visibility = ViewStates.Gone;
             mediaImage.Visibility = ViewStates.Visible;
+            audioPlayer.Visibility = ViewStates.Gone;
             var bitmap = BitmapFactory.DecodeByteArray(
                 item.DecryptedMediaBytes, 0, item.DecryptedMediaBytes.Length);
             mediaImage.SetImageBitmap(bitmap);
@@ -102,6 +155,7 @@ public class MessageAdapter : RecyclerView.Adapter
             mediaStatus.Visibility = ViewStates.Visible;
             loadButton.Visibility = ViewStates.Gone;
             mediaImage.Visibility = ViewStates.Gone;
+            audioPlayer.Visibility = ViewStates.Gone;
         }
         else if (!string.IsNullOrEmpty(item.MediaError))
         {
@@ -110,10 +164,13 @@ public class MessageAdapter : RecyclerView.Adapter
             mediaStatus.Visibility = ViewStates.Visible;
             loadButton.Visibility = ViewStates.Gone;
             mediaImage.Visibility = ViewStates.Gone;
+            audioPlayer.Visibility = ViewStates.Gone;
         }
         else if (item.ShowTapToLoad)
         {
-            var buttonText = item.ImageDisplayText ?? "Load image";
+            var buttonText = item.IsAudio
+                ? (item.ImageDisplayText ?? "Load voice message")
+                : (item.ImageDisplayText ?? "Load image");
             if (item.IsUnknownServer)
                 buttonText += $"\nUnknown server: {item.ServerHostname}";
             loadButton.Text = buttonText;
@@ -121,6 +178,7 @@ public class MessageAdapter : RecyclerView.Adapter
             mediaStatus.Text = "Your IP will be visible to the host";
             mediaStatus.Visibility = ViewStates.Visible;
             mediaImage.Visibility = ViewStates.Gone;
+            audioPlayer.Visibility = ViewStates.Gone;
 
             loadButton.SetOnClickListener(new ActionClickListener(() =>
             {
@@ -129,11 +187,12 @@ public class MessageAdapter : RecyclerView.Adapter
         }
         else
         {
-            // Fallback: show image display text
-            mediaStatus.Text = item.ImageDisplayText ?? "[Encrypted image]";
+            // Fallback
+            mediaStatus.Text = item.ImageDisplayText ?? "[Encrypted media]";
             mediaStatus.Visibility = ViewStates.Visible;
             loadButton.Visibility = ViewStates.Gone;
             mediaImage.Visibility = ViewStates.Gone;
+            audioPlayer.Visibility = ViewStates.Gone;
         }
     }
 
@@ -141,6 +200,7 @@ public class MessageAdapter : RecyclerView.Adapter
     {
         private readonly TextView _content;
         private readonly TextView _timestamp;
+        private CompositeDisposable _disposables = new();
 
         public SentMessageViewHolder(View itemView) : base(itemView)
         {
@@ -150,7 +210,10 @@ public class MessageAdapter : RecyclerView.Adapter
 
         public void Bind(MessageViewModel item)
         {
-            BindMediaViews(ItemView, item);
+            _disposables.Dispose();
+            _disposables = new CompositeDisposable();
+
+            BindMediaViews(ItemView, item, _disposables);
             _timestamp.Text = item.Timestamp.ToLocalTime().ToString("HH:mm");
         }
     }
@@ -160,6 +223,7 @@ public class MessageAdapter : RecyclerView.Adapter
         private readonly TextView _senderName;
         private readonly TextView _content;
         private readonly TextView _timestamp;
+        private CompositeDisposable _disposables = new();
 
         public ReceivedMessageViewHolder(View itemView) : base(itemView)
         {
@@ -170,8 +234,11 @@ public class MessageAdapter : RecyclerView.Adapter
 
         public void Bind(MessageViewModel item)
         {
+            _disposables.Dispose();
+            _disposables = new CompositeDisposable();
+
             _senderName.Text = item.SenderName;
-            BindMediaViews(ItemView, item);
+            BindMediaViews(ItemView, item, _disposables);
             _timestamp.Text = item.Timestamp.ToLocalTime().ToString("HH:mm");
         }
     }

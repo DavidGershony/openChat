@@ -8,7 +8,10 @@ using Google.Android.Material.Button;
 using Google.Android.Material.Dialog;
 using Google.Android.Material.MaterialSwitch;
 using Google.Android.Material.TextField;
+using Microsoft.Extensions.Logging;
 using OpenChat.Android.Adapters;
+using OpenChat.Android.Services;
+using OpenChat.Core.Logging;
 using OpenChat.Presentation.ViewModels;
 using ReactiveUI;
 using System.Reactive.Disposables;
@@ -20,6 +23,7 @@ namespace OpenChat.Android.Fragments;
 public class SettingsFragment : Fragment
 {
     private readonly MainViewModel _mainViewModel;
+    private readonly ILogger<SettingsFragment> _logger;
     private SettingsViewModel ViewModel => _mainViewModel.SettingsViewModel;
     private CompositeDisposable _disposables = new();
     private RelayAdapter? _relayAdapter;
@@ -27,6 +31,7 @@ public class SettingsFragment : Fragment
     public SettingsFragment(MainViewModel mainViewModel)
     {
         _mainViewModel = mainViewModel;
+        _logger = LoggingConfiguration.CreateLogger<SettingsFragment>();
     }
 
     public override View? OnCreateView(LayoutInflater inflater, ViewGroup? container, Bundle? savedInstanceState)
@@ -69,7 +74,13 @@ public class SettingsFragment : Fragment
         // Developer views
         var viewLogsButton = view.FindViewById<MaterialButton>(Resource.Id.view_logs_button)!;
 
-        // Toolbar back navigation (use Java listener for reliable click handling)
+        // Theme views
+        var themeButton = view.FindViewById<MaterialButton>(Resource.Id.theme_selector_button)!;
+
+        // Logout button
+        var logoutButton = view.FindViewById<MaterialButton>(Resource.Id.logout_button)!;
+
+        // Toolbar back navigation
         toolbar.SetNavigationOnClickListener(new ActionClickListener(() =>
         {
             ParentFragmentManager.PopBackStack();
@@ -144,6 +155,21 @@ public class SettingsFragment : Fragment
         viewLogsButton.Click += (s, e) =>
         {
             ViewModel.ViewLogsCommand.Execute().Subscribe().DisposeWith(_disposables);
+        };
+
+        // Theme selector
+        var currentTheme = ThemeService.GetSavedTheme(RequireContext());
+        themeButton.Text = currentTheme.DisplayName;
+
+        themeButton.Click += (s, e) =>
+        {
+            ShowThemePickerDialog(themeButton);
+        };
+
+        // Logout button
+        logoutButton.Click += (s, e) =>
+        {
+            ShowLogoutConfirmation();
         };
 
         // === Bindings ===
@@ -291,6 +317,47 @@ public class SettingsFragment : Fragment
 
         // Initial load
         _relayAdapter.UpdateItems(ViewModel.Relays.ToList());
+    }
+
+    private void ShowThemePickerDialog(MaterialButton themeButton)
+    {
+        if (Context == null) return;
+
+        var themes = ThemeService.AvailableThemes;
+        var names = themes.Select(t => t.DisplayName).ToArray();
+        var currentId = ThemeService.GetSavedThemeId(RequireContext());
+        var checkedIndex = Array.FindIndex(themes, t => t.Id == currentId);
+
+        new MaterialAlertDialogBuilder(Context)
+            .SetTitle("Select Theme")!
+            .SetSingleChoiceItems(names, checkedIndex, (s, e) =>
+            {
+                var selected = themes[e.Which];
+                ThemeService.SaveThemeId(RequireContext(), selected.Id);
+                themeButton.Text = selected.DisplayName;
+                _logger.LogInformation("Theme changed to: {Theme}", selected.DisplayName);
+
+                // Dismiss dialog and recreate activity to apply theme
+                (s as global::Android.App.AlertDialog)?.Dismiss();
+                Activity?.Recreate();
+            })!
+            .SetNegativeButton("Cancel", (s, e) => { })!
+            .Show();
+    }
+
+    private void ShowLogoutConfirmation()
+    {
+        if (Context == null) return;
+
+        new MaterialAlertDialogBuilder(Context)
+            .SetTitle("Log Out")!
+            .SetMessage("Are you sure you want to log out?")!
+            .SetPositiveButton("Log Out", (s, e) =>
+            {
+                _mainViewModel.LogoutCommand.Execute().Subscribe().DisposeWith(_disposables);
+            })!
+            .SetNegativeButton("Cancel", (s, e) => { })!
+            .Show();
     }
 
     private void ShowLogViewerDialog()

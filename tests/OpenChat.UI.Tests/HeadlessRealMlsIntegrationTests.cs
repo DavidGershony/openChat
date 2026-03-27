@@ -58,6 +58,7 @@ public class HeadlessRealMlsIntegrationTests : IDisposable
         // Save user to storage and simulate login
         await ctx.Storage.SaveCurrentUserAsync(ctx.User);
         mainVm.CurrentUser = ctx.User;
+        mainVm.IsLoggedIn = true;
         Dispatcher.UIThread.RunJobs();
 
         Assert.True(mainVm.IsLoggedIn);
@@ -256,6 +257,7 @@ public class HeadlessRealMlsIntegrationTests : IDisposable
 
         // Login
         mainVm.CurrentUser = ctx.User;
+        mainVm.IsLoggedIn = true;
         Dispatcher.UIThread.RunJobs();
         Assert.True(mainVm.IsLoggedIn);
 

@@ -172,6 +172,7 @@ public class HeadlessMlsMessagingTests : HeadlessTestBase
         var mainVm = CreateMainViewModel(ctx);
         Dispatcher.UIThread.RunJobs();
         mainVm.CurrentUser = ctx.User;
+        mainVm.IsLoggedIn = true;
         Dispatcher.UIThread.RunJobs();
 
         // Load chats

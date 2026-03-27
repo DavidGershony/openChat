@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Default: Nostr Purple -->
     <style name="AppTheme" parent="Theme.Material3.Dark.NoActionBar">
         <item name="colorPrimary">@color/primary</item>
         <item name="colorPrimaryVariant">@color/primary_variant</item>
@@ -14,5 +15,73 @@
         <item name="android:statusBarColor">@color/background_dark</item>
         <item name="android:navigationBarColor">@color/background_dark</item>
         <item name="android:windowBackground">@color/background_dark</item>
+    </style>
+
+    <!-- Midnight Blue -->
+    <style name="AppTheme.MidnightBlue" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">#FF3B82F6</item>
+        <item name="colorPrimaryVariant">#FF2563EB</item>
+        <item name="colorOnPrimary">#FFFFFFFF</item>
+        <item name="colorSecondary">#FF60A5FA</item>
+        <item name="colorOnSecondary">#FFFFFFFF</item>
+        <item name="colorSurface">#FF1E293B</item>
+        <item name="colorOnSurface">#FFF1F5F9</item>
+        <item name="colorSurfaceVariant">#FF334155</item>
+        <item name="colorOnSurfaceVariant">#FF94A3B8</item>
+        <item name="android:colorBackground">#FF0F172A</item>
+        <item name="android:statusBarColor">#FF0F172A</item>
+        <item name="android:navigationBarColor">#FF0F172A</item>
+        <item name="android:windowBackground">#FF0F172A</item>
+    </style>
+
+    <!-- Forest Green -->
+    <style name="AppTheme.ForestGreen" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">#FF10B981</item>
+        <item name="colorPrimaryVariant">#FF059669</item>
+        <item name="colorOnPrimary">#FFFFFFFF</item>
+        <item name="colorSecondary">#FF34D399</item>
+        <item name="colorOnSecondary">#FFFFFFFF</item>
+        <item name="colorSurface">#FF1A2E28</item>
+        <item name="colorOnSurface">#FFF0FDF4</item>
+        <item name="colorSurfaceVariant">#FF2D4A3E</item>
+        <item name="colorOnSurfaceVariant">#FF86EFAC</item>
+        <item name="android:colorBackground">#FF0C1F17</item>
+        <item name="android:statusBarColor">#FF0C1F17</item>
+        <item name="android:navigationBarColor">#FF0C1F17</item>
+        <item name="android:windowBackground">#FF0C1F17</item>
+    </style>
+
+    <!-- Blood Orange -->
+    <style name="AppTheme.BloodOrange" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">#FFF97316</item>
+        <item name="colorPrimaryVariant">#FFEA580C</item>
+        <item name="colorOnPrimary">#FFFFFFFF</item>
+        <item name="colorSecondary">#FFFB923C</item>
+        <item name="colorOnSecondary">#FFFFFFFF</item>
+        <item name="colorSurface">#FF2E1A0E</item>
+        <item name="colorOnSurface">#FFFFF7ED</item>
+        <item name="colorSurfaceVariant">#FF4A2D1A</item>
+        <item name="colorOnSurfaceVariant">#FFFDBA74</item>
+        <item name="android:colorBackground">#FF1C0F06</item>
+        <item name="android:statusBarColor">#FF1C0F06</item>
+        <item name="android:navigationBarColor">#FF1C0F06</item>
+        <item name="android:windowBackground">#FF1C0F06</item>
+    </style>
+
+    <!-- Monochrome -->
+    <style name="AppTheme.Monochrome" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">#FFA0A0A0</item>
+        <item name="colorPrimaryVariant">#FF808080</item>
+        <item name="colorOnPrimary">#FF000000</item>
+        <item name="colorSecondary">#FFC0C0C0</item>
+        <item name="colorOnSecondary">#FF000000</item>
+        <item name="colorSurface">#FF1A1A1A</item>
+        <item name="colorOnSurface">#FFE0E0E0</item>
+        <item name="colorSurfaceVariant">#FF2A2A2A</item>
+        <item name="colorOnSurfaceVariant">#FF909090</item>
+        <item name="android:colorBackground">#FF0A0A0A</item>
+        <item name="android:statusBarColor">#FF0A0A0A</item>
+        <item name="android:navigationBarColor">#FF0A0A0A</item>
+        <item name="android:windowBackground">#FF0A0A0A</item>
     </style>
 </resources>

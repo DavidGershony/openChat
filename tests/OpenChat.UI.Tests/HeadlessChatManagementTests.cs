@@ -213,6 +213,7 @@ public class HeadlessChatManagementTests : HeadlessTestBase
         var mainVm = CreateMainViewModel(ctx);
         Dispatcher.UIThread.RunJobs();
         mainVm.CurrentUser = ctx.User;
+        mainVm.IsLoggedIn = true;
         Dispatcher.UIThread.RunJobs();
 
         // Load chat — should load initial batch of messages
@@ -262,6 +263,7 @@ public class HeadlessChatManagementTests : HeadlessTestBase
         var mainVm = CreateMainViewModel(ctx);
         Dispatcher.UIThread.RunJobs();
         mainVm.CurrentUser = ctx.User;
+        mainVm.IsLoggedIn = true;
         Dispatcher.UIThread.RunJobs();
 
         mainVm.ChatListViewModel.Chats.Add(new ChatItemViewModel(chat));
