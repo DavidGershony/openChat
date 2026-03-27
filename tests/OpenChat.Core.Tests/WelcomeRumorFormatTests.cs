@@ -109,7 +109,7 @@ public class WelcomeRumorFormatTests : IAsyncLifetime
         Assert.NotEmpty(fetchedKps);
 
         // User A creates a group and adds User B
-        var group = await _mlsServiceA.CreateGroupAsync("Test Group");
+        var group = await _mlsServiceA.CreateGroupAsync("Test Group", new[] { "wss://relay.test" });
         var welcome = await _mlsServiceA.AddMemberAsync(group.GroupId, fetchedKps[0]);
 
         // User B subscribes to welcomes

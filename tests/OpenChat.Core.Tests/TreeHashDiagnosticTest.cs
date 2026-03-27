@@ -75,7 +75,7 @@ public class TreeHashDiagnosticTest
         _output.WriteLine($"Bob pubkey:   {keysB.publicKeyHex}");
 
         // Alice creates group
-        var groupInfo = await mlsA.CreateGroupAsync("Diag Group");
+        var groupInfo = await mlsA.CreateGroupAsync("Diag Group", new[] { "wss://relay.test" });
         _output.WriteLine($"\n=== GROUP CREATED (epoch 0) ===");
         _output.WriteLine($"GroupId: {Convert.ToHexString(groupInfo.GroupId).ToLowerInvariant()}");
 

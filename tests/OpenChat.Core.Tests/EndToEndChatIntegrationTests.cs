@@ -101,7 +101,7 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
         Assert.Contains(keyPackageB.NostrTags, t => t.Count >= 2 && t[0] == "mls_ciphersuite");
 
         // ── Phase 3: Group Creation (User A) ──
-        var groupInfo = await _mlsServiceA.CreateGroupAsync("Test Group");
+        var groupInfo = await _mlsServiceA.CreateGroupAsync("Test Group", new[] { "wss://relay.test" });
         Assert.NotNull(groupInfo.GroupId);
         Assert.True(groupInfo.GroupId.Length > 0);
         Assert.Equal("Test Group", groupInfo.GroupName);
@@ -295,7 +295,7 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
 
         // Setup: create a group with both users so cross-user decrypt works
         var keyPackageB = await _mlsServiceB.GenerateKeyPackageAsync();
-        var groupInfo = await _mlsServiceA.CreateGroupAsync("Tag Test");
+        var groupInfo = await _mlsServiceA.CreateGroupAsync("Tag Test", new[] { "wss://relay.test" });
         var chat = new Chat
         {
             Id = Guid.NewGuid().ToString(),
@@ -403,7 +403,7 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
         Assert.True(keyPackageB.Data.Length >= 64);
 
         // ── Phase 3: User A creates group ──
-        var groupInfo = await _mlsServiceA.CreateGroupAsync("Restart Test Group");
+        var groupInfo = await _mlsServiceA.CreateGroupAsync("Restart Test Group", new[] { "wss://relay.test" });
         Assert.NotNull(groupInfo.GroupId);
         Assert.True(groupInfo.GroupId.Length > 0);
 
@@ -530,8 +530,8 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
         // (the native MarmotWrapper creates a brand new client on re-init, wiping state)
         var wrappedMlsA = new Mock<IMlsService>();
         wrappedMlsA.Setup(m => m.InitializeAsync(It.IsAny<string>(), It.IsAny<string>())).Returns(Task.CompletedTask);
-        wrappedMlsA.Setup(m => m.EncryptMessageAsync(It.IsAny<byte[]>(), It.IsAny<string>()))
-            .Returns<byte[], string>((gid, msg) => _mlsServiceA.EncryptMessageAsync(gid, msg));
+        wrappedMlsA.Setup(m => m.EncryptMessageAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<List<List<string>>?>()))
+            .Returns<byte[], string, List<List<string>>?>((gid, msg, tags) => _mlsServiceA.EncryptMessageAsync(gid, msg, tags));
         wrappedMlsA.Setup(m => m.DecryptMessageAsync(It.IsAny<byte[]>(), It.IsAny<byte[]>()))
             .Returns<byte[], byte[]>((gid, data) => _mlsServiceA.DecryptMessageAsync(gid, data));
         wrappedMlsA.Setup(m => m.ExportGroupStateAsync(It.IsAny<byte[]>()))
@@ -543,8 +543,8 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
 
         var wrappedMlsB = new Mock<IMlsService>();
         wrappedMlsB.Setup(m => m.InitializeAsync(It.IsAny<string>(), It.IsAny<string>())).Returns(Task.CompletedTask);
-        wrappedMlsB.Setup(m => m.EncryptMessageAsync(It.IsAny<byte[]>(), It.IsAny<string>()))
-            .Returns<byte[], string>((gid, msg) => _mlsServiceB.EncryptMessageAsync(gid, msg));
+        wrappedMlsB.Setup(m => m.EncryptMessageAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<List<List<string>>?>()))
+            .Returns<byte[], string, List<List<string>>?>((gid, msg, tags) => _mlsServiceB.EncryptMessageAsync(gid, msg, tags));
         wrappedMlsB.Setup(m => m.DecryptMessageAsync(It.IsAny<byte[]>(), It.IsAny<byte[]>()))
             .Returns<byte[], byte[]>((gid, data) => _mlsServiceB.DecryptMessageAsync(gid, data));
         wrappedMlsB.Setup(m => m.ExportGroupStateAsync(It.IsAny<byte[]>()))
@@ -655,7 +655,7 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
 
         // ── Setup: Create group and add member ──
         var keyPackageB = await _mlsServiceB.GenerateKeyPackageAsync();
-        var groupInfo = await _mlsServiceA.CreateGroupAsync("Protocol Test");
+        var groupInfo = await _mlsServiceA.CreateGroupAsync("Protocol Test", new[] { "wss://relay.test" });
         var groupIdHex = Convert.ToHexString(groupInfo.GroupId).ToLowerInvariant();
 
         var fakeKpJson = CreateFakeKeyPackageEventJson(_pubKeyB, keyPackageB.Data, keyPackageB.NostrTags);

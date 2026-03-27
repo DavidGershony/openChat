@@ -206,7 +206,7 @@ public class CrossMdkRelayIntegrationTests : IAsyncLifetime
         await Task.Delay(1000); // Let relay store it
 
         // ── Phase 2: User A (Rust) creates a group ──
-        var groupInfo = await _mlsServiceA.CreateGroupAsync("Cross-MDK Test Group");
+        var groupInfo = await _mlsServiceA.CreateGroupAsync("Cross-MDK Test Group", new[] { "wss://relay.test" });
         Assert.NotNull(groupInfo.GroupId);
         _output.WriteLine($"User A created group: {Convert.ToHexString(groupInfo.GroupId).ToLowerInvariant()[..16]}...");
 

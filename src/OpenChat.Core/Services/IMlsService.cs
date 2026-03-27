@@ -44,7 +44,7 @@ public interface IMlsService
     /// <summary>
     /// Encrypt a message for a group.
     /// </summary>
-    Task<byte[]> EncryptMessageAsync(byte[] groupId, string plaintext);
+    Task<byte[]> EncryptMessageAsync(byte[] groupId, string plaintext, List<List<string>>? rumorTags = null);
 
     /// <summary>
     /// Decrypt a message from a group.
@@ -161,6 +161,7 @@ public class MlsDecryptedMessage
 {
     public string SenderPublicKey { get; set; } = string.Empty;
     public string Plaintext { get; set; } = string.Empty;
+    public string? RumorJson { get; set; }
     public ulong Epoch { get; set; }
 
     /// <summary>

@@ -200,7 +200,7 @@ public class Mip01InteropTests : IAsyncLifetime
         _output.WriteLine($"Rust KeyPackage: {rustKp.Data.Length} bytes, {rustKp.Tags.Count} tags");
 
         // C# creates group
-        var groupInfo = await _managedMlsA.CreateGroupAsync("CSharp MIP-01 Group");
+        var groupInfo = await _managedMlsA.CreateGroupAsync("CSharp MIP-01 Group", new[] { "wss://relay.test" });
         _output.WriteLine($"C# group: {Convert.ToHexString(groupInfo.GroupId).ToLowerInvariant()[..16]}...");
 
         // C# adds Rust member — need to build a KeyPackage model with EventJson

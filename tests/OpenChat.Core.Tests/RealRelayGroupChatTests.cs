@@ -178,7 +178,7 @@ public class RealRelayGroupChatTests : IAsyncLifetime
         await Task.Delay(1000); // Let relay store it
 
         // Phase 2: User A creates a group
-        var groupInfo = await _mlsServiceA.CreateGroupAsync("Real Relay Test Group");
+        var groupInfo = await _mlsServiceA.CreateGroupAsync("Real Relay Test Group", new[] { "wss://relay.test" });
         Assert.NotNull(groupInfo.GroupId);
         _output.WriteLine($"User A created group: {Convert.ToHexString(groupInfo.GroupId).ToLowerInvariant()[..16]}...");
 
@@ -322,7 +322,7 @@ public class RealRelayGroupChatTests : IAsyncLifetime
         await Task.Delay(1000);
 
         // Phase 2: User A creates group and adds User B
-        var groupInfo = await _mlsServiceA.CreateGroupAsync("H-Tag Test Group");
+        var groupInfo = await _mlsServiceA.CreateGroupAsync("H-Tag Test Group", new[] { "wss://relay.test" });
         var nostrGroupId = _mlsServiceA.GetNostrGroupId(groupInfo.GroupId);
         Assert.NotNull(nostrGroupId);
         var nostrGroupIdHex = Convert.ToHexString(nostrGroupId!).ToLowerInvariant();
@@ -407,7 +407,7 @@ public class RealRelayGroupChatTests : IAsyncLifetime
         await Task.Delay(1000);
 
         // Phase 2: User A creates group and adds User B
-        var groupInfo = await _mlsServiceA.CreateGroupAsync("Welcome Timestamp Test");
+        var groupInfo = await _mlsServiceA.CreateGroupAsync("Welcome Timestamp Test", new[] { "wss://relay.test" });
         var chatA = new Chat
         {
             Id = Guid.NewGuid().ToString(),

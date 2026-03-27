@@ -169,7 +169,7 @@ public class WebAppInteropInvestigationTests : IAsyncLifetime
 
         // ── Step 5: Alice creates a group ──
         _output.WriteLine("\n--- Alice creates group ---");
-        var groupInfo = await alice.MlsService.CreateGroupAsync("Interop Test Group");
+        var groupInfo = await alice.MlsService.CreateGroupAsync("Interop Test Group", new[] { "wss://relay.test" });
         var groupIdHex = Convert.ToHexString(groupInfo.GroupId).ToLowerInvariant();
         var nostrGroupId = alice.MlsService.GetNostrGroupId(groupInfo.GroupId);
         var nostrGroupIdHex = nostrGroupId != null
@@ -617,7 +617,7 @@ public class WebAppInteropInvestigationTests : IAsyncLifetime
         await Task.Delay(2000);
 
         // Alice creates group and adds Bob
-        var groupInfo = await alice.MlsService.CreateGroupAsync("GW Test Group");
+        var groupInfo = await alice.MlsService.CreateGroupAsync("GW Test Group", new[] { "wss://relay.test" });
         var fetchedKPs = (await alice.NostrService.FetchKeyPackagesAsync(bob.PubKeyHex)).ToList();
         Assert.NotEmpty(fetchedKPs);
 

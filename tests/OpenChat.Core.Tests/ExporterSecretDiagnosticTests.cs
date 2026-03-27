@@ -91,7 +91,7 @@ public class ExporterSecretDiagnosticTests : IAsyncLifetime
         _output.WriteLine($"Bob nsec:     {bob.nsec}");
 
         // Alice creates a group
-        var groupInfo = await alice.mls.CreateGroupAsync("Diagnostic Group");
+        var groupInfo = await alice.mls.CreateGroupAsync("Diagnostic Group", new[] { "wss://relay.test" });
         var groupIdHex = Convert.ToHexString(groupInfo.GroupId).ToLowerInvariant();
         var nostrGroupId = alice.mls.GetNostrGroupId(groupInfo.GroupId);
         var nostrGroupIdHex = nostrGroupId != null ? Convert.ToHexString(nostrGroupId).ToLowerInvariant() : "none";

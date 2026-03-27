@@ -352,7 +352,7 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
         await Task.Delay(1000); // Let relay store it
 
         // Step 2: User A creates a group
-        var groupInfo = await _mlsServiceA.CreateGroupAsync("Full Stack Test Group");
+        var groupInfo = await _mlsServiceA.CreateGroupAsync("Full Stack Test Group", new[] { "wss://relay.test" });
         Assert.NotNull(groupInfo.GroupId);
         _output.WriteLine($"User A created group: {Convert.ToHexString(groupInfo.GroupId).ToLowerInvariant()[..16]}...");
 

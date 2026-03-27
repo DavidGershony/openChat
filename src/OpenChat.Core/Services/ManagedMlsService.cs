@@ -379,25 +379,28 @@ public class ManagedMlsService : IMlsService
             lastError);
     }
 
-    public async Task<byte[]> EncryptMessageAsync(byte[] groupId, string plaintext)
+    public async Task<byte[]> EncryptMessageAsync(byte[] groupId, string plaintext, List<List<string>>? rumorTags = null)
     {
         EnsureInitialized();
 
         var groupIdHex = Convert.ToHexString(groupId).ToLowerInvariant();
-        _logger.LogDebug("EncryptMessage: group={GroupId}, plaintext length={Len} (managed)",
-            groupIdHex[..Math.Min(16, groupIdHex.Length)], plaintext.Length);
+        _logger.LogDebug("EncryptMessage: group={GroupId}, plaintext length={Len}, tags={TagCount} (managed)",
+            groupIdHex[..Math.Min(16, groupIdHex.Length)], plaintext.Length, rumorTags?.Count ?? 0);
 
         // Match the Rust MDK flow:
-        // 1. Wrap plaintext in a Nostr rumor event (kind 9)
+        // 1. Wrap plaintext in a Nostr rumor event (kind 9) with optional tags
         // 2. MLS-encrypt the rumor → raw TLS bytes
         // 3. MIP-03 encrypt with exporter_secret (ChaCha20-Poly1305)
         // 4. Build a signed Nostr event (kind 445) with base64 content and h-tag
 
-        // Step 1: Create rumor event JSON (same as Rust: kind 9, pubkey, content)
+        // Step 1: Create rumor event JSON (kind 9, pubkey, content, tags)
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var rumorId = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
         var escapedContent = JsonSerializer.Serialize(plaintext);
-        var rumorJson = $"{{\"id\":\"{rumorId}\",\"pubkey\":\"{_publicKeyHex}\",\"created_at\":{now},\"kind\":9,\"tags\":[],\"content\":{escapedContent}}}";
+        var rumorTagsJson = rumorTags != null && rumorTags.Count > 0
+            ? JsonSerializer.Serialize(rumorTags)
+            : "[]";
+        var rumorJson = $"{{\"id\":\"{rumorId}\",\"pubkey\":\"{_publicKeyHex}\",\"created_at\":{now},\"kind\":9,\"tags\":{rumorTagsJson},\"content\":{escapedContent}}}";
 
         // Step 2: MLS-encrypt the rumor
         var mlsBytes = await _mdk!.CreateMessageAsync(groupId, Encoding.UTF8.GetBytes(rumorJson));
@@ -469,6 +472,7 @@ public class ManagedMlsService : IMlsService
         {
             var senderHex = Convert.ToHexString(appMsg.Message.SenderIdentity);
             var plaintext = Encoding.UTF8.GetString(appMsg.Message.Content);
+            var rumorJsonFull = plaintext; // Preserve full rumor JSON before content extraction
 
             // The Rust MDK wraps messages as Nostr rumor events (JSON with "content" field).
             // Extract the actual message text from the rumor event if present.
@@ -559,6 +563,7 @@ public class ManagedMlsService : IMlsService
             {
                 SenderPublicKey = senderHex,
                 Plaintext = plaintext,
+                RumorJson = rumorJsonFull,
                 Epoch = appMsg.Message.Epoch,
                 ImageUrl = imageUrl,
                 MediaType = mediaType,

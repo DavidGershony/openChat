@@ -190,7 +190,7 @@ public class MlsService : IMlsService
         };
     }
 
-    public async Task<byte[]> EncryptMessageAsync(byte[] groupId, string plaintext)
+    public async Task<byte[]> EncryptMessageAsync(byte[] groupId, string plaintext, List<List<string>>? rumorTags = null)
     {
         EnsureInitialized();
 
