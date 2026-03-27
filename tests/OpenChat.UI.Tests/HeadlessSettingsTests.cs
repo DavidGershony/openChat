@@ -26,7 +26,7 @@ public class HeadlessSettingsTests : HeadlessTestBase
 
         var mainVm = CreateMainViewModel(ctx);
         Dispatcher.UIThread.RunJobs();
-        mainVm.LoginViewModel.LoggedInUser = ctx.User;
+        mainVm.CurrentUser = ctx.User;
         Dispatcher.UIThread.RunJobs();
         await Task.Delay(200);
         Dispatcher.UIThread.RunJobs();
@@ -62,7 +62,7 @@ public class HeadlessSettingsTests : HeadlessTestBase
 
         var mainVm = CreateMainViewModel(ctx);
         Dispatcher.UIThread.RunJobs();
-        mainVm.LoginViewModel.LoggedInUser = ctx.User;
+        mainVm.CurrentUser = ctx.User;
         Dispatcher.UIThread.RunJobs();
         await Task.Delay(200);
         Dispatcher.UIThread.RunJobs();
@@ -90,7 +90,7 @@ public class HeadlessSettingsTests : HeadlessTestBase
 
         var mainVm = CreateMainViewModel(ctx);
         Dispatcher.UIThread.RunJobs();
-        mainVm.LoginViewModel.LoggedInUser = ctx.User;
+        mainVm.CurrentUser = ctx.User;
         Dispatcher.UIThread.RunJobs();
         await Task.Delay(200);
         Dispatcher.UIThread.RunJobs();
@@ -125,7 +125,7 @@ public class HeadlessSettingsTests : HeadlessTestBase
 
         var mainVm = CreateMainViewModel(ctx);
         Dispatcher.UIThread.RunJobs();
-        mainVm.LoginViewModel.LoggedInUser = ctx.User;
+        mainVm.CurrentUser = ctx.User;
         Dispatcher.UIThread.RunJobs();
         await Task.Delay(200);
         Dispatcher.UIThread.RunJobs();
@@ -187,7 +187,7 @@ public class HeadlessSettingsTests : HeadlessTestBase
 
         var mainVm = CreateMainViewModel(ctx);
         Dispatcher.UIThread.RunJobs();
-        mainVm.LoginViewModel.LoggedInUser = ctx.User;
+        mainVm.CurrentUser = ctx.User;
         Dispatcher.UIThread.RunJobs();
         await Task.Delay(200);
         Dispatcher.UIThread.RunJobs();
@@ -229,7 +229,7 @@ public class HeadlessSettingsTests : HeadlessTestBase
         // Create MainViewModel and log in — this triggers InitializeAfterLoginAsync
         var mainVm = CreateMainViewModel(ctx);
         Dispatcher.UIThread.RunJobs();
-        mainVm.LoginViewModel.LoggedInUser = ctx.User;
+        mainVm.CurrentUser = ctx.User;
         Dispatcher.UIThread.RunJobs();
         await Task.Delay(500);
         Dispatcher.UIThread.RunJobs();

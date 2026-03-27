@@ -24,7 +24,7 @@ public class HeadlessChatManagementTests : HeadlessTestBase
         await ctx.MessageService.InitializeAsync();
 
         // Create a group with real MLS
-        var groupInfo = await ctx.MlsService.CreateGroupAsync("Doomed Group");
+        var groupInfo = await ctx.MlsService.CreateGroupAsync("Doomed Group", new[] { "wss://relay.test" });
         var chat = new Chat
         {
             Id = Guid.NewGuid().ToString(),
@@ -75,9 +75,9 @@ public class HeadlessChatManagementTests : HeadlessTestBase
         await ctx.MessageService.InitializeAsync();
 
         // Create multiple groups
-        var group1 = await ctx.MlsService.CreateGroupAsync("Alpha Team");
-        var group2 = await ctx.MlsService.CreateGroupAsync("Beta Squad");
-        var group3 = await ctx.MlsService.CreateGroupAsync("Alpha Force");
+        var group1 = await ctx.MlsService.CreateGroupAsync("Alpha Team", new[] { "wss://relay.test" });
+        var group2 = await ctx.MlsService.CreateGroupAsync("Beta Squad", new[] { "wss://relay.test" });
+        var group3 = await ctx.MlsService.CreateGroupAsync("Alpha Force", new[] { "wss://relay.test" });
 
         foreach (var (info, name) in new[] { (group1, "Alpha Team"), (group2, "Beta Squad"), (group3, "Alpha Force") })
         {
@@ -133,7 +133,7 @@ public class HeadlessChatManagementTests : HeadlessTestBase
         await bob.MlsService.InitializeAsync(bob.User.PrivateKeyHex, bob.User.PublicKeyHex);
 
         // Alice creates group, adds Bob
-        var groupInfo = await alice.MlsService.CreateGroupAsync("Unread Test");
+        var groupInfo = await alice.MlsService.CreateGroupAsync("Unread Test", new[] { "wss://relay.test" });
         var groupIdHex = Convert.ToHexString(groupInfo.GroupId).ToLowerInvariant();
         var bobKp = await bob.MlsService.GenerateKeyPackageAsync();
         PrepareKeyPackageForAddMember(bobKp, bob.User.PublicKeyHex);
@@ -190,7 +190,7 @@ public class HeadlessChatManagementTests : HeadlessTestBase
         await ctx.MessageService.InitializeAsync();
 
         // Create group and send several messages
-        var groupInfo = await ctx.MlsService.CreateGroupAsync("Pagination Group");
+        var groupInfo = await ctx.MlsService.CreateGroupAsync("Pagination Group", new[] { "wss://relay.test" });
         var chat = new Chat
         {
             Id = Guid.NewGuid().ToString(),
@@ -212,7 +212,7 @@ public class HeadlessChatManagementTests : HeadlessTestBase
 
         var mainVm = CreateMainViewModel(ctx);
         Dispatcher.UIThread.RunJobs();
-        mainVm.LoginViewModel.LoggedInUser = ctx.User;
+        mainVm.CurrentUser = ctx.User;
         Dispatcher.UIThread.RunJobs();
 
         // Load chat — should load initial batch of messages
@@ -246,7 +246,7 @@ public class HeadlessChatManagementTests : HeadlessTestBase
                 Name = "contact_person"
             });
 
-        var groupInfo = await ctx.MlsService.CreateGroupAsync("Metadata Test");
+        var groupInfo = await ctx.MlsService.CreateGroupAsync("Metadata Test", new[] { "wss://relay.test" });
         var chat = new Chat
         {
             Id = Guid.NewGuid().ToString(),
@@ -261,7 +261,7 @@ public class HeadlessChatManagementTests : HeadlessTestBase
 
         var mainVm = CreateMainViewModel(ctx);
         Dispatcher.UIThread.RunJobs();
-        mainVm.LoginViewModel.LoggedInUser = ctx.User;
+        mainVm.CurrentUser = ctx.User;
         Dispatcher.UIThread.RunJobs();
 
         mainVm.ChatListViewModel.Chats.Add(new ChatItemViewModel(chat));

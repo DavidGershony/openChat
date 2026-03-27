@@ -60,7 +60,7 @@ public class HeadlessIntegrationTests
             IsCurrentUser = true
         };
 
-        mainVm.LoginViewModel.LoggedInUser = user;
+        mainVm.CurrentUser = user;
         Dispatcher.UIThread.RunJobs();
 
         // After login, IsLoggedIn should be true
@@ -349,7 +349,7 @@ public class HeadlessIntegrationTests
 
         // MLS group creation
         var groupId = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
-        mockMls.Setup(m => m.CreateGroupAsync("End-to-End Group"))
+        mockMls.Setup(m => m.CreateGroupAsync("End-to-End Group", new[] { "wss://relay.test" }))
             .ReturnsAsync(new MlsGroupInfo
             {
                 GroupId = groupId,
@@ -371,7 +371,7 @@ public class HeadlessIntegrationTests
         Dispatcher.UIThread.RunJobs();
 
         // Login
-        mainVm.LoginViewModel.LoggedInUser = new User
+        mainVm.CurrentUser = new User
         {
             Id = "test-user",
             PublicKeyHex = "bb".PadLeft(64, 'b'),

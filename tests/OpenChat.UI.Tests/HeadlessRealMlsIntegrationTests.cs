@@ -57,7 +57,7 @@ public class HeadlessRealMlsIntegrationTests : IDisposable
 
         // Save user to storage and simulate login
         await ctx.Storage.SaveCurrentUserAsync(ctx.User);
-        mainVm.LoginViewModel.LoggedInUser = ctx.User;
+        mainVm.CurrentUser = ctx.User;
         Dispatcher.UIThread.RunJobs();
 
         Assert.True(mainVm.IsLoggedIn);
@@ -255,7 +255,7 @@ public class HeadlessRealMlsIntegrationTests : IDisposable
         Dispatcher.UIThread.RunJobs();
 
         // Login
-        mainVm.LoginViewModel.LoggedInUser = ctx.User;
+        mainVm.CurrentUser = ctx.User;
         Dispatcher.UIThread.RunJobs();
         Assert.True(mainVm.IsLoggedIn);
 
@@ -293,7 +293,7 @@ public class HeadlessRealMlsIntegrationTests : IDisposable
         await ctx.MessageService.InitializeAsync();
 
         // Create a real group via MLS
-        var groupInfo = await ctx.MlsService.CreateGroupAsync("Corrupted Group");
+        var groupInfo = await ctx.MlsService.CreateGroupAsync("Corrupted Group", new[] { "wss://relay.test" });
         var chat = new Chat
         {
             Id = Guid.NewGuid().ToString(),
@@ -345,7 +345,7 @@ public class HeadlessRealMlsIntegrationTests : IDisposable
         var ctx = await CreateRealContext(backend);
         await ctx.MessageService.InitializeAsync();
 
-        var groupInfo = await ctx.MlsService.CreateGroupAsync("Keep This Group");
+        var groupInfo = await ctx.MlsService.CreateGroupAsync("Keep This Group", new[] { "wss://relay.test" });
         var chat = new Chat
         {
             Id = Guid.NewGuid().ToString(),
@@ -394,7 +394,7 @@ public class HeadlessRealMlsIntegrationTests : IDisposable
         Dispatcher.UIThread.RunJobs();
 
         // Create a group and a chat so we can simulate a bad message
-        var groupInfo = await ctx.MlsService.CreateGroupAsync("Broken Group");
+        var groupInfo = await ctx.MlsService.CreateGroupAsync("Broken Group", new[] { "wss://relay.test" });
         var chat = new Chat
         {
             Id = Guid.NewGuid().ToString(),
@@ -547,7 +547,7 @@ public class HeadlessRealMlsIntegrationTests : IDisposable
         mockNostr.Setup(n => n.UnsubscribeAsync(It.IsAny<string>())).Returns(Task.CompletedTask);
         mockNostr.Setup(n => n.FetchUserMetadataAsync(It.IsAny<string>())).ReturnsAsync((UserMetadata?)null);
         mockNostr.Setup(n => n.FetchKeyPackagesAsync(It.IsAny<string>())).ReturnsAsync(Enumerable.Empty<KeyPackage>());
-        mockNostr.Setup(n => n.FetchWelcomeEventsAsync(It.IsAny<string>())).ReturnsAsync(Enumerable.Empty<NostrEventReceived>());
+        mockNostr.Setup(n => n.FetchWelcomeEventsAsync(It.IsAny<string>(), It.IsAny<string?>())).ReturnsAsync(Enumerable.Empty<NostrEventReceived>());
         mockNostr.Setup(n => n.PublishKeyPackageAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<List<List<string>>?>()))
             .ReturnsAsync(() => "fakekp_" + Guid.NewGuid().ToString("N"));
         mockNostr.Setup(n => n.PublishWelcomeAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()))

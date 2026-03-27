@@ -30,7 +30,7 @@ public class HeadlessGroupLifecycleTests : HeadlessTestBase
         await bob.MessageService.InitializeAsync();
 
         // Alice creates group
-        var groupInfo = await alice.MlsService.CreateGroupAsync("Alice's Group");
+        var groupInfo = await alice.MlsService.CreateGroupAsync("Alice's Group", new[] { "wss://relay.test" });
 
         // Bob generates KeyPackage
         var bobKp = await bob.MlsService.GenerateKeyPackageAsync();
@@ -198,7 +198,7 @@ public class HeadlessGroupLifecycleTests : HeadlessTestBase
             RelayUrl = "wss://test.relay"
         };
 
-        ctx.MockNostr.Setup(n => n.FetchWelcomeEventsAsync(ctx.User.PublicKeyHex))
+        ctx.MockNostr.Setup(n => n.FetchWelcomeEventsAsync(ctx.User.PublicKeyHex, It.IsAny<string?>()))
             .ReturnsAsync(new[] { missedWelcome });
 
         var chatListVm = new ChatListViewModel(ctx.MessageService, ctx.Storage, ctx.MlsService, ctx.MockNostr.Object);

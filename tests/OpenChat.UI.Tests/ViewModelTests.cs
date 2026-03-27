@@ -119,7 +119,7 @@ public class ViewModelTests
         var mockStorageService = new Mock<IStorageService>();
 
         var mockQrGenerator = new Mock<IQrCodeGenerator>();
-        var viewModel = new LoginViewModel(mockNostrService.Object, mockStorageService.Object, mockQrGenerator.Object);
+        var viewModel = new LoginViewModel(mockNostrService.Object, mockQrGenerator.Object);
 
         // Act
         viewModel.GenerateNewKeyCommand.Execute().Subscribe();
@@ -147,7 +147,7 @@ public class ViewModelTests
             .Returns(Task.CompletedTask);
 
         var mockQrGenerator = new Mock<IQrCodeGenerator>();
-        var viewModel = new LoginViewModel(mockNostrService.Object, mockStorageService.Object, mockQrGenerator.Object);
+        var viewModel = new LoginViewModel(mockNostrService.Object, mockQrGenerator.Object);
         viewModel.PrivateKeyInput = "nsec1test";
 
         // Act

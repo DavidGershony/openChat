@@ -25,7 +25,7 @@ public class HeadlessMlsMessagingTests : HeadlessTestBase
         await ctx.MessageService.InitializeAsync();
 
         // Create a real MLS group
-        var groupInfo = await ctx.MlsService.CreateGroupAsync("Encrypt Test");
+        var groupInfo = await ctx.MlsService.CreateGroupAsync("Encrypt Test", new[] { "wss://relay.test" });
         var chat = new Chat
         {
             Id = Guid.NewGuid().ToString(),
@@ -66,7 +66,7 @@ public class HeadlessMlsMessagingTests : HeadlessTestBase
         await bob.MlsService.InitializeAsync(bob.User.PrivateKeyHex, bob.User.PublicKeyHex);
 
         // Alice creates group
-        var groupInfo = await alice.MlsService.CreateGroupAsync("Two User Chat");
+        var groupInfo = await alice.MlsService.CreateGroupAsync("Two User Chat", new[] { "wss://relay.test" });
         var groupIdHex = Convert.ToHexString(groupInfo.GroupId).ToLowerInvariant();
 
         // Bob generates KeyPackage
@@ -136,8 +136,8 @@ public class HeadlessMlsMessagingTests : HeadlessTestBase
         await ctx.MessageService.InitializeAsync();
 
         // Create two groups
-        var group1Info = await ctx.MlsService.CreateGroupAsync("Group Alpha");
-        var group2Info = await ctx.MlsService.CreateGroupAsync("Group Beta");
+        var group1Info = await ctx.MlsService.CreateGroupAsync("Group Alpha", new[] { "wss://relay.test" });
+        var group2Info = await ctx.MlsService.CreateGroupAsync("Group Beta", new[] { "wss://relay.test" });
 
         var chat1 = new Chat
         {
@@ -171,7 +171,7 @@ public class HeadlessMlsMessagingTests : HeadlessTestBase
 
         var mainVm = CreateMainViewModel(ctx);
         Dispatcher.UIThread.RunJobs();
-        mainVm.LoginViewModel.LoggedInUser = ctx.User;
+        mainVm.CurrentUser = ctx.User;
         Dispatcher.UIThread.RunJobs();
 
         // Load chats
