@@ -70,23 +70,27 @@
                             <!-- Top row: avatar + name + action buttons -->
                             <Grid ColumnDefinitions="Auto,*,Auto">
                                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12">
-                                    <!-- User Avatar -->
-                                    <Panel Width="40" Height="40">
-                                        <!-- Fallback avatar (no picture) -->
-                                        <Border Width="40" Height="40" CornerRadius="20"
-                                                Background="{DynamicResource NostrPurpleBrush}"
-                                                IsVisible="{Binding MyPictureUrl, Converter={x:Static StringConverters.IsNullOrEmpty}}">
-                                            <TextBlock Text="U" FontSize="18" FontWeight="SemiBold"
-                                                       HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                       Foreground="White" />
-                                        </Border>
-                                        <!-- Profile picture -->
-                                        <Border Width="40" Height="40" CornerRadius="20" ClipToBounds="True"
-                                                IsVisible="{Binding MyPictureUrl, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                                            <Image asyncImageLoader:ImageLoader.Source="{Binding MyPictureUrl}"
-                                                   Stretch="UniformToFill" />
-                                        </Border>
-                                    </Panel>
+                                    <!-- User Avatar (clickable - opens profile dialog) -->
+                                    <Button x:Name="AvatarButton" Classes="icon"
+                                            Click="AvatarButton_Click"
+                                            ToolTip.Tip="My Profile / Export npub"
+                                            Padding="0" CornerRadius="20">
+                                        <Panel Width="40" Height="40">
+                                            <!-- Fallback avatar icon (no picture) -->
+                                            <Border Width="40" Height="40" CornerRadius="20"
+                                                    Background="{DynamicResource NostrPurpleBrush}"
+                                                    IsVisible="{Binding MyPictureUrl, Converter={x:Static StringConverters.IsNullOrEmpty}}">
+                                                <PathIcon Data="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"
+                                                          Width="22" Height="22" Foreground="White" />
+                                            </Border>
+                                            <!-- Profile picture -->
+                                            <Border Width="40" Height="40" CornerRadius="20" ClipToBounds="True"
+                                                    IsVisible="{Binding MyPictureUrl, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                                <Image asyncImageLoader:ImageLoader.Source="{Binding MyPictureUrl}"
+                                                       Stretch="UniformToFill" />
+                                            </Border>
+                                        </Panel>
+                                    </Button>
                                     <!-- Name or loading indicator -->
                                     <StackPanel VerticalAlignment="Center" MaxWidth="120">
                                         <TextBlock Text="{Binding HeaderDisplayName}" FontSize="18" FontWeight="Bold"
@@ -98,11 +102,6 @@
                                 </StackPanel>
 
                                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
-                                    <!-- My Profile / Export npub -->
-                                    <Button Classes="icon" Command="{Binding ShowMyProfileCommand}" ToolTip.Tip="My Profile / Export npub">
-                                        <PathIcon Data="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"
-                                                  Width="20" Height="20" />
-                                    </Button>
                                     <!-- Rescan Invites -->
                                     <Button Classes="icon"
                                             Command="{Binding ChatListViewModel.RescanInvitesCommand}"
@@ -255,7 +254,7 @@
         <views:LoginView x:Name="LoginViewControl" DataContext="{Binding LoginViewModel}" />
 
         <!-- My Profile / Export npub Dialog (only when logged in and dialog open) -->
-        <Border IsVisible="{Binding MainViewModel.ShowMyProfileDialog, FallbackValue=False}"
+        <Border x:Name="ProfileDialogOverlay" IsVisible="False"
                 DataContext="{Binding MainViewModel}" x:DataType="vm:MainViewModel"
                 Background="#80000000"
                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch">

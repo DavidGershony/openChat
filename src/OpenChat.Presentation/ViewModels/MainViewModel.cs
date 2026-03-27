@@ -105,6 +105,7 @@ public class MainViewModel : ViewModelBase
 
         ShowMyProfileCommand = ReactiveCommand.CreateFromTask(async () =>
         {
+            _logger.LogInformation("ShowMyProfileCommand executed - opening profile dialog");
             MyNpub = CurrentUser?.Npub ?? "No key available";
             CopyStatusMessage = null;
             MyDisplayName = null;

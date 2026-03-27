@@ -31,6 +31,15 @@ public partial class MainWindow : Window
                         if (mainGrid != null) mainGrid.IsVisible = isLoggedIn;
                         if (loginView != null) loginView.IsVisible = !isLoggedIn;
                     });
+
+                // Track profile dialog visibility through MainViewModel changes
+                var profileOverlay = this.FindControl<Avalonia.Controls.Border>("ProfileDialogOverlay");
+                shell.WhenAnyValue(x => x.MainViewModel!.ShowMyProfileDialog)
+                    .ObserveOn(RxApp.MainThreadScheduler)
+                    .Subscribe(show =>
+                    {
+                        if (profileOverlay != null) profileOverlay.IsVisible = show;
+                    });
             }
         };
     }
@@ -45,6 +54,14 @@ public partial class MainWindow : Window
         if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
         {
             BeginMoveDrag(e);
+        }
+    }
+
+    private void AvatarButton_Click(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is ShellViewModel shell && shell.MainViewModel is { } mainVm)
+        {
+            mainVm.ShowMyProfileCommand.Execute().Subscribe();
         }
     }
 
