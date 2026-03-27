@@ -688,6 +688,26 @@ public class StorageService : IStorageService
         return count > 0;
     }
 
+    public async Task<Message?> GetMessageByNostrEventIdAsync(string nostrEventId)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        var command = connection.CreateCommand();
+        command.CommandText = "SELECT * FROM Messages WHERE NostrEventId = @NostrEventId LIMIT 1";
+        command.Parameters.AddWithValue("@NostrEventId", nostrEventId);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            var message = ReadMessage(reader);
+            message.Reactions = await GetMessageReactionsAsync(connection, message.Id);
+            return message;
+        }
+
+        return null;
+    }
+
     public async Task<KeyPackage?> GetKeyPackageAsync(string id)
     {
         await using var connection = new SqliteConnection(_connectionString);

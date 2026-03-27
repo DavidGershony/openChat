@@ -18,6 +18,7 @@ public class MessageService : IMessageService, IDisposable
     private readonly Subject<Chat> _chatUpdates = new();
     private readonly Subject<PendingInvite> _newInvites = new();
     private readonly Subject<MlsDecryptionError> _decryptionErrors = new();
+    private readonly Subject<(string MessageId, string Emoji, string ReactorPublicKey)> _reactionUpdates = new();
 
     private User? _currentUser;
     private IDisposable? _eventSubscription;
@@ -28,6 +29,7 @@ public class MessageService : IMessageService, IDisposable
     public IObservable<Chat> ChatUpdates => _chatUpdates.AsObservable();
     public IObservable<PendingInvite> NewInvites => _newInvites.AsObservable();
     public IObservable<MlsDecryptionError> DecryptionErrors => _decryptionErrors.AsObservable();
+    public IObservable<(string MessageId, string Emoji, string ReactorPublicKey)> ReactionUpdates => _reactionUpdates.AsObservable();
 
     public MessageService(IStorageService storageService, INostrService nostrService, IMlsService mlsService)
     {
@@ -756,9 +758,54 @@ public class MessageService : IMessageService, IDisposable
             return;
         }
 
-        _logger.LogInformation("HandleGroupMessage: decrypted message from {Sender}, epoch={Epoch}, content length={Len}, hasImage={HasImage}",
+        _logger.LogInformation("HandleGroupMessage: decrypted message from {Sender}, epoch={Epoch}, content length={Len}, hasImage={HasImage}, rumorKind={Kind}",
             decrypted.SenderPublicKey[..Math.Min(16, decrypted.SenderPublicKey.Length)], decrypted.Epoch, decrypted.Plaintext.Length,
-            decrypted.ImageUrl != null);
+            decrypted.ImageUrl != null, decrypted.RumorKind);
+
+        // Handle reaction events (kind 7) — update the target message instead of creating a new one
+        if (decrypted.RumorKind == 7 && !string.IsNullOrEmpty(decrypted.ReactionTargetEventId) && !string.IsNullOrEmpty(decrypted.ReactionEmoji))
+        {
+            _logger.LogInformation("HandleGroupMessage: processing reaction {Emoji} on event {TargetEvent} from {Sender}",
+                decrypted.ReactionEmoji, decrypted.ReactionTargetEventId[..Math.Min(16, decrypted.ReactionTargetEventId.Length)],
+                decrypted.SenderPublicKey[..Math.Min(16, decrypted.SenderPublicKey.Length)]);
+
+            var targetMessage = await _storageService.GetMessageByNostrEventIdAsync(decrypted.ReactionTargetEventId);
+            if (targetMessage != null)
+            {
+                if (!targetMessage.Reactions.ContainsKey(decrypted.ReactionEmoji))
+                    targetMessage.Reactions[decrypted.ReactionEmoji] = new List<string>();
+
+                if (!targetMessage.Reactions[decrypted.ReactionEmoji].Contains(decrypted.SenderPublicKey))
+                {
+                    targetMessage.Reactions[decrypted.ReactionEmoji].Add(decrypted.SenderPublicKey);
+                    await _storageService.SaveMessageAsync(targetMessage);
+                    _reactionUpdates.OnNext((targetMessage.Id, decrypted.ReactionEmoji, decrypted.SenderPublicKey));
+                    _logger.LogInformation("HandleGroupMessage: added reaction {Emoji} to message {MessageId}", decrypted.ReactionEmoji, targetMessage.Id);
+                }
+            }
+            else
+            {
+                _logger.LogWarning("HandleGroupMessage: reaction target event {EventId} not found in local DB", decrypted.ReactionTargetEventId);
+            }
+
+            // Mark this event as processed so relay echoes are skipped
+            if (!string.IsNullOrEmpty(nostrEvent.EventId))
+            {
+                var reactionMarker = new Message
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    ChatId = chat.Id,
+                    SenderPublicKey = decrypted.SenderPublicKey,
+                    Type = MessageType.Text,
+                    Content = string.Empty,
+                    NostrEventId = nostrEvent.EventId,
+                    Timestamp = nostrEvent.CreatedAt,
+                    IsDeleted = true // Hidden from UI
+                };
+                await _storageService.SaveMessageAsync(reactionMarker);
+            }
+            return;
+        }
 
         // Determine message type and content based on imeta/image metadata
         var messageType = MessageType.Text;
@@ -1223,6 +1270,7 @@ public class MessageService : IMessageService, IDisposable
         _chatUpdates.Dispose();
         _newInvites.Dispose();
         _decryptionErrors.Dispose();
+        _reactionUpdates.Dispose();
 
         _disposed = true;
     }

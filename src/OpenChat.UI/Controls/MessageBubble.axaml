@@ -182,6 +182,15 @@
                 <TextBlock Text="{Binding Timestamp, StringFormat={}{0:HH:mm}}"
                            Foreground="{DynamicResource TextMutedBrush}"
                            FontSize="11" HorizontalAlignment="Right" />
+
+                <!-- Reactions -->
+                <Border IsVisible="{Binding HasReactions}"
+                        Background="{DynamicResource SurfaceSecondaryBrush}"
+                        CornerRadius="10" Padding="6,2" Margin="0,2,0,0"
+                        HorizontalAlignment="Left">
+                    <TextBlock Text="{Binding ReactionsDisplay}"
+                               FontSize="13" />
+                </Border>
             </StackPanel>
         </Border>
 
@@ -340,6 +349,15 @@
                 <TextBlock Text="{Binding Timestamp, StringFormat={}{0:HH:mm}}"
                            Foreground="{DynamicResource NostrPurpleAccentBrush}"
                            FontSize="11" HorizontalAlignment="Right" Opacity="0.8" />
+
+                <!-- Reactions -->
+                <Border IsVisible="{Binding HasReactions}"
+                        Background="{DynamicResource SurfaceSecondaryBrush}"
+                        CornerRadius="10" Padding="6,2" Margin="0,2,0,0"
+                        HorizontalAlignment="Right">
+                    <TextBlock Text="{Binding ReactionsDisplay}"
+                               FontSize="13" />
+                </Border>
             </StackPanel>
         </Border>
     </Grid>

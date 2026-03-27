@@ -31,6 +31,7 @@ public interface IStorageService
     Task UpdateMessageStatusAsync(string messageId, MessageStatus status);
     Task DeleteMessageAsync(string messageId);
     Task<bool> MessageExistsByNostrEventIdAsync(string nostrEventId);
+    Task<Message?> GetMessageByNostrEventIdAsync(string nostrEventId);
 
     // KeyPackage operations
     Task<KeyPackage?> GetKeyPackageAsync(string id);

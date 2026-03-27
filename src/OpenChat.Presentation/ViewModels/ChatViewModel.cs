@@ -23,6 +23,7 @@ public class ChatViewModel : ViewModelBase
     private readonly IMlsService _mlsService;
     private readonly IPlatformClipboard _clipboard;
     private IDisposable? _messageSubscription;
+    private IDisposable? _reactionSubscription;
     private IDisposable? _recordingTimerSubscription;
     private Chat? _currentChat;
     private string? _currentUserPrivateKeyHex;
@@ -237,6 +238,11 @@ public class ChatViewModel : ViewModelBase
         _messageSubscription = _messageService.NewMessages
             .ObserveOn(RxApp.MainThreadScheduler)
             .Subscribe(OnNewMessage);
+
+        // Subscribe to reaction updates
+        _reactionSubscription = _messageService.ReactionUpdates
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(OnReactionUpdate);
     }
 
     public void LoadChat(Chat chat)
@@ -662,6 +668,22 @@ public class ChatViewModel : ViewModelBase
         }
     }
 
+    private void OnReactionUpdate((string MessageId, string Emoji, string ReactorPublicKey) update)
+    {
+        var messageVm = Messages.FirstOrDefault(m => m.Id == update.MessageId);
+        if (messageVm != null)
+        {
+            // Update the underlying model
+            if (!messageVm.Message.Reactions.ContainsKey(update.Emoji))
+                messageVm.Message.Reactions[update.Emoji] = new List<string>();
+
+            if (!messageVm.Message.Reactions[update.Emoji].Contains(update.ReactorPublicKey))
+                messageVm.Message.Reactions[update.Emoji].Add(update.ReactorPublicKey);
+
+            messageVm.UpdateReactionsDisplay();
+        }
+    }
+
     private async void LoadMip04SettingAsync()
     {
         try
@@ -980,6 +1002,10 @@ public class MessageViewModel : ViewModelBase
     /// </summary>
     public bool ShowTapToLoad => (IsImage || IsAudio) && IsMip04Enabled && !IsMediaLoaded && !IsLoadingMedia && MediaError == null;
 
+    // Reactions
+    [Reactive] public string? ReactionsDisplay { get; set; }
+    [Reactive] public bool HasReactions { get; set; }
+
     public ReactiveCommand<Unit, Unit> LoadMediaCommand { get; }
     public ReactiveCommand<Unit, Unit> ToggleAudioCommand { get; }
 
@@ -1045,6 +1071,8 @@ public class MessageViewModel : ViewModelBase
             }
         }
 
+        UpdateReactionsDisplay();
+
         LoadMediaCommand = ReactiveCommand.CreateFromTask(LoadMediaAsync);
         ToggleAudioCommand = ReactiveCommand.CreateFromTask(ToggleAudioPlaybackAsync);
 
@@ -1055,6 +1083,23 @@ public class MessageViewModel : ViewModelBase
                 this.RaisePropertyChanged(nameof(ShowTapToLoad));
                 this.RaisePropertyChanged(nameof(ShowMediaDisabled));
             });
+    }
+
+    public void UpdateReactionsDisplay()
+    {
+        if (Message.Reactions.Count == 0)
+        {
+            ReactionsDisplay = null;
+            HasReactions = false;
+            return;
+        }
+
+        // Format: "👍 2  🔥 1"
+        var parts = Message.Reactions
+            .Where(r => r.Value.Count > 0)
+            .Select(r => r.Value.Count > 1 ? $"{r.Key} {r.Value.Count}" : r.Key);
+        ReactionsDisplay = string.Join("  ", parts);
+        HasReactions = !string.IsNullOrEmpty(ReactionsDisplay);
     }
 
     private async void LoadMip04Setting()

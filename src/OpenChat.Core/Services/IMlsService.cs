@@ -201,4 +201,19 @@ public class MlsDecryptedMessage
     /// MIP-04 encryption version (from imeta tag, e.g. "2").
     /// </summary>
     public string? EncryptionVersion { get; set; }
+
+    /// <summary>
+    /// The Nostr kind of the inner rumor event (e.g. 9 for regular message, 7 for reaction).
+    /// </summary>
+    public int RumorKind { get; set; } = 9;
+
+    /// <summary>
+    /// For reaction events (kind 7): the Nostr event ID of the message being reacted to.
+    /// </summary>
+    public string? ReactionTargetEventId { get; set; }
+
+    /// <summary>
+    /// For reaction events (kind 7): the emoji (e.g. "👍"). NIP-25 "+" maps to 👍, "-" to 👎.
+    /// </summary>
+    public string? ReactionEmoji { get; set; }
 }

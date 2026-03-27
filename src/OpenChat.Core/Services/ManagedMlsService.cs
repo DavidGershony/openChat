@@ -483,6 +483,9 @@ public class ManagedMlsService : IMlsService
             string? fileSha256 = null;
             string? encryptionNonce = null;
             string? encryptionVersion = null;
+            int rumorKind = 9;
+            string? reactionTargetEventId = null;
+            string? reactionEmoji = null;
 
             if (plaintext.Length > 0 && plaintext[0] == '{')
             {
@@ -500,52 +503,77 @@ public class ManagedMlsService : IMlsService
                         }
                     }
 
-                    // Parse imeta tags for image metadata (MIP-04)
+                    // Extract rumor kind
+                    if (doc.RootElement.TryGetProperty("kind", out var kindProp))
+                    {
+                        rumorKind = kindProp.GetInt32();
+                    }
+
+                    // Parse tags from the rumor event
                     if (doc.RootElement.TryGetProperty("tags", out var tagsProp) && tagsProp.ValueKind == System.Text.Json.JsonValueKind.Array)
                     {
                         foreach (var tag in tagsProp.EnumerateArray())
                         {
                             if (tag.GetArrayLength() < 2) continue;
                             var tagName = tag[0].GetString();
-                            if (tagName != "imeta") continue;
 
-                            _logger.LogDebug("DecryptMessage: found imeta tag with {Count} entries", tag.GetArrayLength() - 1);
-
-                            // Parse imeta entries: each element after "imeta" is "key value"
-                            for (var i = 1; i < tag.GetArrayLength(); i++)
+                            // Parse "e" tags for reaction target
+                            if (tagName == "e")
                             {
-                                var entry = tag[i].GetString();
-                                if (string.IsNullOrEmpty(entry)) continue;
-
-                                if (entry.StartsWith("url "))
-                                    imageUrl = entry.Substring(4);
-                                else if (entry.StartsWith("m "))
-                                    mediaType = entry.Substring(2);
-                                else if (entry.StartsWith("filename "))
-                                    fileName = entry.Substring(9);
-                                else if (entry.StartsWith("x "))
-                                    fileSha256 = entry.Substring(2);
-                                else if (entry.StartsWith("n ") && entry.Length <= 26)
-                                    encryptionNonce = entry.Substring(2); // MIP-04 v2: "n <24hex>"
-                                else if (entry.StartsWith("nonce "))
-                                    encryptionNonce = entry.Substring(6);
-                                else if (entry.StartsWith("v "))
-                                    encryptionVersion = entry.Substring(2); // MIP-04 v2: "v mip04-v2"
-                                else if (entry.StartsWith("encryption-version "))
-                                    encryptionVersion = entry.Substring(19);
+                                reactionTargetEventId = tag[1].GetString();
                             }
 
-                            if (imageUrl != null)
+                            // Parse imeta tags for image metadata (MIP-04)
+                            if (tagName == "imeta")
                             {
-                                _logger.LogInformation("DecryptMessage: extracted imeta - url={Url}, type={MediaType}, filename={FileName}, sha256={Sha256}, nonce={Nonce}, version={Version}",
-                                    imageUrl, mediaType ?? "(none)", fileName ?? "(none)",
-                                    fileSha256?[..Math.Min(16, fileSha256?.Length ?? 0)] ?? "(none)",
-                                    encryptionNonce?[..Math.Min(16, encryptionNonce?.Length ?? 0)] ?? "(none)",
-                                    encryptionVersion ?? "(none)");
-                            }
+                                _logger.LogDebug("DecryptMessage: found imeta tag with {Count} entries", tag.GetArrayLength() - 1);
 
-                            break; // Only process the first imeta tag
+                                for (var i = 1; i < tag.GetArrayLength(); i++)
+                                {
+                                    var entry = tag[i].GetString();
+                                    if (string.IsNullOrEmpty(entry)) continue;
+
+                                    if (entry.StartsWith("url "))
+                                        imageUrl = entry.Substring(4);
+                                    else if (entry.StartsWith("m "))
+                                        mediaType = entry.Substring(2);
+                                    else if (entry.StartsWith("filename "))
+                                        fileName = entry.Substring(9);
+                                    else if (entry.StartsWith("x "))
+                                        fileSha256 = entry.Substring(2);
+                                    else if (entry.StartsWith("n ") && entry.Length <= 26)
+                                        encryptionNonce = entry.Substring(2);
+                                    else if (entry.StartsWith("nonce "))
+                                        encryptionNonce = entry.Substring(6);
+                                    else if (entry.StartsWith("v "))
+                                        encryptionVersion = entry.Substring(2);
+                                    else if (entry.StartsWith("encryption-version "))
+                                        encryptionVersion = entry.Substring(19);
+                                }
+
+                                if (imageUrl != null)
+                                {
+                                    _logger.LogInformation("DecryptMessage: extracted imeta - url={Url}, type={MediaType}, filename={FileName}, sha256={Sha256}, nonce={Nonce}, version={Version}",
+                                        imageUrl, mediaType ?? "(none)", fileName ?? "(none)",
+                                        fileSha256?[..Math.Min(16, fileSha256?.Length ?? 0)] ?? "(none)",
+                                        encryptionNonce?[..Math.Min(16, encryptionNonce?.Length ?? 0)] ?? "(none)",
+                                        encryptionVersion ?? "(none)");
+                                }
+                            }
                         }
+                    }
+
+                    // Determine reaction emoji from content (NIP-25 convention)
+                    if (rumorKind == 7 && reactionTargetEventId != null)
+                    {
+                        reactionEmoji = plaintext switch
+                        {
+                            "+" => "\U0001F44D", // 👍
+                            "-" => "\U0001F44E", // 👎
+                            _ => plaintext
+                        };
+                        _logger.LogInformation("DecryptMessage: detected reaction kind=7, emoji={Emoji}, target={Target}",
+                            reactionEmoji, reactionTargetEventId[..Math.Min(16, reactionTargetEventId.Length)]);
                     }
                 }
                 catch (System.Text.Json.JsonException ex)
@@ -570,7 +598,10 @@ public class ManagedMlsService : IMlsService
                 FileName = fileName,
                 FileSha256 = fileSha256,
                 EncryptionNonce = encryptionNonce,
-                EncryptionVersion = encryptionVersion
+                EncryptionVersion = encryptionVersion,
+                RumorKind = rumorKind,
+                ReactionTargetEventId = reactionTargetEventId,
+                ReactionEmoji = reactionEmoji
             };
         }
 

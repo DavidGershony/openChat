@@ -28,6 +28,11 @@ public interface IMessageService
     IObservable<PendingInvite> NewInvites { get; }
 
     /// <summary>
+    /// Observable stream of reaction updates (messageId, emoji, reactorPublicKey).
+    /// </summary>
+    IObservable<(string MessageId, string Emoji, string ReactorPublicKey)> ReactionUpdates { get; }
+
+    /// <summary>
     /// Observable stream of MLS decryption errors (e.g. corrupted state after restart).
     /// </summary>
     IObservable<MlsDecryptionError> DecryptionErrors { get; }

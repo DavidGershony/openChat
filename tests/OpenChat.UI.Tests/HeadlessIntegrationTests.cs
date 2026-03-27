@@ -533,6 +533,7 @@ public class HeadlessIntegrationTests
         var (mockMessage, mockNostr, mockStorage, mockMls, mockClipboard, mockQrGenerator, mockLauncher) = CreateMocks();
 
         mockMessage.Setup(m => m.DecryptionErrors).Returns(errorSubject.AsObservable());
+        mockMessage.Setup(m => m.ReactionUpdates).Returns(Observable.Empty<(string, string, string)>());
         mockMessage.Setup(m => m.GetChatsAsync()).ReturnsAsync(Enumerable.Empty<Chat>());
         mockMessage.Setup(m => m.GetPendingInvitesAsync()).ReturnsAsync(Enumerable.Empty<PendingInvite>());
 
@@ -576,6 +577,7 @@ public class HeadlessIntegrationTests
         mockMessage.Setup(m => m.ChatUpdates).Returns(Observable.Empty<Chat>());
         mockMessage.Setup(m => m.NewInvites).Returns(Observable.Empty<PendingInvite>());
         mockMessage.Setup(m => m.DecryptionErrors).Returns(Observable.Empty<MlsDecryptionError>());
+        mockMessage.Setup(m => m.ReactionUpdates).Returns(Observable.Empty<(string, string, string)>());
         mockMessage.Setup(m => m.InitializeAsync()).Returns(Task.CompletedTask);
         mockMessage.Setup(m => m.GetChatsAsync()).ReturnsAsync(Enumerable.Empty<Chat>());
         mockMessage.Setup(m => m.GetPendingInvitesAsync()).ReturnsAsync(Enumerable.Empty<PendingInvite>());
