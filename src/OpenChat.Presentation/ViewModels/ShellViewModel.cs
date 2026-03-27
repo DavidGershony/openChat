@@ -211,7 +211,8 @@ public class ShellViewModel : ViewModelBase
             _logger.LogError(ex, "Error during logout cleanup");
         }
 
-        // Dispose session-scoped references
+        // Dispose session-scoped services to unsubscribe from shared NostrService.Events
+        (_messageService as IDisposable)?.Dispose();
         _storageService = null;
         _mlsService = null;
         _messageService = null;
