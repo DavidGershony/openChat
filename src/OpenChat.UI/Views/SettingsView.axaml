@@ -90,48 +90,6 @@
                 </StackPanel>
             </Border>
 
-            <!-- Keys Section -->
-            <Border Classes="card">
-                <StackPanel Spacing="16">
-                    <TextBlock Text="Nostr Keys" FontWeight="SemiBold" FontSize="16" />
-
-                    <StackPanel Spacing="4">
-                        <TextBlock Text="Public Key (npub)" Classes="muted" FontSize="12" />
-                        <Grid ColumnDefinitions="*,Auto">
-                            <TextBox Grid.Column="0" Text="{Binding Npub}" IsReadOnly="True"
-                                     FontFamily="Consolas" FontSize="12" />
-                            <Button Grid.Column="1" Classes="icon" Margin="4,0,0,0"
-                                    Command="{Binding CopyNpubCommand}" ToolTip.Tip="Copy">
-                                <PathIcon Data="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"
-                                          Width="18" Height="18" />
-                            </Button>
-                        </Grid>
-                    </StackPanel>
-
-                    <StackPanel Spacing="4">
-                        <TextBlock Text="Public Key (hex)" Classes="muted" FontSize="12" />
-                        <Grid ColumnDefinitions="*,Auto">
-                            <TextBox Grid.Column="0" Text="{Binding PublicKeyHex}" IsReadOnly="True"
-                                     FontFamily="Consolas" FontSize="12" />
-                            <Button Grid.Column="1" Classes="icon" Margin="4,0,0,0"
-                                    Command="{Binding CopyPublicKeyCommand}" ToolTip.Tip="Copy">
-                                <PathIcon Data="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"
-                                          Width="18" Height="18" />
-                            </Button>
-                        </Grid>
-                    </StackPanel>
-
-                    <Border Background="{DynamicResource WarningBgBrush}" CornerRadius="8" Padding="12">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <PathIcon Data="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"
-                                      Width="18" Height="18" Foreground="{DynamicResource StatusWarningBrush}" />
-                            <TextBlock Text="Never share your private key (nsec) with anyone!"
-                                       Foreground="{DynamicResource StatusWarningBrush}" FontSize="13" />
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
-            </Border>
-
             <!-- Relays Section -->
             <Border Classes="card">
                 <StackPanel Spacing="16">

@@ -74,8 +74,6 @@ public class SettingsViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> CancelPublishProfileCommand { get; }
     public ReactiveCommand<Unit, Unit> AddRelayCommand { get; }
     public ReactiveCommand<RelayViewModel, Unit> RemoveRelayCommand { get; }
-    public ReactiveCommand<Unit, Unit> CopyPublicKeyCommand { get; }
-    public ReactiveCommand<Unit, Unit> CopyNpubCommand { get; }
     public ReactiveCommand<Unit, Unit> ViewLogsCommand { get; }
     public ReactiveCommand<Unit, Unit> CloseLogViewerCommand { get; }
     public ReactiveCommand<Unit, Unit> RefreshLogsCommand { get; }
@@ -103,16 +101,6 @@ public class SettingsViewModel : ViewModelBase
 
         AddRelayCommand = ReactiveCommand.CreateFromTask(AddRelayAsync, canAddRelay);
         RemoveRelayCommand = ReactiveCommand.Create<RelayViewModel>(RemoveRelay);
-
-        CopyPublicKeyCommand = ReactiveCommand.Create(() =>
-        {
-            // TODO: Copy to clipboard
-        });
-
-        CopyNpubCommand = ReactiveCommand.Create(() =>
-        {
-            // TODO: Copy to clipboard
-        });
 
         // Log viewer commands
         ViewLogsCommand = ReactiveCommand.Create(() =>

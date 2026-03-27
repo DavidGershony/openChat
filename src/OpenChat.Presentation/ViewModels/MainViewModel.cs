@@ -37,6 +37,7 @@ public class MainViewModel : ViewModelBase
     // My Profile Dialog
     [Reactive] public bool ShowMyProfileDialog { get; set; }
     [Reactive] public string? MyNpub { get; set; }
+    [Reactive] public string? MyNsec { get; set; }
     [Reactive] public string? CopyStatusMessage { get; set; }
     [Reactive] public string? MyDisplayName { get; set; }
     [Reactive] public string? MyName { get; set; }
@@ -61,6 +62,7 @@ public class MainViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> ShowMyProfileCommand { get; }
     public ReactiveCommand<Unit, Unit> CloseMyProfileCommand { get; }
     public ReactiveCommand<Unit, Unit> CopyNpubCommand { get; }
+    public ReactiveCommand<Unit, Unit> CopyNsecCommand { get; }
     public ReactiveCommand<Unit, Unit> ReconnectCommand { get; }
     public ReactiveCommand<RelayStatusViewModel, Unit> ReconnectRelayCommand { get; }
 
@@ -107,6 +109,7 @@ public class MainViewModel : ViewModelBase
         {
             _logger.LogInformation("ShowMyProfileCommand executed - opening profile dialog");
             MyNpub = CurrentUser?.Npub ?? "No key available";
+            MyNsec = CurrentUser?.Nsec; // null for external signer users
             CopyStatusMessage = null;
             MyDisplayName = null;
             MyName = null;
@@ -153,14 +156,34 @@ public class MainViewModel : ViewModelBase
             try
             {
                 await _clipboard.SetTextAsync(MyNpub);
-                CopyStatusMessage = "Copied to clipboard!";
+                CopyStatusMessage = "Copied npub to clipboard!";
 
-                // Clear the message after 2 seconds
                 await Task.Delay(2000);
                 CopyStatusMessage = null;
             }
-            catch
+            catch (Exception ex)
             {
+                _logger.LogWarning(ex, "Failed to copy npub to clipboard");
+                CopyStatusMessage = "Failed to copy";
+            }
+        });
+
+        CopyNsecCommand = ReactiveCommand.CreateFromTask(async () =>
+        {
+            if (string.IsNullOrEmpty(MyNsec)) return;
+
+            try
+            {
+                await _clipboard.SetTextAsync(MyNsec);
+                CopyStatusMessage = "Copied nsec to clipboard! Clear your clipboard soon.";
+                _logger.LogInformation("User copied nsec to clipboard");
+
+                await Task.Delay(3000);
+                CopyStatusMessage = null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to copy nsec to clipboard");
                 CopyStatusMessage = "Failed to copy";
             }
         });
