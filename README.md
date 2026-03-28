@@ -21,7 +21,7 @@ OpenChat is a Marmot client. It implements the [Marmot Improvement Proposals (MI
 | **MIP-01** | Group metadata & NostrGroupData extension (0xF2EE) | Implemented |
 | **MIP-02** | Welcome events (kind 444) with NIP-59 gift wrap | Implemented |
 | **MIP-03** | Group messages (kind 445) with ChaCha20-Poly1305 | Implemented |
-| **MIP-04** | Encrypted media attachments via Blossom | Detection only |
+| **MIP-04** | Encrypted media attachments via Blossom | Implemented |
 
 Any Marmot-compatible client can join the same groups and exchange messages with OpenChat.
 
@@ -31,10 +31,14 @@ Encrypted group chat over Nostr. Your messages are encrypted before they leave y
 
 - **Marmot group chats** &mdash; MLS encryption with forward secrecy
 - **Direct messages** &mdash; NIP-44 encryption
+- **Voice messages** &mdash; record, send, and play back audio with Opus encoding
+- **Image & file sharing** &mdash; MIP-04 encrypted media via Blossom upload
+- **Emoji reactions** &mdash; react to group messages with any emoji
 - **Login with Amber** (NIP-46) or a local nsec &mdash; your choice
 - **Desktop** (Windows/Linux/macOS) and **Android**
 - **Two MLS backends** &mdash; Rust ([Marmot MDK](https://github.com/marmot-protocol/mdk)) or pure C# ([marmot-cs](https://github.com/DavidGershony/marmot-cs))
 - **Interoperable** &mdash; works with any Marmot protocol implementation
+- **Themes** &mdash; runtime theme switching (Nostr, Golden Axe, and more on Android)
 
 ## Quick start
 
@@ -52,29 +56,48 @@ Log in with an nsec, generate a fresh key, or scan a QR code with Amber.
 |---|---|
 | Marmot MLS encrypted group chat (MIP-00 to MIP-03) | Working |
 | Cross-client interop (any Marmot implementation) | Working |
+| MIP-04 encrypted image & file sharing (Blossom upload) | Working |
+| Voice messages (record, send, play) | Working |
+| Emoji reactions on group messages | Working |
 | NIP-59 gift-wrapped Welcome invites | Working |
+| NIP-42 relay authentication | Working |
 | NIP-46 remote signer (Amber) with auto-reconnect | Working |
-| KeyPackage auto-lookup on invite | Working |
-| Load older messages from relays | Working |
-| MIP-04 image message detection | Placeholder |
 | NIP-65 relay discovery | Working |
+| KeyPackage auto-lookup on invite | Working |
+| KeyPackage audit (detect lost/expired packages) | Working |
+| Load older messages from relays | Working |
 | Profile metadata publish (kind 0) | Working |
+| Profile dialog with npub/nsec export | Working |
 | Secure key storage (DPAPI / Android Keystore) | Working |
 | Dual MLS backend (Rust MDK + C# marmot-cs) | Working |
+| Runtime theme switching | Working |
 | Direct messages (NIP-44) | Basic |
 
-## How Marmot works on Nostr
+## Nostr & Marmot protocol support
 
-Marmot maps MLS operations to Nostr event kinds. Your client publishes a KeyPackage so others can invite you. Invites arrive as NIP-59 gift-wrapped Welcome events. Once you join a group, messages are MLS-encrypted and published with the group's NostrGroupId in the `h` tag.
+OpenChat maps MLS operations to Nostr event kinds. Your client publishes a KeyPackage so others can invite you. Invites arrive as NIP-59 gift-wrapped Welcome events. Once you join a group, messages are MLS-encrypted and published with the group's NostrGroupId in the `h` tag.
 
-| Nostr Event Kind | Marmot Usage |
+| Nostr Event Kind | Usage |
 |---|---|
 | **443** | MLS KeyPackage &mdash; "here's how to invite me" (MIP-00) |
 | **444** | MLS Welcome &mdash; group invite, gift wrapped via NIP-59 (MIP-02) |
 | **445** | Group message &mdash; MLS + ChaCha20-Poly1305 encrypted (MIP-03) |
 | **1059** | NIP-59 gift wrap envelope for Welcome events |
+| **22242** | NIP-42 relay authentication response |
+| **7** | Emoji reactions |
 | **0** | User profile metadata |
 | **10002** | NIP-65 relay list |
+
+### NIPs implemented
+
+| NIP | What |
+|---|---|
+| **NIP-01** | Basic Nostr protocol (events, subscriptions, relays) |
+| **NIP-42** | Relay authentication (auto-responds to AUTH challenges) |
+| **NIP-44** | Encrypted direct messages |
+| **NIP-46** | External signer (Amber) via nostrconnect |
+| **NIP-59** | Gift wrap (sealed sender for Welcome events) |
+| **NIP-65** | Relay list discovery (kind 10002) |
 
 ### MLS Group Lifecycle (Marmot style)
 
@@ -85,13 +108,23 @@ Marmot maps MLS operations to Nostr event kinds. Your client publishes a KeyPack
 5. **Chat** &mdash; encrypt messages with MLS + MIP-03 ChaCha20-Poly1305, publish as kind 445
 6. **Forward secrecy** &mdash; MLS ratchets keys with every commit
 
+## Security
+
+- **Event signature verification** &mdash; BIP-340 Schnorr signatures verified on all received events
+- **Relay URL validation** &mdash; blocks connections to private/reserved IP ranges (SSRF protection)
+- **Encrypted key storage** &mdash; DPAPI on Windows, Android Keystore on mobile
+- **NIP-46 session encryption** &mdash; ephemeral keypairs for external signer communication
+- **SQLite WAL mode** &mdash; write-ahead logging with serialized writes for concurrency safety
+- **Thread-safe relay connections** &mdash; ConcurrentDictionary for all shared state
+- **MIP-03 ephemeral signing** &mdash; kind 445 events signed with ephemeral keys for sender privacy
+
 ## Project layout
 
 ```
 src/
   OpenChat.Core/          Nostr protocol, MLS integration, Marmot MIP implementations
   OpenChat.Presentation/  ViewModels (ReactiveUI + Fody)
-  OpenChat.UI/            Avalonia views and platform services
+  OpenChat.UI/            Avalonia views, themes, and platform services
   OpenChat.Desktop/       Desktop entry point
   OpenChat.Android/       Android entry point
   OpenChat.Native/        Rust native library (Marmot MDK FFI)
@@ -125,16 +158,29 @@ cp target/release/openchat_native.dll ../OpenChat.Desktop/  # Windows
 
 Run with `--mdk rust` to use the Rust backend, or `--mdk managed` (default) for C#.
 
+## Releases
+
+Pre-built binaries are published via GitHub Actions on every tagged release:
+
+- **Windows** (x64)
+- **Linux** (x64)
+- **macOS** (ARM64 / Apple Silicon)
+- **Android** (APK, signed)
+
+Download from the [Releases](https://github.com/DavidGershony/openChat/releases) page.
+
 ## Tech stack
 
 | What | How |
 |---|---|
 | Protocol | [Marmot](https://github.com/marmot-protocol) (MIP-00 through MIP-04) |
 | MLS | [Marmot MDK](https://github.com/marmot-protocol/mdk) (Rust) + [marmot-cs](https://github.com/DavidGershony/marmot-cs) (C#) |
-| Transport | [Nostr](https://nostr.com/) (NIP-01, NIP-44, NIP-46, NIP-59, NIP-65) |
+| Transport | [Nostr](https://nostr.com/) (NIP-01, NIP-42, NIP-44, NIP-46, NIP-59, NIP-65) |
 | UI | [Avalonia 11](https://avaloniaui.net/) |
 | MVVM | [ReactiveUI](https://www.reactiveui.net/) + Fody |
-| Storage | SQLite + DPAPI/Android Keystore for key encryption |
+| Audio | Opus codec (recording + playback) |
+| Media | [Blossom](https://github.com/hzrd149/blossom) for encrypted file uploads |
+| Storage | SQLite (WAL mode) + DPAPI/Android Keystore for key encryption |
 | Logging | Serilog |
 | Runtime | .NET 9 |
 | Vibes | Claude |
