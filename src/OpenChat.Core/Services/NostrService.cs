@@ -306,6 +306,15 @@ public class NostrService : INostrService, IDisposable
                         eventId, relayUrl, reason ?? "no reason given");
                 }
             }
+            else if (messageType == "AUTH" && root.GetArrayLength() >= 2)
+            {
+                var challenge = root[1].GetString();
+                _logger.LogInformation("NIP-42 AUTH challenge from {RelayUrl}: {Challenge}", relayUrl, challenge);
+                if (!string.IsNullOrEmpty(challenge))
+                {
+                    await HandleAuthChallengeAsync(relayUrl, challenge);
+                }
+            }
             else if (messageType == "NOTICE")
             {
                 var notice = root.GetArrayLength() >= 2 ? root[1].GetString() : "Unknown notice";
@@ -315,6 +324,77 @@ public class NostrService : INostrService, IDisposable
         catch (JsonException ex)
         {
             _logger.LogWarning(ex, "Failed to parse message from {RelayUrl}", relayUrl);
+        }
+    }
+
+    private async Task HandleAuthChallengeAsync(string relayUrl, string challenge)
+    {
+        try
+        {
+            if (!_relayConnections.TryGetValue(relayUrl, out var ws) || ws.State != WebSocketState.Open)
+            {
+                _logger.LogWarning("NIP-42: cannot respond to AUTH — no open connection to {RelayUrl}", relayUrl);
+                return;
+            }
+
+            string authEventMessage;
+
+            if (!string.IsNullOrEmpty(_subscribedUserPrivKey))
+            {
+                // Sign locally
+                var privateKeyBytes = Convert.FromHexString(_subscribedUserPrivKey);
+                var publicKeyBytes = DerivePublicKey(privateKeyBytes);
+                var publicKeyHex = Convert.ToHexString(publicKeyBytes).ToLowerInvariant();
+
+                var createdAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                var tags = new List<List<string>>
+                {
+                    new() { "relay", relayUrl },
+                    new() { "challenge", challenge }
+                };
+
+                var serializedForId = SerializeForEventId(publicKeyHex, createdAt, 22242, tags, "");
+                var eventIdBytes = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(serializedForId));
+                var eventId = Convert.ToHexString(eventIdBytes).ToLowerInvariant();
+                var signatureHex = Convert.ToHexString(SignSchnorr(eventIdBytes, privateKeyBytes)).ToLowerInvariant();
+
+                authEventMessage = SerializeEventMessage(eventId, publicKeyHex, createdAt, 22242, tags, "", signatureHex);
+                // Wrap in ["AUTH", {...}] format
+                // The SerializeEventMessage returns ["EVENT", {...}], we need ["AUTH", {...}]
+                authEventMessage = authEventMessage.Replace("[\"EVENT\",", "[\"AUTH\",");
+            }
+            else if (_externalSigner?.IsConnected == true)
+            {
+                // Sign via external signer
+                _logger.LogInformation("NIP-42: using external signer for AUTH on {RelayUrl}", relayUrl);
+                var unsignedEvent = new UnsignedNostrEvent
+                {
+                    Kind = 22242,
+                    Content = "",
+                    Tags = new List<List<string>>
+                    {
+                        new() { "relay", relayUrl },
+                        new() { "challenge", challenge }
+                    },
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                var signedEventJson = await _externalSigner.SignEventAsync(unsignedEvent);
+                authEventMessage = $"[\"AUTH\",{signedEventJson}]";
+            }
+            else
+            {
+                _logger.LogWarning("NIP-42: cannot respond to AUTH — no private key or external signer available for {RelayUrl}", relayUrl);
+                return;
+            }
+
+            var bytes = Encoding.UTF8.GetBytes(authEventMessage);
+            await ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
+            _logger.LogInformation("NIP-42: sent AUTH response to {RelayUrl}", relayUrl);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "NIP-42: failed to handle AUTH challenge from {RelayUrl}", relayUrl);
         }
     }
 

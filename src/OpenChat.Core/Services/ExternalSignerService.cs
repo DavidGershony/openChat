@@ -654,6 +654,15 @@ public class ExternalSignerService : IExternalSigner, IDisposable
             {
                 _logger.LogDebug("NIP-46 end of stored events");
             }
+            else if (messageType == "AUTH" && root.GetArrayLength() >= 2)
+            {
+                var challenge = root[1].GetString();
+                _logger.LogInformation("NIP-42 AUTH challenge from relay: {Challenge}", challenge);
+                if (!string.IsNullOrEmpty(challenge))
+                {
+                    _ = HandleAuthChallengeAsync(challenge);
+                }
+            }
             else if (messageType == "EVENT" && root.GetArrayLength() >= 3)
             {
                 var eventObj = root[2];
@@ -734,6 +743,57 @@ public class ExternalSignerService : IExternalSigner, IDisposable
         catch (Exception ex)
         {
             _logger.LogError(ex, "NIP-46 error processing relay message");
+        }
+    }
+
+    private async Task HandleAuthChallengeAsync(string challenge)
+    {
+        try
+        {
+            if (_webSocket == null || _webSocket.State != WebSocketState.Open ||
+                _localPrivateKeyHex == null || _localPublicKeyHex == null || _relayUrl == null)
+            {
+                _logger.LogWarning("NIP-42: cannot respond to AUTH — no connection or keys");
+                return;
+            }
+
+            var createdAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var tags = new[] { new[] { "relay", _relayUrl }, new[] { "challenge", challenge } };
+            var eventId = ComputeEventId(22242, _localPublicKeyHex, createdAt, tags, "");
+            var signature = SignEventId(eventId, _localPrivateKeyHex);
+
+            using var ms = new MemoryStream();
+            using (var ew = new Utf8JsonWriter(ms, new JsonWriterOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }))
+            {
+                ew.WriteStartArray();
+                ew.WriteStringValue("AUTH");
+                ew.WriteStartObject();
+                ew.WriteString("id", eventId);
+                ew.WriteString("pubkey", _localPublicKeyHex);
+                ew.WriteNumber("created_at", createdAt);
+                ew.WriteNumber("kind", 22242);
+                ew.WritePropertyName("tags");
+                ew.WriteStartArray();
+                foreach (var tag in tags)
+                {
+                    ew.WriteStartArray();
+                    foreach (var v in tag) ew.WriteStringValue(v);
+                    ew.WriteEndArray();
+                }
+                ew.WriteEndArray();
+                ew.WriteString("content", "");
+                ew.WriteString("sig", signature);
+                ew.WriteEndObject();
+                ew.WriteEndArray();
+            }
+
+            var bytes = ms.ToArray();
+            await _webSocket.SendAsync(bytes, WebSocketMessageType.Text, true, _cts?.Token ?? CancellationToken.None);
+            _logger.LogInformation("NIP-42: sent AUTH response to {Relay}", _relayUrl);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "NIP-42: failed to handle AUTH challenge");
         }
     }
 
