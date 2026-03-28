@@ -76,6 +76,13 @@
     <SolidColorBrush x:Key="StatusWarningBrush" Color="{StaticResource StatusWarning}" />
     <SolidColorBrush x:Key="StatusOfflineBrush" Color="{StaticResource StatusOffline}" />
 
+    <!-- Sent bubble border (transparent = no border in this theme) -->
+    <SolidColorBrush x:Key="BubbleSentBorderBrush" Color="Transparent" />
+
+    <!-- Selected item (solid fill in this theme, no separate border) -->
+    <SolidColorBrush x:Key="SelectedItemBgBrush" Color="{StaticResource NostrPurpleDark}" />
+    <SolidColorBrush x:Key="SelectedItemBorderBrush" Color="Transparent" />
+
     <!-- Semi-transparent themed backgrounds -->
     <SolidColorBrush x:Key="ErrorBgBrush" Color="#3DFF4500" />
     <SolidColorBrush x:Key="WarningBgBrush" Color="#3DFFD700" />

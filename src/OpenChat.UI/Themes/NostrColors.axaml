@@ -26,10 +26,10 @@
     <Color x:Key="TextSecondary">#A0A0C0</Color>
     <Color x:Key="TextMuted">#6B6B8D</Color>
 
-    <!-- Message Bubble Colors -->
-    <Color x:Key="BubbleSent">#7C3AED</Color>
+    <!-- Message Bubble Colors — dark bg with purple border -->
+    <Color x:Key="BubbleSent">#1A1A2E</Color>
     <Color x:Key="BubbleReceived">#2D2D4A</Color>
-    <Color x:Key="BubbleSentText">#FFFFFF</Color>
+    <Color x:Key="BubbleSentText">#E0E0FF</Color>
     <Color x:Key="BubbleReceivedText">#E0E0FF</Color>
 
     <!-- Status Colors -->
@@ -74,6 +74,13 @@
     <SolidColorBrush x:Key="StatusErrorBrush" Color="{StaticResource StatusError}" />
     <SolidColorBrush x:Key="StatusWarningBrush" Color="{StaticResource StatusWarning}" />
     <SolidColorBrush x:Key="StatusOfflineBrush" Color="{StaticResource StatusOffline}" />
+
+    <!-- Sent bubble border -->
+    <SolidColorBrush x:Key="BubbleSentBorderBrush" Color="{StaticResource NostrPurple}" />
+
+    <!-- Selected item — dark bg with purple border -->
+    <SolidColorBrush x:Key="SelectedItemBgBrush" Color="{StaticResource BackgroundMedium}" />
+    <SolidColorBrush x:Key="SelectedItemBorderBrush" Color="{StaticResource NostrPurple}" />
 
     <!-- Semi-transparent themed backgrounds -->
     <SolidColorBrush x:Key="ErrorBgBrush" Color="#3DEF4444" />
