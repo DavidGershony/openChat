@@ -184,7 +184,7 @@
                     <Border Grid.Row="2" Padding="12" Background="{DynamicResource BackgroundLightBrush}">
                         <StackPanel Spacing="8">
                             <!-- New Chat Button -->
-                            <Button Classes="primary" HorizontalAlignment="Stretch"
+                            <Button Classes="secondary" HorizontalAlignment="Stretch"
                                     Command="{Binding ChatListViewModel.NewChatCommand}">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <PathIcon Data="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" Width="18" Height="18" />

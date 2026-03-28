@@ -397,19 +397,19 @@ public class WaveRecorder {{
 }
 
 /// <summary>
-/// Desktop audio playback using system tools (ffplay/aplay/afplay).
-/// Plays raw PCM data by writing a temporary WAV file and invoking the system player.
+/// Desktop audio playback using NAudio for in-process playback with seeking and pause/resume.
 /// </summary>
 public class DesktopAudioPlaybackService : IAudioPlaybackService
 {
     private readonly ILogger<DesktopAudioPlaybackService> _logger;
-    private Process? _playProcess;
-    private TimeSpan _duration;
-    private readonly Stopwatch _positionWatch = new();
+    private NAudio.Wave.WaveOutEvent? _waveOut;
+    private NAudio.Wave.RawSourceWaveStream? _waveStream;
+    private MemoryStream? _memoryStream;
+    private bool _isPaused;
 
-    public bool IsPlaying => _playProcess != null && !_playProcess.HasExited;
-    public TimeSpan Position => _positionWatch.Elapsed;
-    public TimeSpan Duration => _duration;
+    public bool IsPlaying => _waveOut?.PlaybackState == NAudio.Wave.PlaybackState.Playing;
+    public TimeSpan Position => _waveStream?.CurrentTime ?? TimeSpan.Zero;
+    public TimeSpan Duration => _waveStream?.TotalTime ?? TimeSpan.Zero;
 
     public event EventHandler? PlaybackCompleted;
 
@@ -418,108 +418,91 @@ public class DesktopAudioPlaybackService : IAudioPlaybackService
         _logger = LoggingConfiguration.CreateLogger<DesktopAudioPlaybackService>();
     }
 
-    public async Task PlayAsync(byte[] pcmData, int sampleRate = 48000, int channels = 1)
+    public Task PlayAsync(byte[] pcmData, int sampleRate = 48000, int channels = 1)
     {
-        await StopAsync();
+        StopInternal();
 
-        _duration = TimeSpan.FromSeconds((double)pcmData.Length / (sampleRate * channels * 2));
+        _memoryStream = new MemoryStream(pcmData);
+        var waveFormat = new NAudio.Wave.WaveFormat(sampleRate, 16, channels);
+        _waveStream = new NAudio.Wave.RawSourceWaveStream(_memoryStream, waveFormat);
 
-        // Write PCM as WAV to temp file
-        var tempPath = Path.Combine(Path.GetTempPath(), $"openchat_play_{Guid.NewGuid()}.wav");
-        await using (var fs = File.Create(tempPath))
-        {
-            WriteWavHeader(fs, pcmData.Length, sampleRate, channels);
-            await fs.WriteAsync(pcmData);
-        }
+        _waveOut = new NAudio.Wave.WaveOutEvent();
+        _waveOut.PlaybackStopped += OnPlaybackStopped;
+        _waveOut.Init(_waveStream);
+        _waveOut.Play();
+        _isPaused = false;
 
-        ProcessStartInfo psi;
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            // Use PowerShell SoundPlayer (built-in, no deps)
-            psi = new ProcessStartInfo
-            {
-                FileName = "powershell",
-                Arguments = $"-NoProfile -Command \"(New-Object Media.SoundPlayer '{tempPath}').PlaySync()\"",
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-        }
-        else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-        {
-            psi = new ProcessStartInfo("afplay", $"\"{tempPath}\"")
-            {
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-        }
-        else
-        {
-            // Linux: aplay or paplay
-            var player = IsCommandAvailablePublic("paplay") ? "paplay" : "aplay";
-            psi = new ProcessStartInfo(player, $"\"{tempPath}\"")
-            {
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-        }
-
-        _playProcess = Process.Start(psi);
-        _positionWatch.Restart();
-        _logger.LogInformation("Playing audio: {Duration:F1}s", _duration.TotalSeconds);
-
-        // Wait for completion in background, clean up
-        _ = Task.Run(async () =>
-        {
-            if (_playProcess != null)
-            {
-                await _playProcess.WaitForExitAsync();
-                _playProcess.Dispose();
-                _playProcess = null;
-            }
-            _positionWatch.Stop();
-            try { File.Delete(tempPath); } catch { }
-            PlaybackCompleted?.Invoke(this, EventArgs.Empty);
-        });
+        _logger.LogInformation("Playing audio: {Duration:F1}s via NAudio", Duration.TotalSeconds);
+        return Task.CompletedTask;
     }
 
     public Task StopAsync()
     {
-        _positionWatch.Stop();
-        if (_playProcess != null && !_playProcess.HasExited)
-        {
-            try { _playProcess.Kill(); } catch { }
-            _playProcess.Dispose();
-            _playProcess = null;
-        }
+        StopInternal();
         return Task.CompletedTask;
     }
 
     public Task PauseAsync()
     {
-        // Subprocess playback doesn't support pause — stop instead
-        return StopAsync();
+        if (_waveOut?.PlaybackState == NAudio.Wave.PlaybackState.Playing)
+        {
+            _waveOut.Pause();
+            _isPaused = true;
+        }
+        return Task.CompletedTask;
     }
 
-    private static void WriteWavHeader(Stream stream, int dataLength, int sampleRate, int channels)
+    public Task ResumeAsync()
     {
-        var bitsPerSample = 16;
-        var byteRate = sampleRate * channels * bitsPerSample / 8;
-        var blockAlign = channels * bitsPerSample / 8;
+        if (_isPaused && _waveOut != null)
+        {
+            _waveOut.Play();
+            _isPaused = false;
+        }
+        return Task.CompletedTask;
+    }
 
-        using var writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true);
-        writer.Write(System.Text.Encoding.ASCII.GetBytes("RIFF"));
-        writer.Write(36 + dataLength);
-        writer.Write(System.Text.Encoding.ASCII.GetBytes("WAVE"));
-        writer.Write(System.Text.Encoding.ASCII.GetBytes("fmt "));
-        writer.Write(16); // Subchunk1Size
-        writer.Write((short)1); // PCM
-        writer.Write((short)channels);
-        writer.Write(sampleRate);
-        writer.Write(byteRate);
-        writer.Write((short)blockAlign);
-        writer.Write((short)bitsPerSample);
-        writer.Write(System.Text.Encoding.ASCII.GetBytes("data"));
-        writer.Write(dataLength);
+    public Task SeekTo(TimeSpan position)
+    {
+        if (_waveStream == null) return Task.CompletedTask;
+
+        var byteOffset = (long)(position.TotalSeconds * _waveStream.WaveFormat.AverageBytesPerSecond);
+        var blockAlign = _waveStream.WaveFormat.BlockAlign;
+        byteOffset = byteOffset / blockAlign * blockAlign; // align to block boundary
+        byteOffset = Math.Clamp(byteOffset, 0, _waveStream.Length);
+        _waveStream.Position = byteOffset;
+
+        return Task.CompletedTask;
+    }
+
+    private void StopInternal()
+    {
+        _isPaused = false;
+        if (_waveOut != null)
+        {
+            _waveOut.PlaybackStopped -= OnPlaybackStopped;
+            try { _waveOut.Stop(); } catch { }
+            _waveOut.Dispose();
+            _waveOut = null;
+        }
+        _waveStream?.Dispose();
+        _waveStream = null;
+        _memoryStream?.Dispose();
+        _memoryStream = null;
+    }
+
+    private void OnPlaybackStopped(object? sender, NAudio.Wave.StoppedEventArgs e)
+    {
+        if (e.Exception != null)
+        {
+            _logger.LogError(e.Exception, "Audio playback error");
+            return;
+        }
+        // Only fire completion if we reached the end (not a manual stop/pause)
+        if (_waveStream != null && _waveStream.Position >= _waveStream.Length)
+        {
+            PlaybackCompleted?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     internal static bool IsCommandAvailablePublic(string command)

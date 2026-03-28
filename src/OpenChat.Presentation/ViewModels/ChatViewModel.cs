@@ -992,6 +992,8 @@ public class MessageViewModel : ViewModelBase
     [Reactive] public bool IsPlayingAudio { get; set; }
     [Reactive] public double AudioProgress { get; set; }
     [Reactive] public string? AudioDurationText { get; set; }
+    [Reactive] public string? AudioTimeDisplay { get; set; }
+    [Reactive] public bool IsPausedAudio { get; set; }
     [Reactive] public byte[]? DecodedAudioPcm { get; set; }
 
     /// <summary>
@@ -1051,6 +1053,7 @@ public class MessageViewModel : ViewModelBase
                 : "?:??";
             ImageDisplayText = $"Voice message ({duration})";
             AudioDurationText = duration;
+            AudioTimeDisplay = $"0:00 / {duration}";
         }
 
         // Determine server safety for media messages
@@ -1240,7 +1243,9 @@ public class MessageViewModel : ViewModelBase
                     _decodedSampleRate = sampleRate;
                     _decodedChannels = channels;
                     var totalSeconds = (double)pcm.Length / (sampleRate * channels * 2); // 16-bit samples
-                    AudioDurationText = TimeSpan.FromSeconds(totalSeconds).ToString(@"m\:ss");
+                    var durationStr = TimeSpan.FromSeconds(totalSeconds).ToString(@"m\:ss");
+                    AudioDurationText = durationStr;
+                    AudioTimeDisplay = $"0:00 / {durationStr}";
                     _logger.LogInformation("LoadMedia: decoded audio for message {Id} ({Size} bytes Opus → {PcmSize} bytes PCM, {Duration}s)",
                         Id, decrypted.Length, pcm.Length, totalSeconds);
 
@@ -1284,6 +1289,8 @@ public class MessageViewModel : ViewModelBase
     private int _decodedSampleRate = 48000;
     private int _decodedChannels = 1;
     private IDisposable? _audioProgressTimer;
+    private bool _isUserSeeking;
+    private static MessageViewModel? _currentlyPlayingMessage;
 
     private async Task ToggleAudioPlaybackAsync()
     {
@@ -1294,10 +1301,15 @@ public class MessageViewModel : ViewModelBase
 
         if (IsPlayingAudio)
         {
-            await playback.StopAsync();
+            await playback.PauseAsync();
             IsPlayingAudio = false;
-            _audioProgressTimer?.Dispose();
-            _audioProgressTimer = null;
+            IsPausedAudio = true;
+        }
+        else if (IsPausedAudio)
+        {
+            await playback.ResumeAsync();
+            IsPlayingAudio = true;
+            IsPausedAudio = false;
         }
         else
         {
@@ -1312,8 +1324,22 @@ public class MessageViewModel : ViewModelBase
         var playback = ChatViewModel.AudioPlaybackService;
         if (playback == null) return;
 
+        // Stop any other playing message
+        if (_currentlyPlayingMessage != null && _currentlyPlayingMessage != this)
+        {
+            _currentlyPlayingMessage.IsPlayingAudio = false;
+            _currentlyPlayingMessage.IsPausedAudio = false;
+            _currentlyPlayingMessage.AudioProgress = 0;
+            _currentlyPlayingMessage._audioProgressTimer?.Dispose();
+            _currentlyPlayingMessage._audioProgressTimer = null;
+        }
+        _currentlyPlayingMessage = this;
+
         IsPlayingAudio = true;
+        IsPausedAudio = false;
         AudioProgress = 0;
+
+        await playback.PlayAsync(DecodedAudioPcm, _decodedSampleRate, _decodedChannels);
 
         // Update progress every 100ms
         _audioProgressTimer?.Dispose();
@@ -1324,19 +1350,40 @@ public class MessageViewModel : ViewModelBase
             {
                 if (playback.IsPlaying && playback.Duration.TotalSeconds > 0)
                 {
-                    AudioProgress = playback.Position.TotalSeconds / playback.Duration.TotalSeconds;
+                    if (!_isUserSeeking)
+                    {
+                        AudioProgress = playback.Position.TotalSeconds / playback.Duration.TotalSeconds;
+                    }
+                    var pos = playback.Position;
+                    var dur = playback.Duration;
+                    AudioTimeDisplay = $"{pos:m\\:ss} / {dur:m\\:ss}";
                 }
                 else if (!playback.IsPlaying && IsPlayingAudio)
                 {
                     // Playback finished
                     IsPlayingAudio = false;
+                    IsPausedAudio = false;
                     AudioProgress = 0;
+                    AudioTimeDisplay = $"0:00 / {AudioDurationText}";
                     _audioProgressTimer?.Dispose();
                     _audioProgressTimer = null;
                 }
             });
+    }
 
-        await playback.PlayAsync(DecodedAudioPcm, _decodedSampleRate, _decodedChannels);
+    public void OnSeekStarted()
+    {
+        _isUserSeeking = true;
+    }
+
+    public async Task OnSeekCompleted()
+    {
+        _isUserSeeking = false;
+        var playback = ChatViewModel.AudioPlaybackService;
+        if (playback == null || playback.Duration.TotalSeconds <= 0) return;
+
+        var targetPosition = TimeSpan.FromSeconds(AudioProgress * playback.Duration.TotalSeconds);
+        await playback.SeekTo(targetPosition);
     }
 
     private static bool ValidateImageMagicBytes(byte[] data, string mimeType)

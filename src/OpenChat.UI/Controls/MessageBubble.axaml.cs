@@ -30,4 +30,16 @@ public partial class MessageBubble : UserControl
         if (DataContext is MessageViewModel vm)
             vm.IsHovering = false;
     }
+
+    private void AudioSlider_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (DataContext is MessageViewModel vm)
+            vm.OnSeekStarted();
+    }
+
+    private async void AudioSlider_PointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (DataContext is MessageViewModel vm)
+            await vm.OnSeekCompleted();
+    }
 }

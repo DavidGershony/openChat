@@ -63,5 +63,15 @@ public interface IAudioPlaybackService
     /// </summary>
     Task PauseAsync();
 
+    /// <summary>
+    /// Resumes playback after a pause.
+    /// </summary>
+    Task ResumeAsync();
+
+    /// <summary>
+    /// Seeks to the specified position within the current audio.
+    /// </summary>
+    Task SeekTo(TimeSpan position);
+
     event EventHandler? PlaybackCompleted;
 }
