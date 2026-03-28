@@ -261,7 +261,11 @@ public class ExternalSignerService : IExternalSigner, IDisposable
     {
         GenerateLocalKeyPair();
         _secret = GenerateRandomSecret();
-        return $"nostrconnect://{_localPublicKeyHex}?relay={Uri.EscapeDataString(relayUrl)}&secret={_secret}&metadata={Uri.EscapeDataString("{\"name\":\"OpenChat\"}")}";
+        // NIP-46 current spec: individual params instead of deprecated metadata JSON
+        var perms = "nip04_encrypt,nip04_decrypt,nip44_encrypt,nip44_decrypt,sign_event:443,sign_event:444,sign_event:445,sign_event:1059";
+        var uri = $"nostrconnect://{_localPublicKeyHex}?relay={Uri.EscapeDataString(relayUrl)}&secret={_secret}&name=OpenChat&perms={Uri.EscapeDataString(perms)}";
+        _logger.LogInformation("Generated nostrconnect URI: {Uri}", uri);
+        return uri;
     }
 
     public async Task<string> GenerateAndListenForConnectionAsync(string relayUrl)
@@ -275,7 +279,7 @@ public class ExternalSignerService : IExternalSigner, IDisposable
 
         _status.OnNext(new ExternalSignerStatus { State = ExternalSignerState.Connecting });
 
-        _subscriptionSince = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 5;
+        _subscriptionSince = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 120; // 2 min window for slow connections
         _cts = new CancellationTokenSource();
         _webSocket = new ClientWebSocket();
         await _webSocket.ConnectAsync(new Uri(relayUrl), _cts.Token);
@@ -602,6 +606,8 @@ public class ExternalSignerService : IExternalSigner, IDisposable
                 {
                     var message = Encoding.UTF8.GetString(messageBuffer.ToArray());
                     messageBuffer.Clear();
+                    _logger.LogInformation("NIP-46 raw relay data ({Len} bytes): {Data}",
+                        message.Length, message.Length > 300 ? message[..300] + "..." : message);
                     ProcessMessage(message);
                 }
             }
