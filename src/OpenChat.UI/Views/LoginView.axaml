@@ -199,9 +199,15 @@
 
                         <!-- Signer relay -->
                         <TextBlock Text="Signer relay:" FontSize="12" Margin="0,4,0,0" />
-                        <TextBox Text="{Binding SignerRelayInput}"
-                                 Watermark="wss://relay.nsec.app"
-                                 FontSize="13" />
+                        <Grid ColumnDefinitions="*,Auto" Margin="0">
+                            <TextBox Grid.Column="0" Text="{Binding SignerRelayInput}"
+                                     Watermark="wss://relay.damus.io"
+                                     FontSize="13" />
+                            <Button Grid.Column="1" Content="Update" Margin="8,0,0,0"
+                                    Command="{Binding RefreshSignerRelayCommand}"
+                                    ToolTip.Tip="Regenerate QR code with new relay"
+                                    Padding="12,6" FontSize="13" />
+                        </Grid>
 
                         <!-- QR Code -->
                         <Border IsVisible="{Binding NostrConnectQrPngBytes, Converter={x:Static ObjectConverters.IsNotNull}}"

@@ -52,6 +52,7 @@ public class LoginViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> CopyNsecCommand { get; }
     public ReactiveCommand<Unit, Unit> CopyNpubCommand { get; }
     public ReactiveCommand<LoginMethod, Unit> SelectLoginMethodCommand { get; }
+    public ReactiveCommand<Unit, Unit> RefreshSignerRelayCommand { get; }
 
     public LoginViewModel(INostrService nostrService, IQrCodeGenerator qrCodeGenerator, IExternalSigner? externalSigner = null)
     {
@@ -97,6 +98,13 @@ public class LoginViewModel : ViewModelBase
         });
 
         SelectLoginMethodCommand = ReactiveCommand.CreateFromTask<LoginMethod>(SelectLoginMethodAsync);
+
+        RefreshSignerRelayCommand = ReactiveCommand.CreateFromTask(async () =>
+        {
+            NostrConnectUri = null;
+            NostrConnectQrPngBytes = null;
+            await GenerateNostrConnectAsync();
+        });
 
         // Subscribe to external signer status and auto-login on connect
         if (ExternalSigner != null)
@@ -144,7 +152,7 @@ public class LoginViewModel : ViewModelBase
     {
         try
         {
-            var signerRelay = string.IsNullOrWhiteSpace(SignerRelayInput) ? "wss://relay.nsec.app" : SignerRelayInput.Trim();
+            var signerRelay = string.IsNullOrWhiteSpace(SignerRelayInput) ? "wss://relay.damus.io" : SignerRelayInput.Trim();
             var uri = await ExternalSigner!.GenerateAndListenForConnectionAsync(signerRelay);
             NostrConnectUri = uri;
             NostrConnectQrPngBytes = _qrCodeGenerator.GeneratePng(uri);
