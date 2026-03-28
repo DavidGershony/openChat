@@ -57,6 +57,10 @@ public class ChatListViewModel : ViewModelBase
     [Reactive] public bool IsLookingUpGroupKeyPackages { get; set; }
     [Reactive] public string? GroupKeyPackageStatus { get; set; }
 
+    // Relay Selection (shared by both dialogs)
+    public ObservableCollection<RelaySelectionItemViewModel> SelectableRelays { get; } = new();
+    [Reactive] public int SelectedRelayCount { get; set; }
+
     // Join Group Dialog
     [Reactive] public bool ShowJoinGroupDialog { get; set; }
     [Reactive] public string JoinGroupId { get; set; } = string.Empty;
@@ -114,6 +118,7 @@ public class ChatListViewModel : ViewModelBase
             KeyPackageRelays = null;
             FoundKeyPackages.Clear();
             SelectedKeyPackage = null;
+            PopulateSelectableRelays();
             ShowNewChatDialog = true;
         });
 
@@ -124,6 +129,7 @@ public class ChatListViewModel : ViewModelBase
             NewGroupDescription = string.Empty;
             NewGroupMembers = string.Empty;
             NewGroupError = null;
+            PopulateSelectableRelays();
             ShowNewGroupDialog = true;
         });
 
@@ -137,7 +143,8 @@ public class ChatListViewModel : ViewModelBase
 
         var canCreateGroup = this.WhenAnyValue(
             x => x.NewGroupName,
-            name => !string.IsNullOrWhiteSpace(name) && name.Length >= 1);
+            x => x.SelectedRelayCount,
+            (name, relayCount) => !string.IsNullOrWhiteSpace(name) && name.Length >= 1 && relayCount > 0);
 
         CreateGroupCommand = ReactiveCommand.CreateFromTask(CreateNewGroupAsync, canCreateGroup);
 
@@ -262,8 +269,10 @@ public class ChatListViewModel : ViewModelBase
         var canRescan = this.WhenAnyValue(x => x.IsRescanningInvites, scanning => !scanning);
         RescanInvitesCommand = ReactiveCommand.CreateFromTask(RescanInvitesAsync, canRescan);
 
-        var canCreateChat = this.WhenAnyValue(x => x.SelectedKeyPackage)
-            .Select(selected => selected != null);
+        var canCreateChat = this.WhenAnyValue(
+                x => x.SelectedKeyPackage,
+                x => x.SelectedRelayCount)
+            .Select(t => t.Item1 != null && t.Item2 > 0);
 
         CreateChatCommand = ReactiveCommand.CreateFromTask(CreateNewChatAsync, canCreateChat);
 
@@ -515,6 +524,41 @@ public class ChatListViewModel : ViewModelBase
         }
     }
 
+    private void PopulateSelectableRelays()
+    {
+        SelectableRelays.Clear();
+
+        if (_nostrService == null) return;
+
+        var relayUrls = _nostrService.ConnectedRelayUrls;
+        if (relayUrls == null) return;
+
+        foreach (var url in relayUrls)
+        {
+            SelectableRelays.Add(new RelaySelectionItemViewModel(url, isSelected: true));
+        }
+
+        SelectedRelayCount = SelectableRelays.Count;
+
+        // Subscribe after all items are added to avoid triggering during construction
+        foreach (var item in SelectableRelays)
+        {
+            item.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(RelaySelectionItemViewModel.IsSelected))
+                    SelectedRelayCount = SelectableRelays.Count(r => r.IsSelected);
+            };
+        }
+    }
+
+    private string[] GetSelectedRelayUrls()
+    {
+        return SelectableRelays
+            .Where(r => r.IsSelected)
+            .Select(r => r.Url)
+            .ToArray();
+    }
+
     private async Task CreateNewChatAsync()
     {
         if (string.IsNullOrWhiteSpace(NewChatPublicKey))
@@ -606,14 +650,14 @@ public class ChatListViewModel : ViewModelBase
 
             // Create MLS group (only after we've confirmed a KeyPackage exists)
             _logger.LogDebug("Creating MLS group for chat...");
-            var connectedRelays = _nostrService.ConnectedRelayUrls.ToArray();
-            if (connectedRelays.Length == 0)
+            var selectedRelays = GetSelectedRelayUrls();
+            if (selectedRelays.Length == 0)
             {
-                _logger.LogError("Cannot create group: no relays connected");
-                StatusMessage = "Cannot create chat: no relays connected";
+                _logger.LogError("Cannot create group: no relays selected");
+                NewChatError = "Select at least one relay";
                 return;
             }
-            var groupInfo = await _mlsService.CreateGroupAsync(chatName, connectedRelays);
+            var groupInfo = await _mlsService.CreateGroupAsync(chatName, selectedRelays);
             var nostrGroupId = _mlsService.GetNostrGroupId(groupInfo.GroupId);
             var groupIdHex = Convert.ToHexString(groupInfo.GroupId).ToLowerInvariant();
 
@@ -747,14 +791,14 @@ public class ChatListViewModel : ViewModelBase
             if (_mlsService != null)
             {
                 _logger.LogDebug("Creating MLS group...");
-                var connectedRelays = _nostrService.ConnectedRelayUrls.ToArray();
-                if (connectedRelays.Length == 0)
+                var selectedRelays = GetSelectedRelayUrls();
+                if (selectedRelays.Length == 0)
                 {
-                    _logger.LogError("Cannot create group: no relays connected");
-                    NewGroupError = "Cannot create group: no relays connected";
+                    _logger.LogError("Cannot create group: no relays selected");
+                    NewGroupError = "Select at least one relay";
                     return;
                 }
-                var groupInfo = await _mlsService.CreateGroupAsync(NewGroupName.Trim(), connectedRelays);
+                var groupInfo = await _mlsService.CreateGroupAsync(NewGroupName.Trim(), selectedRelays);
                 var nostrGroupId = _mlsService.GetNostrGroupId(groupInfo.GroupId);
 
                 chat = new Chat
@@ -1391,5 +1435,17 @@ public class KeyPackageItemViewModel : ViewModelBase
         KeyPackageRef = !string.IsNullOrEmpty(keyPackage.NostrEventId) && keyPackage.NostrEventId.Length > 12
             ? keyPackage.NostrEventId[..12] + "..."
             : keyPackage.NostrEventId ?? "N/A";
+    }
+}
+
+public class RelaySelectionItemViewModel : ViewModelBase
+{
+    public string Url { get; }
+    [Reactive] public bool IsSelected { get; set; }
+
+    public RelaySelectionItemViewModel(string url, bool isSelected = true)
+    {
+        Url = url;
+        IsSelected = isSelected;
     }
 }

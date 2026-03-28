@@ -352,6 +352,27 @@
                                  AcceptsReturn="False" />
                     </StackPanel>
 
+                    <!-- Relay Selection -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Relays" Classes="secondary" FontSize="13" />
+                        <ItemsControl ItemsSource="{Binding SelectableRelays}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:RelaySelectionItemViewModel">
+                                    <Border Background="{DynamicResource SurfaceSecondaryBrush}"
+                                            CornerRadius="8" Padding="8,6" Margin="0,2">
+                                        <CheckBox IsChecked="{Binding IsSelected}">
+                                            <TextBlock Text="{Binding Url}"
+                                                       FontFamily="Consolas" FontSize="12"
+                                                       VerticalAlignment="Center" />
+                                        </CheckBox>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Text="Select relays to include in the group"
+                                   Classes="muted" FontSize="11" />
+                    </StackPanel>
+
                     <!-- Error Message -->
                     <TextBlock Text="{Binding NewChatError}"
                                Foreground="{DynamicResource StatusErrorBrush}"
@@ -442,6 +463,27 @@
                                        TextWrapping="Wrap" />
                         </StackPanel>
                     </Border>
+
+                    <!-- Relay Selection -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Relays" Classes="secondary" FontSize="13" />
+                        <ItemsControl ItemsSource="{Binding SelectableRelays}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:RelaySelectionItemViewModel">
+                                    <Border Background="{DynamicResource SurfaceSecondaryBrush}"
+                                            CornerRadius="8" Padding="8,6" Margin="0,2">
+                                        <CheckBox IsChecked="{Binding IsSelected}">
+                                            <TextBlock Text="{Binding Url}"
+                                                       FontFamily="Consolas" FontSize="12"
+                                                       VerticalAlignment="Center" />
+                                        </CheckBox>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Text="Select relays to include in the group"
+                                   Classes="muted" FontSize="11" />
+                    </StackPanel>
 
                     <!-- Error Message -->
                     <TextBlock Text="{Binding NewGroupError}"

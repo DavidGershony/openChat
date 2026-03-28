@@ -235,6 +235,7 @@ public class ChatListFragment : Fragment
         var lookupButton = dialogView.FindViewById<MaterialButton>(Resource.Id.lookup_keypackage_button)!;
         var statusText = dialogView.FindViewById<TextView>(Resource.Id.keypackage_status_text)!;
         var errorText = dialogView.FindViewById<TextView>(Resource.Id.new_chat_error)!;
+        var relayContainer = dialogView.FindViewById<LinearLayout>(Resource.Id.relay_selection_container)!;
 
         var dialog = new MaterialAlertDialogBuilder(Context)
             .SetTitle("New Chat")!
@@ -307,6 +308,21 @@ public class ChatListFragment : Fragment
         // Set flag before subscribing to avoid immediate dismiss from initial false value
         ViewModel.ShowNewChatDialog = true;
 
+        // Populate relay checkboxes
+        relayContainer.RemoveAllViews();
+        foreach (var relay in ViewModel.SelectableRelays)
+        {
+            var checkBox = new CheckBox(Context)
+            {
+                Text = relay.Url,
+                Checked = relay.IsSelected,
+                TextSize = 12f
+            };
+            checkBox.SetTypeface(global::Android.Graphics.Typeface.Monospace, global::Android.Graphics.TypefaceStyle.Normal);
+            checkBox.CheckedChange += (s, e) => relay.IsSelected = e.IsChecked;
+            relayContainer.AddView(checkBox);
+        }
+
         // Auto-dismiss on success
         ViewModel.WhenAnyValue(x => x.ShowNewChatDialog)
             .ObserveOn(RxApp.MainThreadScheduler)
@@ -328,6 +344,7 @@ public class ChatListFragment : Fragment
         var lookupButton = dialogView.FindViewById<MaterialButton>(Resource.Id.lookup_group_keypackages_button)!;
         var statusText = dialogView.FindViewById<TextView>(Resource.Id.group_keypackage_status_text)!;
         var errorText = dialogView.FindViewById<TextView>(Resource.Id.new_group_error)!;
+        var relayContainer = dialogView.FindViewById<LinearLayout>(Resource.Id.relay_selection_container)!;
 
         var dialog = new MaterialAlertDialogBuilder(Context)
             .SetTitle("New Group")!
@@ -383,6 +400,21 @@ public class ChatListFragment : Fragment
             .DisposeWith(_disposables);
 
         ViewModel.ShowNewGroupDialog = true;
+
+        // Populate relay checkboxes
+        relayContainer.RemoveAllViews();
+        foreach (var relay in ViewModel.SelectableRelays)
+        {
+            var checkBox = new CheckBox(Context)
+            {
+                Text = relay.Url,
+                Checked = relay.IsSelected,
+                TextSize = 12f
+            };
+            checkBox.SetTypeface(global::Android.Graphics.Typeface.Monospace, global::Android.Graphics.TypefaceStyle.Normal);
+            checkBox.CheckedChange += (s, e) => relay.IsSelected = e.IsChecked;
+            relayContainer.AddView(checkBox);
+        }
 
         ViewModel.WhenAnyValue(x => x.ShowNewGroupDialog)
             .ObserveOn(RxApp.MainThreadScheduler)

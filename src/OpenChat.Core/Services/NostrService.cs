@@ -31,6 +31,7 @@ public class NostrService : INostrService, IDisposable
     private readonly ConcurrentDictionary<string, ClientWebSocket> _relayConnections = new();
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _relayListeners = new();
     private readonly ConcurrentDictionary<string, byte> _subscribedGroupIds = new();
+    private readonly ConcurrentDictionary<string, byte> _recentlyProcessedEventIds = new();
     private DateTimeOffset? _groupMessagesSince;
     private string? _subscribedUserPubKey;
     private string? _subscribedUserPrivKey;
@@ -262,6 +263,22 @@ public class NostrService : INostrService, IDisposable
                 var nostrEvent = ParseNostrEvent(eventData, relayUrl);
                 if (nostrEvent != null)
                 {
+                    // Deduplicate events across relays — skip if already processed
+                    if (!string.IsNullOrEmpty(nostrEvent.EventId) &&
+                        !_recentlyProcessedEventIds.TryAdd(nostrEvent.EventId, 0))
+                    {
+                        _logger.LogDebug("Skipping duplicate event {EventId} from {RelayUrl}",
+                            nostrEvent.EventId[..Math.Min(16, nostrEvent.EventId.Length)], relayUrl);
+                        return;
+                    }
+
+                    // Prevent unbounded growth — clear when cache gets large
+                    if (_recentlyProcessedEventIds.Count > 10_000)
+                    {
+                        _logger.LogInformation("Clearing event dedup cache ({Count} entries)", _recentlyProcessedEventIds.Count);
+                        _recentlyProcessedEventIds.Clear();
+                    }
+
                     _logger.LogDebug("Received event kind {Kind} from {RelayUrl}", nostrEvent.Kind, relayUrl);
                     _events.OnNext(nostrEvent);
 
@@ -655,6 +672,7 @@ public class NostrService : INostrService, IDisposable
         }
         _relayConnections.Clear();
         _connectedRelays.Clear();
+        _recentlyProcessedEventIds.Clear();
     }
 
     public async Task ReconnectRelayAsync(string relayUrl)
