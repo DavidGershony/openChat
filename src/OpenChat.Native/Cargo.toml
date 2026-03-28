@@ -1,6 +1,6 @@
 [package]
 name = "openchat_native"
-version = "0.1.0"
+version = "0.2.4"
 edition = "2021"
 authors = ["OpenChat Contributors"]
 description = "Native MLS/Marmot bindings for OpenChat"
