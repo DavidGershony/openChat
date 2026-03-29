@@ -432,9 +432,23 @@ public class ExternalSignerService : IExternalSigner, IDisposable
 
     private async Task<string> SendRequestAsync(string method, string[] @params, TimeSpan timeout)
     {
-        if (_webSocket == null || _localPrivateKeyHex == null || _remotePubKey == null)
+        if (_localPrivateKeyHex == null || _remotePubKey == null)
         {
-            throw new InvalidOperationException("Not connected");
+            throw new InvalidOperationException("Not connected — no signer session");
+        }
+
+        // Auto-reconnect if WebSocket died (e.g. app was backgrounded)
+        if (_webSocket == null || _webSocket.State != WebSocketState.Open)
+        {
+            _logger.LogWarning("WebSocket not open (state: {State}) for {Method} — attempting reconnect",
+                _webSocket?.State.ToString() ?? "null", method);
+            IsConnected = false;
+            await ReconnectAsync();
+            if (_webSocket == null || _webSocket.State != WebSocketState.Open)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot send {method}: WebSocket reconnect failed (state: {_webSocket?.State})");
+            }
         }
 
         var requestId = Guid.NewGuid().ToString("N");
