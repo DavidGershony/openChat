@@ -164,6 +164,14 @@
                         android:textSize="16sp"
                         android:textStyle="bold" />
 
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/reconnect_relays_button"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Reconnect All"
+                        android:layout_marginTop="8dp"
+                        style="@style/Widget.Material3.Button.OutlinedButton" />
+
                     <androidx.recyclerview.widget.RecyclerView
                         android:id="@+id/relay_recycler"
                         android:layout_width="match_parent"

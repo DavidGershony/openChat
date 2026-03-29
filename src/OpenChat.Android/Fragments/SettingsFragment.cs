@@ -52,6 +52,7 @@ public class SettingsFragment : Fragment
         var copyNpubButton = view.FindViewById<ImageButton>(Resource.Id.copy_npub_button)!;
 
         // Relay views
+        var reconnectRelaysButton = view.FindViewById<MaterialButton>(Resource.Id.reconnect_relays_button)!;
         var relayRecycler = view.FindViewById<RecyclerView>(Resource.Id.relay_recycler)!;
         var newRelayInput = view.FindViewById<TextInputEditText>(Resource.Id.new_relay_input)!;
         var addRelayButton = view.FindViewById<MaterialButton>(Resource.Id.add_relay_button)!;
@@ -109,6 +110,29 @@ public class SettingsFragment : Fragment
         _relayAdapter.RemoveClick += (s, relay) =>
         {
             ViewModel.RemoveRelayCommand.Execute(relay).Subscribe().DisposeWith(_disposables);
+        };
+
+        // Reconnect all relays
+        reconnectRelaysButton.Click += (s, e) =>
+        {
+            reconnectRelaysButton.Enabled = false;
+            reconnectRelaysButton.Text = "Reconnecting...";
+            _mainViewModel.ReconnectCommand.Execute()
+                .ObserveOn(RxApp.MainThreadScheduler)
+                .Subscribe(
+                    _ => { },
+                    ex =>
+                    {
+                        _logger.LogError(ex, "Reconnect all relays failed");
+                        reconnectRelaysButton.Enabled = true;
+                        reconnectRelaysButton.Text = "Reconnect All";
+                    },
+                    () =>
+                    {
+                        reconnectRelaysButton.Enabled = true;
+                        reconnectRelaysButton.Text = "Reconnect All";
+                    })
+                .DisposeWith(_disposables);
         };
 
         addRelayButton.Click += (s, e) =>
