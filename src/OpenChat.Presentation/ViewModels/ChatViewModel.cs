@@ -369,7 +369,7 @@ public class ChatViewModel : ViewModelBase
                 return;
             }
 
-            var metadata = await _nostrService.FetchUserMetadataAsync(pubKeyHex);
+            var metadata = await _messageService.FetchAndCacheProfileAsync(pubKeyHex);
             ContactMetadata = metadata;
 
             // Update computed properties for UI binding

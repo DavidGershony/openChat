@@ -176,6 +176,13 @@ public interface IMessageService
     /// Uses a 2-day sliding window with retry. Returns decrypted messages and the new boundary.
     /// </summary>
     Task<LoadOlderMessagesResult> LoadOlderMessagesAsync(string chatId, DateTimeOffset fetchBoundary);
+
+    /// <summary>
+    /// Fetches kind 0 metadata for the given public key, caches it as a User in the database,
+    /// and returns the metadata. Returns null if fetch fails. Existing user fields (private keys,
+    /// signer details) are preserved on update.
+    /// </summary>
+    Task<UserMetadata?> FetchAndCacheProfileAsync(string publicKeyHex);
 }
 
 public class KeyPackageAuditResult

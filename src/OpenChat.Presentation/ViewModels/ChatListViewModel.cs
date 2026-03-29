@@ -606,7 +606,7 @@ public class ChatListViewModel : ViewModelBase
             {
                 try
                 {
-                    var metadata = await _nostrService.FetchUserMetadataAsync(publicKeyHex);
+                    var metadata = await _messageService.FetchAndCacheProfileAsync(publicKeyHex);
                     chatName = metadata?.DisplayName ?? metadata?.Name;
                 }
                 catch

@@ -2,6 +2,7 @@ using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using Microsoft.Extensions.Logging;
 using OpenChat.Core.Logging;
+using OpenChat.Core.Crypto;
 using OpenChat.Core.Models;
 
 namespace OpenChat.Core.Services;
@@ -695,16 +696,16 @@ public class MessageService : IMessageService, IDisposable
         var eTag = nostrEvent.Tags.FirstOrDefault(t => t.Count > 1 && t[0] == "e");
         var keyPackageEventId = eTag?[1];
 
-        // Try to fetch sender display name
+        // Fetch and cache sender profile
         string? senderDisplayName = null;
         try
         {
-            var metadata = await _nostrService.FetchUserMetadataAsync(nostrEvent.PublicKey);
+            var metadata = await FetchAndCacheProfileAsync(nostrEvent.PublicKey);
             senderDisplayName = metadata?.DisplayName ?? metadata?.Name;
         }
-        catch
+        catch (Exception ex)
         {
-            // Not critical — display name is optional
+            _logger.LogWarning(ex, "Failed to fetch/cache sender metadata for welcome");
         }
 
         var invite = new PendingInvite
@@ -1305,6 +1306,72 @@ public class MessageService : IMessageService, IDisposable
         }
 
         return result;
+    }
+
+    public async Task<UserMetadata?> FetchAndCacheProfileAsync(string publicKeyHex)
+    {
+        try
+        {
+            var metadata = await _nostrService.FetchUserMetadataAsync(publicKeyHex);
+            if (metadata != null && !string.IsNullOrEmpty(metadata.PublicKeyHex))
+            {
+                await SaveMetadataAsUserAsync(metadata);
+            }
+            return metadata;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "FetchAndCacheProfile failed for {PubKey}", publicKeyHex[..Math.Min(16, publicKeyHex.Length)]);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Converts UserMetadata to a User and saves to the database (upsert).
+    /// Preserves existing fields (private keys, signer details, IsCurrentUser) if the user already exists.
+    /// </summary>
+    private async Task SaveMetadataAsUserAsync(UserMetadata metadata)
+    {
+        try
+        {
+            var existing = await _storageService.GetUserByPublicKeyAsync(metadata.PublicKeyHex);
+            if (existing != null)
+            {
+                // Update profile fields only, preserve everything else
+                existing.DisplayName = metadata.DisplayName ?? metadata.Name ?? existing.DisplayName;
+                existing.Username = metadata.Username ?? existing.Username;
+                existing.AvatarUrl = metadata.Picture ?? existing.AvatarUrl;
+                existing.About = metadata.About ?? existing.About;
+                existing.Nip05 = metadata.Nip05 ?? existing.Nip05;
+                existing.LastUpdatedAt = DateTime.UtcNow;
+                await _storageService.SaveUserAsync(existing);
+                _logger.LogDebug("Updated cached profile for {PubKey}", metadata.PublicKeyHex[..16]);
+            }
+            else
+            {
+                var npub = metadata.Npub ?? Bech32.Encode("npub", Convert.FromHexString(metadata.PublicKeyHex));
+                var user = new User
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    PublicKeyHex = metadata.PublicKeyHex,
+                    Npub = npub,
+                    DisplayName = metadata.DisplayName ?? metadata.Name ?? string.Empty,
+                    Username = metadata.Username,
+                    AvatarUrl = metadata.Picture,
+                    About = metadata.About,
+                    Nip05 = metadata.Nip05,
+                    CreatedAt = metadata.CreatedAt ?? DateTime.UtcNow,
+                    LastUpdatedAt = DateTime.UtcNow,
+                    IsCurrentUser = false
+                };
+                await _storageService.SaveUserAsync(user);
+                _logger.LogInformation("Cached new profile for {PubKey}: {Name}", metadata.PublicKeyHex[..16], user.DisplayName);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to cache metadata for {PubKey}", metadata.PublicKeyHex[..16]);
+        }
     }
 
     public void Dispose()
