@@ -1876,10 +1876,33 @@ public class NostrService : INostrService, IDisposable
         {
             var npub = Bech32.Encode("npub", Convert.FromHexString(publicKeyHex));
 
-            // Try each connected relay until we get metadata
-            var relaysToTry = _connectedRelays.Count > 0
-                ? _connectedRelays.Keys.ToList()
-                : NostrConstants.DefaultRelays.ToList();
+            // Discover target user's relays via NIP-65, then fall back to connected/default relays
+            var relaysToTry = new List<string>();
+            try
+            {
+                var userRelays = await FetchRelayListAsync(publicKeyHex);
+                var userRelayUrls = userRelays
+                    .Where(r => r.Usage == RelayUsage.Read || r.Usage == RelayUsage.Both)
+                    .Select(r => r.Url)
+                    .ToList();
+                if (userRelayUrls.Count > 0)
+                {
+                    _logger.LogInformation("Using {Count} NIP-65 relays for metadata fetch", userRelayUrls.Count);
+                    relaysToTry.AddRange(userRelayUrls);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to discover NIP-65 relays for metadata fetch, using defaults");
+            }
+
+            // Also try connected/default relays
+            if (_connectedRelays.Count > 0)
+                relaysToTry.AddRange(_connectedRelays.Keys);
+            else
+                relaysToTry.AddRange(NostrConstants.DefaultRelays);
+
+            relaysToTry = relaysToTry.Distinct().ToList();
 
             foreach (var relayUrl in relaysToTry)
             {
