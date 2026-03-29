@@ -32,6 +32,7 @@ public class ExternalSignerService : IExternalSigner, IDisposable
     private string? _localPrivateKeyHex;
     private string? _localPublicKeyHex;
     private readonly Dictionary<string, TaskCompletionSource<string>> _pendingRequests = new();
+    private string? _replayedSignEventResult;
     private long _subscriptionSince;
     private bool _disposed;
 
@@ -442,6 +443,7 @@ public class ExternalSignerService : IExternalSigner, IDisposable
         {
             _logger.LogWarning("WebSocket not open (state: {State}) for {Method} — attempting reconnect",
                 _webSocket?.State.ToString() ?? "null", method);
+            _replayedSignEventResult = null;
             IsConnected = false;
             await ReconnectAsync();
             if (_webSocket == null || _webSocket.State != WebSocketState.Open)
@@ -449,6 +451,21 @@ public class ExternalSignerService : IExternalSigner, IDisposable
                 throw new InvalidOperationException(
                     $"Cannot send {method}: WebSocket reconnect failed (state: {_webSocket?.State})");
             }
+
+            // Wait briefly for the relay to replay stored responses from while we were offline.
+            // Amber may have already sent the signed response while the socket was dead.
+            _logger.LogInformation("Waiting for relay to replay stored responses...");
+            await Task.Delay(3000);
+
+            if (_replayedSignEventResult != null)
+            {
+                _logger.LogInformation("Found replayed {Method} response — using it instead of sending duplicate request", method);
+                var result = _replayedSignEventResult;
+                _replayedSignEventResult = null;
+                return result;
+            }
+
+            _logger.LogInformation("No replayed response found — sending new {Method} request", method);
         }
 
         var requestId = Guid.NewGuid().ToString("N");
@@ -749,6 +766,13 @@ public class ExternalSignerService : IExternalSigner, IDisposable
                                     _logger.LogInformation("NIP-46 signer returned result for request {Id}", response.Id[..8]);
                                     tcs.TrySetResult(response.Result ?? "");
                                 }
+                            }
+                            else if (response?.Result != null && response.Error == null)
+                            {
+                                // Unmatched response — likely a sign_event response replayed after reconnect.
+                                // Cache it so SendRequestAsync can use it instead of sending a duplicate request.
+                                _logger.LogInformation("NIP-46 caching unmatched response {Id} (likely replayed after reconnect)", response.Id?[..8] ?? "?");
+                                _replayedSignEventResult = response.Result;
                             }
                             else if (!IsConnected)
                             {
