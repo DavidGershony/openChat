@@ -97,10 +97,34 @@ public class MessageService : IMessageService, IDisposable
             senderLookup[key] = await _storageService.GetUserByPublicKeyAsync(key);
         }
 
+        var unknownKeys = new List<string>();
         foreach (var message in messages)
         {
             message.Sender = senderLookup.GetValueOrDefault(message.SenderPublicKey);
             message.IsFromCurrentUser = message.SenderPublicKey == _currentUser?.PublicKeyHex;
+            if (message.Sender == null && !message.IsFromCurrentUser)
+            {
+                unknownKeys.Add(message.SenderPublicKey);
+            }
+        }
+
+        // Background-fetch profiles for any unknown senders (e.g. from before caching was added)
+        if (unknownKeys.Count > 0)
+        {
+            _ = Task.Run(async () =>
+            {
+                foreach (var pubKey in unknownKeys.Distinct())
+                {
+                    try
+                    {
+                        await FetchAndCacheProfileAsync(pubKey);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Background profile fetch failed for {PubKey}", pubKey[..Math.Min(16, pubKey.Length)]);
+                    }
+                }
+            });
         }
 
         return messages;
@@ -897,6 +921,13 @@ public class MessageService : IMessageService, IDisposable
 
         message.Sender = await _storageService.GetUserByPublicKeyAsync(message.SenderPublicKey);
 
+        // If sender is unknown, fetch their profile in the background so the message
+        // is delivered immediately while the profile resolves asynchronously.
+        if (message.Sender == null && !message.IsFromCurrentUser)
+        {
+            _ = FetchUnknownSenderAsync(message);
+        }
+
         await _storageService.SaveMessageAsync(message);
         _newMessages.OnNext(message);
 
@@ -1210,6 +1241,7 @@ public class MessageService : IMessageService, IDisposable
         var processedCount = 0;
         var skipCount = 0;
         var decryptFailCount = 0;
+        var unknownSenderKeys = new HashSet<string>();
 
         foreach (var nostrEvent in fetchedEvents)
         {
@@ -1287,9 +1319,41 @@ public class MessageService : IMessageService, IDisposable
 
             message.Sender = await _storageService.GetUserByPublicKeyAsync(message.SenderPublicKey);
 
+            // Queue unknown senders for batch profile fetch below
+            if (message.Sender == null && !message.IsFromCurrentUser)
+            {
+                unknownSenderKeys.Add(message.SenderPublicKey);
+            }
+
             await _storageService.SaveMessageAsync(message);
             result.Messages.Add(message);
             processedCount++;
+        }
+
+        // Batch-fetch profiles for unknown senders
+        if (unknownSenderKeys.Count > 0)
+        {
+            _logger.LogInformation("LoadOlderMessages: fetching profiles for {Count} unknown senders", unknownSenderKeys.Count);
+            foreach (var pubKey in unknownSenderKeys)
+            {
+                try
+                {
+                    var metadata = await FetchAndCacheProfileAsync(pubKey);
+                    if (metadata != null)
+                    {
+                        // Backfill sender on already-processed messages
+                        var user = await _storageService.GetUserByPublicKeyAsync(pubKey);
+                        foreach (var msg in result.Messages.Where(m => m.SenderPublicKey == pubKey && m.Sender == null))
+                        {
+                            msg.Sender = user;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to fetch profile for unknown sender {PubKey}", pubKey[..Math.Min(16, pubKey.Length)]);
+                }
+            }
         }
 
         _logger.LogInformation(
@@ -1323,6 +1387,29 @@ public class MessageService : IMessageService, IDisposable
         {
             _logger.LogWarning(ex, "FetchAndCacheProfile failed for {PubKey}", publicKeyHex[..Math.Min(16, publicKeyHex.Length)]);
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Background task: fetches profile for an unknown message sender and emits a message update
+    /// so the UI can refresh the display name without blocking message delivery.
+    /// </summary>
+    private async Task FetchUnknownSenderAsync(Message message)
+    {
+        try
+        {
+            _logger.LogInformation("Fetching profile for unknown sender {PubKey}", message.SenderPublicKey[..Math.Min(16, message.SenderPublicKey.Length)]);
+            var metadata = await FetchAndCacheProfileAsync(message.SenderPublicKey);
+            if (metadata != null)
+            {
+                message.Sender = await _storageService.GetUserByPublicKeyAsync(message.SenderPublicKey);
+                // Re-emit so the UI updates the display name
+                _newMessages.OnNext(message);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Background profile fetch failed for sender {PubKey}", message.SenderPublicKey[..Math.Min(16, message.SenderPublicKey.Length)]);
         }
     }
 
