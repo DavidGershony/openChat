@@ -262,6 +262,26 @@ public class AndroidAudioPlaybackService : IAudioPlaybackService
         return Task.CompletedTask;
     }
 
+    public Task ResumeAsync()
+    {
+        if (_player != null && !_player.IsPlaying)
+        {
+            _player.Start();
+            _logger.LogInformation("Android playback resumed");
+        }
+        return Task.CompletedTask;
+    }
+
+    public Task SeekTo(TimeSpan position)
+    {
+        if (_player != null)
+        {
+            _player.SeekTo((int)position.TotalMilliseconds);
+            _logger.LogInformation("Android playback seeked to {Position}", position);
+        }
+        return Task.CompletedTask;
+    }
+
     private static void WriteWavHeader(System.IO.Stream stream, int dataLength, int sampleRate, int channels)
     {
         var bitsPerSample = 16;
