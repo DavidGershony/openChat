@@ -57,7 +57,13 @@ public partial class App : Application
                 _logger?.LogDebug("Creating profile-independent services...");
 
                 // Profile-independent services (survive across logins)
-                var secureStorage = new DesktopSecureStorage();
+                ISecureStorage secureStorage;
+                if (OperatingSystem.IsWindows())
+                    secureStorage = new DesktopSecureStorage();
+                else if (OperatingSystem.IsLinux())
+                    secureStorage = new LinuxSecureStorage();
+                else
+                    secureStorage = new LinuxSecureStorage(); // macOS fallback — same AES-GCM approach
                 var nostrService = new NostrService();
                 var clipboard = new AvaloniaClipboard();
                 var qrCodeGenerator = new AvaloniaQrCodeGenerator();
