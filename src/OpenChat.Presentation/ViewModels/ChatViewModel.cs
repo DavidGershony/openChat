@@ -969,9 +969,14 @@ public class MessageViewModel : ViewModelBase
     public bool IsAudio { get; }
 
     /// <summary>
-    /// True when this is a plain text message (not image, not audio).
+    /// True when this message is a file attachment (MessageType.File).
     /// </summary>
-    public bool IsTextMessage => !IsImage && !IsAudio;
+    public bool IsFile { get; }
+
+    /// <summary>
+    /// True when this is a plain text message (not image, not audio, not file).
+    /// </summary>
+    public bool IsTextMessage => !IsImage && !IsAudio && !IsFile;
 
     /// <summary>
     /// Display text for image messages, e.g. "[Encrypted image: photo.jpg]".
@@ -997,14 +1002,19 @@ public class MessageViewModel : ViewModelBase
     [Reactive] public byte[]? DecodedAudioPcm { get; set; }
 
     /// <summary>
-    /// True when this is a media message (image or audio) and MIP-04 is disabled.
+    /// True when this is a media message and MIP-04 is disabled.
     /// </summary>
-    public bool ShowMediaDisabled => (IsImage || IsAudio) && !IsMip04Enabled;
+    public bool ShowMediaDisabled => IsMediaMessage && !IsMip04Enabled;
 
     /// <summary>
     /// True when MIP-04 is enabled, this is media, and it hasn't been loaded yet.
     /// </summary>
-    public bool ShowTapToLoad => (IsImage || IsAudio) && IsMip04Enabled && !IsMediaLoaded && !IsLoadingMedia && MediaError == null;
+    public bool ShowTapToLoad => IsMediaMessage && IsMip04Enabled && !IsMediaLoaded && !IsLoadingMedia && MediaError == null;
+
+    /// <summary>
+    /// True when this message has a media attachment (image, audio, or file).
+    /// </summary>
+    public bool IsMediaMessage => IsImage || IsAudio || IsFile;
 
     // Reactions
     [Reactive] public string? ReactionsDisplay { get; set; }
@@ -1041,6 +1051,7 @@ public class MessageViewModel : ViewModelBase
 
         IsImage = message.Type == MessageType.Image;
         IsAudio = message.Type == MessageType.Audio;
+        IsFile = message.Type == MessageType.File;
         if (IsImage)
         {
             var displayName = !string.IsNullOrEmpty(message.FileName) ? message.FileName : "image";
@@ -1055,9 +1066,15 @@ public class MessageViewModel : ViewModelBase
             AudioDurationText = duration;
             AudioTimeDisplay = $"0:00 / {duration}";
         }
+        else if (IsFile)
+        {
+            var fileName = !string.IsNullOrEmpty(message.FileName) ? message.FileName : "attachment";
+            var mimeLabel = !string.IsNullOrEmpty(message.MediaType) ? message.MediaType : "file";
+            ImageDisplayText = $"{fileName} ({mimeLabel})";
+        }
 
         // Determine server safety for media messages
-        if ((IsImage || IsAudio) && !string.IsNullOrEmpty(message.ImageUrl))
+        if (IsMediaMessage && !string.IsNullOrEmpty(message.ImageUrl))
         {
             IsUnknownServer = MediaDownloadService != null && !MediaDownloadService.IsKnownBlossomServer(message.ImageUrl);
             if (Uri.TryCreate(message.ImageUrl, UriKind.Absolute, out var uri))

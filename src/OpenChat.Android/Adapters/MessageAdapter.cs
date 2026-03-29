@@ -147,6 +147,16 @@ public class MessageAdapter : RecyclerView.Adapter
                 item.DecryptedMediaBytes, 0, item.DecryptedMediaBytes.Length);
             mediaImage.SetImageBitmap(bitmap);
         }
+        else if (item.IsFile && item.IsMediaLoaded)
+        {
+            // File downloaded
+            mediaStatus.Text = $"{item.ImageDisplayText}\nDownloaded";
+            mediaStatus.SetTextColor(global::Android.Graphics.Color.ParseColor("#FF10B981"));
+            mediaStatus.Visibility = ViewStates.Visible;
+            loadButton.Visibility = ViewStates.Gone;
+            mediaImage.Visibility = ViewStates.Gone;
+            audioPlayer.Visibility = ViewStates.Gone;
+        }
         else if (item.IsLoadingMedia)
         {
             mediaStatus.Text = item.MediaSizeDisplay != null
@@ -170,7 +180,9 @@ public class MessageAdapter : RecyclerView.Adapter
         {
             var buttonText = item.IsAudio
                 ? (item.ImageDisplayText ?? "Load voice message")
-                : (item.ImageDisplayText ?? "Load image");
+                : item.IsFile
+                    ? $"Download {item.ImageDisplayText ?? "file"}"
+                    : (item.ImageDisplayText ?? "Load image");
             if (item.IsUnknownServer)
                 buttonText += $"\nUnknown server: {item.ServerHostname}";
             loadButton.Text = buttonText;

@@ -889,11 +889,17 @@ public class MessageService : IMessageService, IDisposable
                 if (string.IsNullOrEmpty(content))
                     content = "[Voice message]";
             }
-            else
+            else if (decrypted.MediaType?.StartsWith("image/") == true || string.IsNullOrEmpty(decrypted.MediaType))
             {
                 messageType = MessageType.Image;
                 if (string.IsNullOrEmpty(content))
                     content = "[Image]";
+            }
+            else
+            {
+                messageType = MessageType.File;
+                if (string.IsNullOrEmpty(content))
+                    content = $"[File: {decrypted.FileName ?? "attachment"}]";
             }
         }
 
@@ -1288,11 +1294,17 @@ public class MessageService : IMessageService, IDisposable
                     if (string.IsNullOrEmpty(olderContent))
                         olderContent = "[Voice message]";
                 }
-                else
+                else if (decrypted.MediaType?.StartsWith("image/") == true || string.IsNullOrEmpty(decrypted.MediaType))
                 {
                     olderMsgType = MessageType.Image;
                     if (string.IsNullOrEmpty(olderContent))
                         olderContent = "[Image]";
+                }
+                else
+                {
+                    olderMsgType = MessageType.File;
+                    if (string.IsNullOrEmpty(olderContent))
+                        olderContent = $"[File: {decrypted.FileName ?? "attachment"}]";
                 }
             }
 
