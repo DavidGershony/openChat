@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using OpenChat.Presentation.ViewModels;
 
@@ -31,13 +32,13 @@ public partial class MessageBubble : UserControl
             vm.IsHovering = false;
     }
 
-    private void AudioSlider_PointerPressed(object? sender, PointerPressedEventArgs e)
+    private void AudioSlider_PointerPressed(object? sender, RoutedEventArgs e)
     {
         if (DataContext is MessageViewModel vm)
             vm.OnSeekStarted();
     }
 
-    private async void AudioSlider_PointerReleased(object? sender, PointerReleasedEventArgs e)
+    private async void AudioSlider_PointerReleased(object? sender, RoutedEventArgs e)
     {
         if (DataContext is MessageViewModel vm)
             await vm.OnSeekCompleted();
