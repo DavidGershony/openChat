@@ -145,21 +145,4 @@ public class NostrServiceTests
         Assert.False(statusUpdates[0].IsConnected);
     }
 
-    [Fact]
-    public void EncryptDecryptNip44_ShouldRoundTrip()
-    {
-        // Arrange
-        var (senderPrivateKey, _, _, _) = _nostrService.GenerateKeyPair();
-        var (recipientPrivateKey, recipientPublicKey, _, _) = _nostrService.GenerateKeyPair();
-        var (_, senderPublicKey, _, _) = _nostrService.ImportPrivateKey(senderPrivateKey);
-
-        var plaintext = "Hello, NIP-44!";
-
-        // Act
-        var encrypted = _nostrService.EncryptNip44(plaintext, senderPrivateKey, recipientPublicKey);
-        var decrypted = _nostrService.DecryptNip44(encrypted, recipientPrivateKey, senderPublicKey);
-
-        // Assert (currently using placeholder implementation)
-        Assert.Equal(plaintext, decrypted);
-    }
 }

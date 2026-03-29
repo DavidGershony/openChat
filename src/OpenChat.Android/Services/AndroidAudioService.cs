@@ -206,6 +206,7 @@ public class AndroidAudioPlaybackService : IAudioPlaybackService
     private readonly ILogger<AndroidAudioPlaybackService> _logger;
     private readonly Context _context;
     private MediaPlayer? _player;
+    private string? _currentTempPath;
 
     public bool IsPlaying => _player?.IsPlaying == true;
     public TimeSpan Position => _player != null ? TimeSpan.FromMilliseconds(_player.CurrentPosition) : TimeSpan.Zero;
@@ -231,11 +232,12 @@ public class AndroidAudioPlaybackService : IAudioPlaybackService
             await fs.WriteAsync(pcmData);
         }
 
+        _currentTempPath = tempPath;
         _player = new MediaPlayer();
         _player.SetDataSource(tempPath);
         _player.Completion += (s, e) =>
         {
-            try { File.Delete(tempPath); } catch { }
+            CleanupTempFile();
             PlaybackCompleted?.Invoke(this, EventArgs.Empty);
         };
         _player.Prepare();
@@ -252,7 +254,17 @@ public class AndroidAudioPlaybackService : IAudioPlaybackService
             _player.Release();
             _player = null;
         }
+        CleanupTempFile();
         return Task.CompletedTask;
+    }
+
+    private void CleanupTempFile()
+    {
+        if (_currentTempPath != null)
+        {
+            try { File.Delete(_currentTempPath); } catch { }
+            _currentTempPath = null;
+        }
     }
 
     public Task PauseAsync()

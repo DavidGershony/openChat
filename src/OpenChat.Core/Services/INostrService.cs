@@ -172,16 +172,6 @@ public interface INostrService
     string? NpubToHex(string npub);
 
     /// <summary>
-    /// Encrypt content using NIP-44.
-    /// </summary>
-    byte[] EncryptNip44(string plaintext, string senderPrivateKeyHex, string recipientPublicKeyHex);
-
-    /// <summary>
-    /// Decrypt content using NIP-44.
-    /// </summary>
-    string DecryptNip44(byte[] ciphertext, string recipientPrivateKeyHex, string senderPublicKeyHex);
-
-    /// <summary>
     /// Async NIP-44 encryption. Delegates to external signer when connected,
     /// otherwise uses local private key.
     /// </summary>

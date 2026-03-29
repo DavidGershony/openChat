@@ -2302,21 +2302,6 @@ public class NostrService : INostrService, IDisposable
         return null;
     }
 
-    public byte[] EncryptNip44(string plaintext, string senderPrivateKeyHex, string recipientPublicKeyHex)
-    {
-        // TODO: Implement NIP-44 encryption
-        // For now, use a placeholder that will be replaced with Blockcore implementation
-        var plaintextBytes = Encoding.UTF8.GetBytes(plaintext);
-        return plaintextBytes; // Placeholder - NOT SECURE
-    }
-
-    public string DecryptNip44(byte[] ciphertext, string recipientPrivateKeyHex, string senderPublicKeyHex)
-    {
-        // TODO: Implement NIP-44 decryption
-        // For now, use a placeholder that will be replaced with Blockcore implementation
-        return Encoding.UTF8.GetString(ciphertext); // Placeholder - NOT SECURE
-    }
-
     public async Task<string> Nip44EncryptAsync(string plaintext, string recipientPubKey)
     {
         if (_externalSigner?.IsConnected == true)
