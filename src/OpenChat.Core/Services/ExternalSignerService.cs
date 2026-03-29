@@ -327,8 +327,14 @@ public class ExternalSignerService : IExternalSigner, IDisposable
             _ = Task.Run(() => ListenForMessagesAsync(_cts.Token));
             await SubscribeToSignerAsync();
 
-            _status.OnNext(new ExternalSignerStatus { State = ExternalSignerState.WaitingForApproval });
-            _logger.LogInformation("Re-subscribed to kind 24133 events after reconnect (since={Since})", _subscriptionSince);
+            IsConnected = true;
+            _status.OnNext(new ExternalSignerStatus
+            {
+                State = ExternalSignerState.Connected,
+                IsConnected = true,
+                PublicKeyHex = PublicKeyHex
+            });
+            _logger.LogInformation("Reconnected and restored signer session (since={Since})", _subscriptionSince);
         }
         catch (Exception ex)
         {
