@@ -76,7 +76,20 @@ public class ShellViewModel : ViewModelBase
     {
         try
         {
-            // If profile was already set (from last_user.json or --profile), check for saved user
+            // If no profile was set yet (e.g. Android, or desktop without --profile),
+            // try to auto-derive from last_user.json so we can find the saved session.
+            if (!ProfileConfiguration.IsCustomProfile)
+            {
+                var lastPubKey = ProfileConfiguration.ReadLastUserPubKey();
+                if (lastPubKey != null)
+                {
+                    var derived = ProfileConfiguration.DeriveProfileName(lastPubKey);
+                    ProfileConfiguration.SetProfile(derived);
+                    _logger.LogInformation("Auto-derived profile {Profile} from last_user.json", ProfileConfiguration.ProfileName);
+                }
+            }
+
+            // If profile was set (from last_user.json, auto-derived above, or --profile), check for saved user
             if (ProfileConfiguration.IsCustomProfile)
             {
                 _logger.LogInformation("Checking for saved user in profile {Profile}", ProfileConfiguration.ProfileName);

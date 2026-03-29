@@ -39,12 +39,7 @@ public class MainActivity : AppCompatActivity, IActivatableView
 
         SetContentView(Resource.Layout.activity_main);
 
-        // Create services
-        var dbPath = System.IO.Path.Combine(
-            System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData),
-            "OpenChat", "openchat.db");
-        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(dbPath)!);
-
+        // Create services (StorageService handles its own directory creation)
         var secureStorage = new AndroidSecureStorage();
         var nostrService = new NostrService();
 
