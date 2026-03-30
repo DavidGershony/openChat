@@ -276,6 +276,11 @@ public class MainViewModel : ViewModelBase
 
         try
         {
+        // Show the npub immediately so user knows which identity is connected
+        HeaderDisplayName = CurrentUser.Npub != null && CurrentUser.Npub.Length > 16
+            ? CurrentUser.Npub[..16] + "..."
+            : CurrentUser.Npub ?? "OpenChat";
+
         // Show spinners immediately while everything initializes
         ChatListViewModel.IsLoading = true;
         IsHeaderLoading = true;
@@ -477,6 +482,7 @@ public class MainViewModel : ViewModelBase
         {
             // 1. Determine relays to connect to (from cache, then network)
             var relaysToConnect = NostrConstants.DefaultRelays.ToList();
+            var shouldPublishNip65 = false;
             try
             {
                 var savedRelays = await _storageService.GetUserRelayListAsync(CurrentUser!.PublicKeyHex);
@@ -497,18 +503,8 @@ public class MainViewModel : ViewModelBase
                     }
                     else
                     {
-                        var defaultPrefs = NostrConstants.DefaultRelays
-                            .Select(url => new RelayPreference { Url = url, Usage = RelayUsage.Both })
-                            .ToList();
-                        try
-                        {
-                            await _nostrService.PublishRelayListAsync(defaultPrefs, CurrentUser.PrivateKeyHex);
-                            await _storageService.SaveUserRelayListAsync(CurrentUser.PublicKeyHex, defaultPrefs);
-                        }
-                        catch (Exception pubEx)
-                        {
-                            _logger.LogWarning(pubEx, "Failed to publish default relay list");
-                        }
+                        // New key with no relay list anywhere — publish defaults after connecting
+                        shouldPublishNip65 = true;
                     }
                 }
             }
@@ -521,7 +517,26 @@ public class MainViewModel : ViewModelBase
             _logger.LogInformation("Connecting to {Count} relays", relaysToConnect.Count);
             await _nostrService.ConnectAsync(relaysToConnect);
 
-            // 3. Subscribe to welcomes + group messages in parallel
+            // 3. Publish default NIP-65 relay list for new keys (must happen after connect)
+            if (shouldPublishNip65)
+            {
+                var defaultPrefs = NostrConstants.DefaultRelays
+                    .Select(url => new RelayPreference { Url = url, Usage = RelayUsage.Both })
+                    .ToList();
+                try
+                {
+                    _logger.LogInformation("Publishing default NIP-65 relay list for new key");
+                    await _nostrService.PublishRelayListAsync(defaultPrefs, CurrentUser!.PrivateKeyHex);
+                    await _storageService.SaveUserRelayListAsync(CurrentUser.PublicKeyHex, defaultPrefs);
+                    _logger.LogInformation("Default NIP-65 relay list published successfully");
+                }
+                catch (Exception pubEx)
+                {
+                    _logger.LogWarning(pubEx, "Failed to publish default relay list");
+                }
+            }
+
+            // 4. Subscribe to welcomes + group messages in parallel
             var subscriptionTasks = new List<Task>();
 
             if (!string.IsNullOrEmpty(CurrentUser.PublicKeyHex))
@@ -553,7 +568,7 @@ public class MainViewModel : ViewModelBase
 
             await Task.WhenAll(subscriptionTasks);
 
-            // 4. KeyPackage check + profile metadata in parallel (non-blocking)
+            // 5. KeyPackage check + profile metadata in parallel (non-blocking)
             var backgroundTasks = new List<Task>();
 
             if (!string.IsNullOrEmpty(CurrentUser.PublicKeyHex))

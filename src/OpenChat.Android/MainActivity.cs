@@ -107,6 +107,26 @@ public class MainActivity : AppCompatActivity, IActivatableView
             .Commit();
     }
 
+    public void NavigateToNewChat()
+    {
+        if (_shellViewModel?.MainViewModel == null) return;
+        var fragment = new NewChatFragment(_shellViewModel.MainViewModel);
+        SupportFragmentManager.BeginTransaction()
+            .Replace(Resource.Id.fragment_container, fragment, "newchat")
+            .AddToBackStack("newchat")
+            .Commit();
+    }
+
+    public void NavigateToNewGroup()
+    {
+        if (_shellViewModel?.MainViewModel == null) return;
+        var fragment = new NewGroupFragment(_shellViewModel.MainViewModel);
+        SupportFragmentManager.BeginTransaction()
+            .Replace(Resource.Id.fragment_container, fragment, "newgroup")
+            .AddToBackStack("newgroup")
+            .Commit();
+    }
+
     protected override void OnResume()
     {
         base.OnResume();

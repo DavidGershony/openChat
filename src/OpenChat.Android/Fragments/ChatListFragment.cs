@@ -54,6 +54,13 @@ public class ChatListFragment : Fragment
         var rescanButton = view.FindViewById<MaterialButton>(Resource.Id.rescan_invites_button)!;
         var invitesRecycler = view.FindViewById<RecyclerView>(Resource.Id.pending_invites_recycler)!;
 
+        // Bind toolbar title to HeaderDisplayName (shows npub until metadata loads)
+        toolbar.Title = _mainViewModel.HeaderDisplayName;
+        _mainViewModel.WhenAnyValue(x => x.HeaderDisplayName)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(name => toolbar.Title = name ?? "OpenChat")
+            .DisposeWith(_disposables);
+
         // Set up toolbar menu (use Java listener for reliable click handling)
         toolbar.SetOnMenuItemClickListener(new ActionMenuItemClickListener(item =>
         {
@@ -206,267 +213,18 @@ public class ChatListFragment : Fragment
     {
         if (Context == null) return;
 
-        var items = new[] { "New Chat", "New Group", "Join Group" };
+        var items = new[] { "New Chat", "New Group" };
         new MaterialAlertDialogBuilder(Context)
             .SetTitle("Create")!
             .SetItems(items, (s, e) =>
             {
                 switch (e.Which)
                 {
-                    case 0: ShowNewChatDialog(); break;
-                    case 1: ShowNewGroupDialog(); break;
-                    case 2: ShowJoinGroupDialog(); break;
+                    case 0: (Activity as MainActivity)?.NavigateToNewChat(); break;
+                    case 1: (Activity as MainActivity)?.NavigateToNewGroup(); break;
                 }
             })!
             .Show();
-    }
-
-    private void ShowNewChatDialog()
-    {
-        if (Context == null) return;
-
-        var dialogView = LayoutInflater.From(Context)!
-            .Inflate(Resource.Layout.dialog_new_chat, null)!;
-
-        var formSection = dialogView.FindViewById<LinearLayout>(Resource.Id.new_chat_form)!;
-        var sendingOverlay = dialogView.FindViewById<LinearLayout>(Resource.Id.new_chat_sending_overlay)!;
-        var pubKeyInput = dialogView.FindViewById<TextInputEditText>(Resource.Id.new_chat_pubkey_input)!;
-        var nameInput = dialogView.FindViewById<TextInputEditText>(Resource.Id.new_chat_name_input)!;
-        var lookupButton = dialogView.FindViewById<MaterialButton>(Resource.Id.lookup_keypackage_button)!;
-        var statusText = dialogView.FindViewById<TextView>(Resource.Id.keypackage_status_text)!;
-        var errorText = dialogView.FindViewById<TextView>(Resource.Id.new_chat_error)!;
-        var relayContainer = dialogView.FindViewById<LinearLayout>(Resource.Id.relay_selection_container)!;
-
-        var dialog = new MaterialAlertDialogBuilder(Context)
-            .SetTitle("New Chat")!
-            .SetView(dialogView)!
-            .SetPositiveButton("Create", (EventHandler<DialogClickEventArgs>)null!)!
-            .SetNegativeButton("Cancel", (s, e) =>
-            {
-                ViewModel.CancelNewChatCommand.Execute().Subscribe().DisposeWith(_disposables);
-            })!
-            .Create()!;
-
-        dialog.Show();
-
-        // Override positive button to prevent auto-dismiss on error
-        dialog.GetButton(-1)!.Click += (s, e) =>
-        {
-            ViewModel.NewChatPublicKey = pubKeyInput.Text ?? string.Empty;
-            ViewModel.NewChatName = nameInput.Text ?? string.Empty;
-            ViewModel.CreateChatCommand.Execute().Subscribe().DisposeWith(_disposables);
-        };
-
-        lookupButton.Click += (s, e) =>
-        {
-            ViewModel.NewChatPublicKey = pubKeyInput.Text ?? string.Empty;
-            ViewModel.LookupKeyPackageCommand.Execute().Subscribe().DisposeWith(_disposables);
-        };
-
-        // Show sending overlay while creating
-        ViewModel.CreateChatCommand.IsExecuting
-            .ObserveOn(RxApp.MainThreadScheduler)
-            .Subscribe(creating =>
-            {
-                formSection.Visibility = creating ? ViewStates.Gone : ViewStates.Visible;
-                sendingOverlay.Visibility = creating ? ViewStates.Visible : ViewStates.Gone;
-                dialog.SetTitle(creating ? "Sending Invite" : "New Chat");
-                dialog.GetButton(-1)!.Enabled = !creating;
-                dialog.GetButton(-2)!.Enabled = !creating;
-                dialog.SetCancelable(!creating);
-            })
-            .DisposeWith(_disposables);
-
-        // Observe ViewModel state
-        ViewModel.WhenAnyValue(x => x.NewChatError)
-            .ObserveOn(RxApp.MainThreadScheduler)
-            .Subscribe(error =>
-            {
-                errorText.Text = error ?? "";
-                errorText.Visibility = string.IsNullOrEmpty(error) ? ViewStates.Gone : ViewStates.Visible;
-            })
-            .DisposeWith(_disposables);
-
-        ViewModel.WhenAnyValue(x => x.KeyPackageStatus)
-            .ObserveOn(RxApp.MainThreadScheduler)
-            .Subscribe(status =>
-            {
-                statusText.Text = status ?? "";
-                statusText.Visibility = string.IsNullOrEmpty(status) ? ViewStates.Gone : ViewStates.Visible;
-            })
-            .DisposeWith(_disposables);
-
-        ViewModel.WhenAnyValue(x => x.IsLookingUpKeyPackage)
-            .ObserveOn(RxApp.MainThreadScheduler)
-            .Subscribe(loading =>
-            {
-                lookupButton.Enabled = !loading;
-                lookupButton.Text = loading ? "Looking up..." : "Lookup KeyPackage";
-            })
-            .DisposeWith(_disposables);
-
-        // Set flag before subscribing to avoid immediate dismiss from initial false value
-        ViewModel.ShowNewChatDialog = true;
-
-        // Populate relay checkboxes
-        relayContainer.RemoveAllViews();
-        foreach (var relay in ViewModel.SelectableRelays)
-        {
-            var checkBox = new CheckBox(Context)
-            {
-                Text = relay.Url,
-                Checked = relay.IsSelected,
-                TextSize = 12f
-            };
-            checkBox.SetTypeface(global::Android.Graphics.Typeface.Monospace, global::Android.Graphics.TypefaceStyle.Normal);
-            checkBox.CheckedChange += (s, e) => relay.IsSelected = e.IsChecked;
-            relayContainer.AddView(checkBox);
-        }
-
-        // Auto-dismiss on success
-        ViewModel.WhenAnyValue(x => x.ShowNewChatDialog)
-            .ObserveOn(RxApp.MainThreadScheduler)
-            .Where(show => !show)
-            .Subscribe(_ => { if (dialog.IsShowing) dialog.Dismiss(); })
-            .DisposeWith(_disposables);
-    }
-
-    private void ShowNewGroupDialog()
-    {
-        if (Context == null) return;
-
-        var dialogView = LayoutInflater.From(Context)!
-            .Inflate(Resource.Layout.dialog_new_group, null)!;
-
-        var nameInput = dialogView.FindViewById<TextInputEditText>(Resource.Id.new_group_name_input)!;
-        var descInput = dialogView.FindViewById<TextInputEditText>(Resource.Id.new_group_desc_input)!;
-        var membersInput = dialogView.FindViewById<TextInputEditText>(Resource.Id.new_group_members_input)!;
-        var lookupButton = dialogView.FindViewById<MaterialButton>(Resource.Id.lookup_group_keypackages_button)!;
-        var statusText = dialogView.FindViewById<TextView>(Resource.Id.group_keypackage_status_text)!;
-        var errorText = dialogView.FindViewById<TextView>(Resource.Id.new_group_error)!;
-        var relayContainer = dialogView.FindViewById<LinearLayout>(Resource.Id.relay_selection_container)!;
-
-        var dialog = new MaterialAlertDialogBuilder(Context)
-            .SetTitle("New Group")!
-            .SetView(dialogView)!
-            .SetPositiveButton("Create", (EventHandler<DialogClickEventArgs>)null!)!
-            .SetNegativeButton("Cancel", (s, e) =>
-            {
-                ViewModel.CancelNewGroupCommand.Execute().Subscribe().DisposeWith(_disposables);
-            })!
-            .Create()!;
-
-        dialog.Show();
-
-        dialog.GetButton(-1)!.Click += (s, e) =>
-        {
-            ViewModel.NewGroupName = nameInput.Text ?? string.Empty;
-            ViewModel.NewGroupDescription = descInput.Text ?? string.Empty;
-            ViewModel.NewGroupMembers = membersInput.Text ?? string.Empty;
-            ViewModel.CreateGroupCommand.Execute().Subscribe().DisposeWith(_disposables);
-        };
-
-        lookupButton.Click += (s, e) =>
-        {
-            ViewModel.NewGroupMembers = membersInput.Text ?? string.Empty;
-            ViewModel.LookupGroupKeyPackagesCommand.Execute().Subscribe().DisposeWith(_disposables);
-        };
-
-        ViewModel.WhenAnyValue(x => x.NewGroupError)
-            .ObserveOn(RxApp.MainThreadScheduler)
-            .Subscribe(error =>
-            {
-                errorText.Text = error ?? "";
-                errorText.Visibility = string.IsNullOrEmpty(error) ? ViewStates.Gone : ViewStates.Visible;
-            })
-            .DisposeWith(_disposables);
-
-        ViewModel.WhenAnyValue(x => x.GroupKeyPackageStatus)
-            .ObserveOn(RxApp.MainThreadScheduler)
-            .Subscribe(status =>
-            {
-                statusText.Text = status ?? "";
-                statusText.Visibility = string.IsNullOrEmpty(status) ? ViewStates.Gone : ViewStates.Visible;
-            })
-            .DisposeWith(_disposables);
-
-        ViewModel.WhenAnyValue(x => x.IsLookingUpGroupKeyPackages)
-            .ObserveOn(RxApp.MainThreadScheduler)
-            .Subscribe(loading =>
-            {
-                lookupButton.Enabled = !loading;
-                lookupButton.Text = loading ? "Looking up..." : "Lookup KeyPackages";
-            })
-            .DisposeWith(_disposables);
-
-        ViewModel.ShowNewGroupDialog = true;
-
-        // Populate relay checkboxes
-        relayContainer.RemoveAllViews();
-        foreach (var relay in ViewModel.SelectableRelays)
-        {
-            var checkBox = new CheckBox(Context)
-            {
-                Text = relay.Url,
-                Checked = relay.IsSelected,
-                TextSize = 12f
-            };
-            checkBox.SetTypeface(global::Android.Graphics.Typeface.Monospace, global::Android.Graphics.TypefaceStyle.Normal);
-            checkBox.CheckedChange += (s, e) => relay.IsSelected = e.IsChecked;
-            relayContainer.AddView(checkBox);
-        }
-
-        ViewModel.WhenAnyValue(x => x.ShowNewGroupDialog)
-            .ObserveOn(RxApp.MainThreadScheduler)
-            .Where(show => !show)
-            .Subscribe(_ => { if (dialog.IsShowing) dialog.Dismiss(); })
-            .DisposeWith(_disposables);
-    }
-
-    private void ShowJoinGroupDialog()
-    {
-        if (Context == null) return;
-
-        var dialogView = LayoutInflater.From(Context)!
-            .Inflate(Resource.Layout.dialog_join_group, null)!;
-
-        var groupIdInput = dialogView.FindViewById<TextInputEditText>(Resource.Id.join_group_id_input)!;
-        var errorText = dialogView.FindViewById<TextView>(Resource.Id.join_group_error)!;
-
-        var dialog = new MaterialAlertDialogBuilder(Context)
-            .SetTitle("Join Group")!
-            .SetView(dialogView)!
-            .SetPositiveButton("Join", (EventHandler<DialogClickEventArgs>)null!)!
-            .SetNegativeButton("Cancel", (s, e) =>
-            {
-                ViewModel.CancelJoinGroupCommand.Execute().Subscribe().DisposeWith(_disposables);
-            })!
-            .Create()!;
-
-        dialog.Show();
-
-        dialog.GetButton(-1)!.Click += (s, e) =>
-        {
-            ViewModel.JoinGroupId = groupIdInput.Text ?? string.Empty;
-            ViewModel.ConfirmJoinGroupCommand.Execute().Subscribe().DisposeWith(_disposables);
-        };
-
-        ViewModel.WhenAnyValue(x => x.JoinGroupError)
-            .ObserveOn(RxApp.MainThreadScheduler)
-            .Subscribe(error =>
-            {
-                errorText.Text = error ?? "";
-                errorText.Visibility = string.IsNullOrEmpty(error) ? ViewStates.Gone : ViewStates.Visible;
-            })
-            .DisposeWith(_disposables);
-
-        ViewModel.ShowJoinGroupDialog = true;
-
-        ViewModel.WhenAnyValue(x => x.ShowJoinGroupDialog)
-            .ObserveOn(RxApp.MainThreadScheduler)
-            .Where(show => !show)
-            .Subscribe(_ => { if (dialog.IsShowing) dialog.Dismiss(); })
-            .DisposeWith(_disposables);
     }
 
     private void ShowChatContextMenu(ChatItemViewModel chatItem)

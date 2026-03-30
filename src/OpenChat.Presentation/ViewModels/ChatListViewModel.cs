@@ -41,8 +41,10 @@ public class ChatListViewModel : ViewModelBase
     [Reactive] public bool IsLookingUpKeyPackage { get; set; }
     [Reactive] public string? KeyPackageStatus { get; set; }
     [Reactive] public bool HasKeyPackage { get; set; }
+    [Reactive] public bool HasMultipleKeyPackages { get; set; }
     [Reactive] public DateTime? KeyPackageCreatedAt { get; set; }
     [Reactive] public string? KeyPackageRelays { get; set; }
+    [Reactive] public string? CreateProgress { get; set; }
     public ObservableCollection<KeyPackageItemViewModel> FoundKeyPackages { get; } = new();
     [Reactive] public KeyPackageItemViewModel? SelectedKeyPackage { get; set; }
     private IDisposable? _autoLookupSubscription;
@@ -65,6 +67,11 @@ public class ChatListViewModel : ViewModelBase
     [Reactive] public bool ShowJoinGroupDialog { get; set; }
     [Reactive] public string JoinGroupId { get; set; } = string.Empty;
     [Reactive] public string? JoinGroupError { get; set; }
+
+    // Add Bot Dialog
+    [Reactive] public bool ShowAddBotDialog { get; set; }
+    [Reactive] public string BotNpub { get; set; } = string.Empty;
+    [Reactive] public string? AddBotError { get; set; }
 
     // Delete Chat Dialog
     [Reactive] public bool ShowDeleteChatDialog { get; set; }
@@ -96,6 +103,9 @@ public class ChatListViewModel : ViewModelBase
     public ReactiveCommand<PendingInviteItemViewModel, Unit> DeclineInviteCommand { get; }
     public ReactiveCommand<Unit, Unit> RescanInvitesCommand { get; }
     [Reactive] public bool IsRescanningInvites { get; set; }
+    public ReactiveCommand<Unit, Unit> AddBotCommand { get; }
+    public ReactiveCommand<Unit, Unit> CreateBotChatCommand { get; }
+    public ReactiveCommand<Unit, Unit> CancelAddBotCommand { get; }
 
     public ChatListViewModel(IMessageService messageService, IStorageService storageService, IMlsService? mlsService = null, INostrService? nostrService = null)
     {
@@ -118,6 +128,8 @@ public class ChatListViewModel : ViewModelBase
             KeyPackageRelays = null;
             FoundKeyPackages.Clear();
             SelectedKeyPackage = null;
+            HasMultipleKeyPackages = false;
+            CreateProgress = null;
             PopulateSelectableRelays();
             ShowNewChatDialog = true;
         });
@@ -164,6 +176,26 @@ public class ChatListViewModel : ViewModelBase
         {
             ShowJoinGroupDialog = false;
             JoinGroupError = null;
+        });
+
+        AddBotCommand = ReactiveCommand.Create(() =>
+        {
+            _logger.LogInformation("Opening add bot dialog");
+            BotNpub = string.Empty;
+            AddBotError = null;
+            ShowAddBotDialog = true;
+        });
+
+        var canCreateBot = this.WhenAnyValue(
+            x => x.BotNpub,
+            npub => !string.IsNullOrWhiteSpace(npub) && npub.Trim().Length > 5);
+
+        CreateBotChatCommand = ReactiveCommand.CreateFromTask(CreateBotChatAsync, canCreateBot);
+
+        CancelAddBotCommand = ReactiveCommand.Create(() =>
+        {
+            ShowAddBotDialog = false;
+            AddBotError = null;
         });
 
         DeleteChatCommand = ReactiveCommand.Create<ChatItemViewModel>(chat =>
@@ -280,6 +312,7 @@ public class ChatListViewModel : ViewModelBase
         {
             ShowNewChatDialog = false;
             NewChatError = null;
+            CreateProgress = null;
         });
 
         RefreshCommand = ReactiveCommand.CreateFromTask(LoadChatsAsync);
@@ -403,6 +436,7 @@ public class ChatListViewModel : ViewModelBase
                 // Auto-select the most recent SUPPORTED KeyPackage
                 var supportedKp = FoundKeyPackages.FirstOrDefault(kp => kp.IsSupported);
                 SelectedKeyPackage = supportedKp;
+                HasMultipleKeyPackages = FoundKeyPackages.Count(kp => kp.IsSupported) > 1;
 
                 var supportedCount = keyPackageList.Count(kp => kp.IsCipherSuiteSupported);
                 var unsupportedCount = keyPackageList.Count - supportedCount;
@@ -600,6 +634,8 @@ public class ChatListViewModel : ViewModelBase
                 }
             }
 
+            CreateProgress = "Resolving identity...";
+
             // Resolve chat name: user-provided > profile metadata > truncated key
             var chatName = NewChatName;
             if (string.IsNullOrWhiteSpace(chatName))
@@ -649,6 +685,7 @@ public class ChatListViewModel : ViewModelBase
                 publicKeyHex[..Math.Min(16, publicKeyHex.Length)]);
 
             // Create MLS group (only after we've confirmed a KeyPackage exists)
+            CreateProgress = "Creating MLS group...";
             _logger.LogDebug("Creating MLS group for chat...");
             var selectedRelays = GetSelectedRelayUrls();
             if (selectedRelays.Length == 0)
@@ -677,6 +714,7 @@ public class ChatListViewModel : ViewModelBase
             _logger.LogInformation("Created MLS group with ID: {GroupId}", groupIdHex[..Math.Min(16, groupIdHex.Length)]);
 
             // Add member to MLS group
+            CreateProgress = "Adding member...";
             _logger.LogDebug("Adding member to MLS group");
             var welcome = await _mlsService.AddMemberAsync(chat.MlsGroupId, keyPackage);
 
@@ -711,6 +749,7 @@ public class ChatListViewModel : ViewModelBase
             }
 
             // Publish Welcome (kind 444)
+            CreateProgress = "Publishing invite...";
             _logger.LogDebug("Publishing Welcome message to Nostr (kind 444)");
             var welcomeEventId = await _nostrService.PublishWelcomeAsync(
                 welcome.WelcomeData, publicKeyHex, currentUser.PrivateKeyHex,
@@ -725,6 +764,7 @@ public class ChatListViewModel : ViewModelBase
                 chat.ParticipantPublicKeys.Add(publicKeyHex);
             }
 
+            CreateProgress = "Saving chat...";
             await _storageService.SaveChatAsync(chat);
             _logger.LogInformation("Saved chat: {ChatId} - {ChatName}", chat.Id, chatName);
 
@@ -742,12 +782,14 @@ public class ChatListViewModel : ViewModelBase
             SelectedChat = chatItem;
 
             // Close dialog
+            CreateProgress = null;
             ShowNewChatDialog = false;
             NewChatError = null;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to create new chat");
+            CreateProgress = null;
             NewChatError = $"Failed to create chat: {ex.Message}";
         }
     }
@@ -1052,6 +1094,76 @@ public class ChatListViewModel : ViewModelBase
         }
     }
 
+    private async Task CreateBotChatAsync()
+    {
+        if (string.IsNullOrWhiteSpace(BotNpub))
+        {
+            AddBotError = "Please enter a valid npub";
+            return;
+        }
+
+        try
+        {
+            var input = BotNpub.Trim();
+            string hex;
+
+            if (input.StartsWith("npub1") && _nostrService != null)
+            {
+                hex = _nostrService.NpubToHex(input) ?? string.Empty;
+                if (string.IsNullOrEmpty(hex))
+                {
+                    AddBotError = "Invalid npub format";
+                    return;
+                }
+            }
+            else if (input.Length == 64 && System.Text.RegularExpressions.Regex.IsMatch(input, "^[0-9a-fA-F]+$"))
+            {
+                hex = input.ToLowerInvariant();
+            }
+            else
+            {
+                AddBotError = "Enter an npub (npub1...) or 64-char hex public key";
+                return;
+            }
+
+            // Try to fetch bot profile for name resolution
+            try
+            {
+                await _messageService.FetchAndCacheProfileAsync(hex);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Could not fetch bot profile, continuing with hex name");
+            }
+
+            var chat = await _messageService.GetOrCreateBotChatAsync(hex);
+
+            ShowAddBotDialog = false;
+            AddBotError = null;
+
+            // Add to list if not already present and select it
+            var existingItem = Chats.FirstOrDefault(c => c.Id == chat.Id);
+            if (existingItem != null)
+            {
+                SelectedChat = existingItem;
+            }
+            else
+            {
+                var chatItem = new ChatItemViewModel(chat);
+                Chats.Insert(0, chatItem);
+                SelectedChat = chatItem;
+            }
+
+            _logger.LogInformation("Created bot chat {ChatId} for {BotPub}",
+                chat.Id[..Math.Min(8, chat.Id.Length)], hex[..Math.Min(16, hex.Length)]);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to create bot chat");
+            AddBotError = $"Failed: {ex.Message}";
+        }
+    }
+
     private async Task DeleteChatAsync()
     {
         if (ChatToDelete == null)
@@ -1320,6 +1432,7 @@ public class ChatItemViewModel : ViewModelBase
     [Reactive] public bool IsPinned { get; set; }
     [Reactive] public bool IsMuted { get; set; }
     [Reactive] public bool IsGroup { get; set; }
+    [Reactive] public bool IsBot { get; set; }
     [Reactive] public bool IsVisible { get; set; } = true;
 
     public Chat Chat { get; private set; }
@@ -1342,6 +1455,7 @@ public class ChatItemViewModel : ViewModelBase
         IsPinned = chat.IsPinned;
         IsMuted = chat.IsMuted;
         IsGroup = chat.Type == ChatType.Group;
+        IsBot = chat.Type == ChatType.Bot;
     }
 }
 
@@ -1414,6 +1528,9 @@ public class KeyPackageItemViewModel : ViewModelBase
     /// <summary>Truncated event ID for reference.</summary>
     public string KeyPackageRef { get; }
 
+    /// <summary>Compact summary for display, e.g. "2h ago via relay.example.com".</summary>
+    public string Summary { get; }
+
     public KeyPackageItemViewModel(KeyPackage keyPackage)
     {
         KeyPackage = keyPackage;
@@ -1435,12 +1552,16 @@ public class KeyPackageItemViewModel : ViewModelBase
         KeyPackageRef = !string.IsNullOrEmpty(keyPackage.NostrEventId) && keyPackage.NostrEventId.Length > 12
             ? keyPackage.NostrEventId[..12] + "..."
             : keyPackage.NostrEventId ?? "N/A";
+
+        var relayShort = RelaySource.Replace("wss://", "").Replace("ws://", "").TrimEnd('/');
+        Summary = $"{CreatedAtDisplay} via {relayShort}";
     }
 }
 
 public class RelaySelectionItemViewModel : ViewModelBase
 {
     public string Url { get; }
+    public string DisplayUrl => Url.Replace("wss://", "").Replace("ws://", "").TrimEnd('/');
     [Reactive] public bool IsSelected { get; set; }
 
     public RelaySelectionItemViewModel(string url, bool isSelected = true)
