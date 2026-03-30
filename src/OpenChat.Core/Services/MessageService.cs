@@ -175,6 +175,34 @@ public class MessageService : IMessageService, IDisposable
                 _logger.LogInformation("SendMessage: published kind 445 event {EventId}, rumorId={RumorId}",
                     message.NostrEventId, message.RumorEventId?[..Math.Min(16, message.RumorEventId?.Length ?? 0)]);
             }
+            else if (chat.Type == ChatType.Bot)
+            {
+                // Bot chat - use NIP-17 gift-wrapped DMs (kind 14 rumor in kind 1059)
+                var botPublicKey = chat.ParticipantPublicKeys
+                    .FirstOrDefault(pk => pk != _currentUser.PublicKeyHex);
+
+                if (!string.IsNullOrEmpty(botPublicKey))
+                {
+                    _logger.LogInformation("SendMessage: creating NIP-17 gift wrap for bot {Bot}",
+                        botPublicKey[..Math.Min(16, botPublicKey.Length)]);
+
+                    var rumorTags = new List<List<string>>
+                    {
+                        new() { "p", botPublicKey }
+                    };
+
+                    message.NostrEventId = await _nostrService.PublishGiftWrapAsync(
+                        rumorKind: 14,
+                        content: content,
+                        rumorTags: rumorTags,
+                        senderPrivateKeyHex: _currentUser.PrivateKeyHex,
+                        senderPublicKeyHex: _currentUser.PublicKeyHex,
+                        recipientPublicKeyHex: botPublicKey);
+
+                    _logger.LogInformation("SendMessage: published gift-wrapped bot DM {EventId}",
+                        message.NostrEventId[..Math.Min(16, message.NostrEventId.Length)]);
+                }
+            }
             else
             {
                 // Direct message - use NIP-44
@@ -440,6 +468,40 @@ public class MessageService : IMessageService, IDisposable
         return chat;
     }
 
+    public async Task<Chat> GetOrCreateBotChatAsync(string botPublicKey)
+    {
+        if (_currentUser == null)
+            throw new InvalidOperationException("User not logged in");
+
+        // Check if bot chat already exists
+        var chats = await _storageService.GetAllChatsAsync();
+        var existingChat = chats.FirstOrDefault(c =>
+            c.Type == ChatType.Bot &&
+            c.ParticipantPublicKeys.Contains(botPublicKey));
+
+        if (existingChat != null)
+            return existingChat;
+
+        // Get bot profile for display name
+        var botUser = await _storageService.GetUserByPublicKeyAsync(botPublicKey);
+        var chatName = botUser?.GetDisplayNameOrNpub() ?? $"{botPublicKey[..12]}...";
+
+        var chat = new Chat
+        {
+            Id = Guid.NewGuid().ToString(),
+            Name = chatName,
+            Type = ChatType.Bot,
+            ParticipantPublicKeys = new List<string> { _currentUser.PublicKeyHex, botPublicKey },
+            CreatedAt = DateTime.UtcNow,
+            LastActivityAt = DateTime.UtcNow
+        };
+
+        await _storageService.SaveChatAsync(chat);
+        _chatUpdates.OnNext(chat);
+
+        return chat;
+    }
+
     public async Task AddMemberAsync(string chatId, string memberPublicKey)
     {
         _logger.LogInformation("AddMember: adding {Member} to chat {ChatId}",
@@ -664,6 +726,9 @@ public class MessageService : IMessageService, IDisposable
 
             switch (nostrEvent.Kind)
             {
+                case 14: // NIP-17 DM (bot chat)
+                    await HandleBotMessageEventAsync(nostrEvent);
+                    break;
                 case 443: // KeyPackage
                     await HandleKeyPackageEventAsync(nostrEvent);
                     break;
@@ -679,6 +744,70 @@ public class MessageService : IMessageService, IDisposable
         {
             _logger.LogError(ex, "Error handling Nostr event kind {Kind}", nostrEvent.Kind);
         }
+    }
+
+    private async Task HandleBotMessageEventAsync(NostrEventReceived nostrEvent)
+    {
+        _logger.LogInformation("HandleBotMessage: kind 14 DM from {Sender}",
+            nostrEvent.PublicKey[..Math.Min(16, nostrEvent.PublicKey.Length)]);
+
+        if (_currentUser == null) return;
+
+        var senderPubKey = nostrEvent.PublicKey;
+
+        // Skip self-echoes
+        if (senderPubKey == _currentUser.PublicKeyHex)
+        {
+            _logger.LogDebug("HandleBotMessage: skipping self-echo");
+            return;
+        }
+
+        // Deduplicate by event ID
+        if (!string.IsNullOrEmpty(nostrEvent.EventId) &&
+            await _storageService.MessageExistsByNostrEventIdAsync(nostrEvent.EventId))
+        {
+            _logger.LogDebug("HandleBotMessage: skipping already-processed event {EventId}",
+                nostrEvent.EventId[..Math.Min(16, nostrEvent.EventId.Length)]);
+            return;
+        }
+
+        // Find or create bot chat for this sender
+        var chat = await GetOrCreateBotChatAsync(senderPubKey);
+
+        // Content is already decrypted during gift-wrap unwrapping
+        var content = nostrEvent.Content;
+
+        var message = new Message
+        {
+            Id = Guid.NewGuid().ToString(),
+            ChatId = chat.Id,
+            SenderPublicKey = senderPubKey,
+            Type = MessageType.Text,
+            Content = content,
+            NostrEventId = nostrEvent.EventId,
+            Timestamp = nostrEvent.CreatedAt,
+            ReceivedAt = DateTime.UtcNow,
+            Status = MessageStatus.Delivered,
+            IsFromCurrentUser = false
+        };
+
+        message.Sender = await _storageService.GetUserByPublicKeyAsync(senderPubKey);
+        if (message.Sender == null)
+        {
+            _ = FetchUnknownSenderAsync(message);
+        }
+
+        await _storageService.SaveMessageAsync(message);
+        _newMessages.OnNext(message);
+
+        chat.LastActivityAt = DateTime.UtcNow;
+        chat.LastMessage = message;
+        chat.UnreadCount++;
+        await _storageService.SaveChatAsync(chat);
+        _chatUpdates.OnNext(chat);
+
+        _logger.LogInformation("HandleBotMessage: saved message {MsgId} in bot chat {ChatId}",
+            message.Id[..Math.Min(8, message.Id.Length)], chat.Id[..Math.Min(8, chat.Id.Length)]);
     }
 
     private async Task HandleKeyPackageEventAsync(NostrEventReceived nostrEvent)

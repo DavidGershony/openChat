@@ -98,5 +98,6 @@ public class Chat
 public enum ChatType
 {
     DirectMessage,
-    Group
+    Group,
+    Bot
 }

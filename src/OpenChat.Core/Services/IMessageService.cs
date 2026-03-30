@@ -90,6 +90,11 @@ public interface IMessageService
     Task<Chat> GetOrCreateDirectMessageAsync(string recipientPublicKey);
 
     /// <summary>
+    /// Create or get a bot chat (NIP-17 DMs) with a bot by public key.
+    /// </summary>
+    Task<Chat> GetOrCreateBotChatAsync(string botPublicKey);
+
+    /// <summary>
     /// Add a member to a group.
     /// </summary>
     Task AddMemberAsync(string chatId, string memberPublicKey);

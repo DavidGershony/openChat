@@ -289,12 +289,21 @@ public class NostrService : INostrService, IDisposable
                     {
                         // NIP-59 Gift Wrap — unwrap to find the inner rumor
                         var rumor = await UnwrapGiftWrapAsync(nostrEvent);
-                        if (rumor != null && rumor.Kind == 444)
+                        if (rumor != null)
                         {
-                            _logger.LogInformation("Unwrapped gift wrap → kind 444 Welcome from {Sender}",
-                                rumor.PublicKey[..Math.Min(16, rumor.PublicKey.Length)]);
-                            _events.OnNext(rumor); // Fire the unwrapped rumor as an event
-                            ProcessWelcomeEvent(rumor);
+                            if (rumor.Kind == 444)
+                            {
+                                _logger.LogInformation("Unwrapped gift wrap → kind 444 Welcome from {Sender}",
+                                    rumor.PublicKey[..Math.Min(16, rumor.PublicKey.Length)]);
+                                _events.OnNext(rumor); // Fire the unwrapped rumor as an event
+                                ProcessWelcomeEvent(rumor);
+                            }
+                            else if (rumor.Kind == 14)
+                            {
+                                _logger.LogInformation("Unwrapped gift wrap → kind 14 DM from {Sender}",
+                                    rumor.PublicKey[..Math.Min(16, rumor.PublicKey.Length)]);
+                                _events.OnNext(rumor); // Route to MessageService via Events observable
+                            }
                         }
                     }
                     else if (nostrEvent.Kind == 444)
@@ -1055,6 +1064,47 @@ public class NostrService : INostrService, IDisposable
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex, "Failed to send gift-wrapped Welcome to {RelayUrl}", relayUrl);
+                }
+            }
+        }
+
+        return giftWrapMessage.EventId;
+    }
+
+    /// <summary>
+    /// Publish a NIP-59 gift-wrapped event (rumor → seal → gift wrap) to all connected relays.
+    /// Used for NIP-17 DMs (kind 14 rumor) and other gift-wrapped protocols.
+    /// </summary>
+    public async Task<string> PublishGiftWrapAsync(
+        int rumorKind, string content, List<List<string>> rumorTags,
+        string? senderPrivateKeyHex, string senderPublicKeyHex,
+        string recipientPublicKeyHex)
+    {
+        var giftWrapMessage = await CreateGiftWrapAsync(
+            kind: rumorKind,
+            content: content,
+            rumorTags: rumorTags,
+            senderPrivateKeyHex: senderPrivateKeyHex,
+            senderPublicKeyHex: senderPublicKeyHex,
+            recipientPublicKeyHex: recipientPublicKeyHex);
+
+        _logger.LogInformation("Publishing NIP-59 gift-wrapped kind {Kind} (kind 1059) for {Recipient}",
+            rumorKind, recipientPublicKeyHex[..Math.Min(16, recipientPublicKeyHex.Length)]);
+
+        var eventBytes = Encoding.UTF8.GetBytes(giftWrapMessage.EventMessage);
+        foreach (var (relayUrl, ws) in _relayConnections)
+        {
+            if (ws.State == WebSocketState.Open)
+            {
+                try
+                {
+                    await ws.SendAsync(new ArraySegment<byte>(eventBytes),
+                        WebSocketMessageType.Text, true, CancellationToken.None);
+                    _logger.LogDebug("Sent gift-wrapped kind {Kind} to {RelayUrl}", rumorKind, relayUrl);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to send gift-wrapped kind {Kind} to {RelayUrl}", rumorKind, relayUrl);
                 }
             }
         }

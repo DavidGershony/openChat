@@ -182,6 +182,15 @@ public interface INostrService
     /// otherwise uses local private key.
     /// </summary>
     Task<string> Nip44DecryptAsync(string ciphertext, string senderPubKey);
+
+    /// <summary>
+    /// Publish a NIP-59 gift-wrapped event to all connected relays.
+    /// Used for NIP-17 DMs (kind 14 rumor) and other gift-wrapped protocols.
+    /// </summary>
+    Task<string> PublishGiftWrapAsync(
+        int rumorKind, string content, List<List<string>> rumorTags,
+        string? senderPrivateKeyHex, string senderPublicKeyHex,
+        string recipientPublicKeyHex);
 }
 
 public class NostrConnectionStatus
