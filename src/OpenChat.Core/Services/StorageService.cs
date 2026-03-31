@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
@@ -1067,7 +1068,7 @@ public class StorageService : IStorageService
             WelcomeData = (byte[])reader["WelcomeData"],
             KeyPackageEventId = reader.IsDBNull(reader.GetOrdinal("KeyPackageEventId")) ? null : reader.GetString(reader.GetOrdinal("KeyPackageEventId")),
             NostrEventId = reader.GetString(reader.GetOrdinal("NostrEventId")),
-            ReceivedAt = DateTime.Parse(reader.GetString(reader.GetOrdinal("ReceivedAt"))),
+            ReceivedAt = ParseDateTime(reader.GetString(reader.GetOrdinal("ReceivedAt"))),
             SenderDisplayName = reader.IsDBNull(reader.GetOrdinal("SenderDisplayName")) ? null : reader.GetString(reader.GetOrdinal("SenderDisplayName"))
         };
     }
@@ -1086,8 +1087,8 @@ public class StorageService : IStorageService
             AvatarUrl = reader.IsDBNull(reader.GetOrdinal("AvatarUrl")) ? null : reader.GetString(reader.GetOrdinal("AvatarUrl")),
             About = reader.IsDBNull(reader.GetOrdinal("About")) ? null : reader.GetString(reader.GetOrdinal("About")),
             Nip05 = reader.IsDBNull(reader.GetOrdinal("Nip05")) ? null : reader.GetString(reader.GetOrdinal("Nip05")),
-            CreatedAt = DateTime.Parse(reader.GetString(reader.GetOrdinal("CreatedAt"))),
-            LastUpdatedAt = reader.IsDBNull(reader.GetOrdinal("LastUpdatedAt")) ? null : DateTime.Parse(reader.GetString(reader.GetOrdinal("LastUpdatedAt"))),
+            CreatedAt = ParseDateTime(reader.GetString(reader.GetOrdinal("CreatedAt"))),
+            LastUpdatedAt = reader.IsDBNull(reader.GetOrdinal("LastUpdatedAt")) ? null : ParseDateTime(reader.GetString(reader.GetOrdinal("LastUpdatedAt"))),
             IsCurrentUser = reader.GetInt32(reader.GetOrdinal("IsCurrentUser")) == 1
         };
 
@@ -1154,8 +1155,8 @@ public class StorageService : IStorageService
             AvatarUrl = reader.IsDBNull(reader.GetOrdinal("AvatarUrl")) ? null : reader.GetString(reader.GetOrdinal("AvatarUrl")),
             Description = reader.IsDBNull(reader.GetOrdinal("Description")) ? null : reader.GetString(reader.GetOrdinal("Description")),
             UnreadCount = reader.GetInt32(reader.GetOrdinal("UnreadCount")),
-            CreatedAt = DateTime.Parse(reader.GetString(reader.GetOrdinal("CreatedAt"))),
-            LastActivityAt = DateTime.Parse(reader.GetString(reader.GetOrdinal("LastActivityAt"))),
+            CreatedAt = ParseDateTime(reader.GetString(reader.GetOrdinal("CreatedAt"))),
+            LastActivityAt = ParseDateTime(reader.GetString(reader.GetOrdinal("LastActivityAt"))),
             IsMuted = reader.GetInt32(reader.GetOrdinal("IsMuted")) == 1,
             IsPinned = reader.GetInt32(reader.GetOrdinal("IsPinned")) == 1,
             IsArchived = reader.GetInt32(reader.GetOrdinal("IsArchived")) == 1,
@@ -1176,8 +1177,8 @@ public class StorageService : IStorageService
             NostrEventId = reader.IsDBNull(reader.GetOrdinal("NostrEventId")) ? null : reader.GetString(reader.GetOrdinal("NostrEventId")),
             RumorEventId = TryGetString(reader, "RumorEventId"),
             MlsEpoch = (ulong)reader.GetInt64(reader.GetOrdinal("MlsEpoch")),
-            Timestamp = DateTime.Parse(reader.GetString(reader.GetOrdinal("Timestamp"))),
-            ReceivedAt = reader.IsDBNull(reader.GetOrdinal("ReceivedAt")) ? null : DateTime.Parse(reader.GetString(reader.GetOrdinal("ReceivedAt"))),
+            Timestamp = ParseDateTime(reader.GetString(reader.GetOrdinal("Timestamp"))),
+            ReceivedAt = reader.IsDBNull(reader.GetOrdinal("ReceivedAt")) ? null : ParseDateTime(reader.GetString(reader.GetOrdinal("ReceivedAt"))),
             Status = (MessageStatus)reader.GetInt32(reader.GetOrdinal("Status")),
             ReplyToMessageId = reader.IsDBNull(reader.GetOrdinal("ReplyToMessageId")) ? null : reader.GetString(reader.GetOrdinal("ReplyToMessageId")),
             IsFromCurrentUser = reader.GetInt32(reader.GetOrdinal("IsFromCurrentUser")) == 1,
@@ -1192,6 +1193,13 @@ public class StorageService : IStorageService
             AudioDurationSeconds = TryGetDouble(reader, "AudioDurationSeconds")
         };
     }
+
+    /// <summary>
+    /// Parse a DateTime string preserving its original Kind (UTC 'Z' stays UTC).
+    /// Prevents timestamp drift when roundtripping through ToString("O").
+    /// </summary>
+    private static DateTime ParseDateTime(string value)
+        => DateTime.Parse(value, null, DateTimeStyles.RoundtripKind);
 
     private static string? TryGetString(SqliteDataReader reader, string column)
     {
@@ -1221,8 +1229,8 @@ public class StorageService : IStorageService
             OwnerPublicKey = reader.GetString(reader.GetOrdinal("OwnerPublicKey")),
             Data = (byte[])reader["Data"],
             NostrEventId = reader.IsDBNull(reader.GetOrdinal("NostrEventId")) ? null : reader.GetString(reader.GetOrdinal("NostrEventId")),
-            CreatedAt = DateTime.Parse(reader.GetString(reader.GetOrdinal("CreatedAt"))),
-            ExpiresAt = DateTime.Parse(reader.GetString(reader.GetOrdinal("ExpiresAt"))),
+            CreatedAt = ParseDateTime(reader.GetString(reader.GetOrdinal("CreatedAt"))),
+            ExpiresAt = ParseDateTime(reader.GetString(reader.GetOrdinal("ExpiresAt"))),
             IsUsed = reader.GetInt32(reader.GetOrdinal("IsUsed")) == 1,
             CiphersuiteId = (ushort)reader.GetInt32(reader.GetOrdinal("CiphersuiteId"))
         };
