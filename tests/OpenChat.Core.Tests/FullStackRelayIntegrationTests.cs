@@ -111,6 +111,15 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
         await _nostrServiceA.ConnectAsync(RelayUrl);
         await _nostrServiceB.ConnectAsync(RelayUrl);
 
+        // Publish NIP-65 relay lists so FetchRelayListAsync finds them on localhost
+        // instead of timing out trying to reach external discovery relays
+        var relayPrefs = new List<RelayPreference>
+        {
+            new() { Url = RelayUrl, Usage = RelayUsage.Both }
+        };
+        await _nostrServiceA.PublishRelayListAsync(relayPrefs, _privKeyA);
+        await _nostrServiceB.PublishRelayListAsync(relayPrefs, _privKeyB);
+
         await Task.Delay(1000); // Let connections stabilize
     }
 
@@ -202,7 +211,7 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
         Assert.Equal(64, eventId.Length);
 
         // Step 4: Verify the raw event arrives at NostrService level
-        using var rawCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var rawCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         rawCts.Token.Register(() => rawEventTcs.TrySetCanceled());
 
         var rawEvent = await rawEventTcs.Task;
@@ -211,7 +220,7 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
         Assert.Equal(_pubKeyA, rawEvent.PublicKey);
 
         // Step 5: Verify the PendingInvite was created by MessageService
-        using var inviteCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var inviteCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         inviteCts.Token.Register(() => inviteTcs.TrySetCanceled());
 
         var invite = await inviteTcs.Task;
@@ -312,7 +321,7 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
         _output.WriteLine($"Welcome published: {eventId}");
 
         // Step 4: Wait for invite — relay transport should work
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         cts.Token.Register(() => inviteTcs.TrySetCanceled());
         var invite = await inviteTcs.Task;
         _output.WriteLine($"Invite received: {invite.Id}");
@@ -398,7 +407,7 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
         _output.WriteLine($"Welcome published: {welcomeEventId}");
 
         // Step 7: Wait for invite
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         cts.Token.Register(() => inviteTcs.TrySetCanceled());
         var invite = await inviteTcs.Task;
         _output.WriteLine($"Invite received: {invite.Id}");

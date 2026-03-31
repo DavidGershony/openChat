@@ -104,6 +104,16 @@ public class CrossMdkRelayIntegrationTests : IAsyncLifetime
         // Connect both to the relay
         await _nostrServiceA.ConnectAsync(RelayUrl);
         await _nostrServiceB.ConnectAsync(RelayUrl);
+
+        // Publish NIP-65 relay lists so FetchRelayListAsync finds them on localhost
+        // instead of timing out trying to reach external discovery relays
+        var relayPrefs = new List<RelayPreference>
+        {
+            new() { Url = RelayUrl, Usage = RelayUsage.Both }
+        };
+        await _nostrServiceA.PublishRelayListAsync(relayPrefs, _privKeyA);
+        await _nostrServiceB.PublishRelayListAsync(relayPrefs, _privKeyB);
+
         await Task.Delay(1000);
     }
 
@@ -163,7 +173,7 @@ public class CrossMdkRelayIntegrationTests : IAsyncLifetime
         _output.WriteLine($"Random welcome published: {eventId}");
 
         // Wait for invite — relay transport should work
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         cts.Token.Register(() => inviteTcs.TrySetCanceled());
         var invite = await inviteTcs.Task;
         _output.WriteLine($"Invite received: {invite.Id}");
@@ -254,7 +264,7 @@ public class CrossMdkRelayIntegrationTests : IAsyncLifetime
         _output.WriteLine($"User A published Welcome to relay: {welcomeEventId}");
 
         // ── Phase 6: User B receives Welcome via relay → PendingInvite ──
-        using var inviteCts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var inviteCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         inviteCts.Token.Register(() => inviteTcs.TrySetCanceled());
 
         var pendingInvite = await inviteTcs.Task;
