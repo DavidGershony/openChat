@@ -102,11 +102,8 @@ public static class ProfileConfiguration
 
         ProfileName = lowerName;
         IsCustomProfile = true;
-        DataDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "OpenChat",
-            "profiles",
-            lowerName);
+        var root = GetDefaultDataDirectory();
+        DataDirectory = Path.Combine(root, "profiles", lowerName);
         // Title-case the first letter for display
         WindowTitleSuffix = " - " + char.ToUpperInvariant(profileName[0]) + profileName[1..].ToLowerInvariant();
     }
@@ -182,8 +179,14 @@ public static class ProfileConfiguration
 
     private static string GetDefaultDataDirectory()
     {
+        var folderName =
+#if DEBUG
+            "OpenChat-Dev";
+#else
+            "OpenChat";
+#endif
         return Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "OpenChat");
+            folderName);
     }
 }

@@ -407,7 +407,7 @@
         </Border>
         <!-- New Chat Dialog Overlay (window-level, over both panels) -->
         <Border DataContext="{Binding MainViewModel.ChatListViewModel}" x:DataType="vm:ChatListViewModel"
-                IsVisible="{Binding ShowNewChatDialog}"
+                IsVisible="{Binding ShowNewChatDialog, FallbackValue=False}"
                 Background="#80000000"
                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
             <Border Classes="card"
@@ -578,7 +578,7 @@
 
         <!-- New Group Dialog Overlay (window-level, over both panels) -->
         <Border DataContext="{Binding MainViewModel.ChatListViewModel}" x:DataType="vm:ChatListViewModel"
-                IsVisible="{Binding ShowNewGroupDialog}"
+                IsVisible="{Binding ShowNewGroupDialog, FallbackValue=False}"
                 Background="#80000000"
                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
             <Border Classes="card"
@@ -701,7 +701,7 @@
 
         <!-- Add Bot Dialog Overlay (window-level, over both panels) -->
         <Border DataContext="{Binding MainViewModel.ChatListViewModel}" x:DataType="vm:ChatListViewModel"
-                IsVisible="{Binding ShowAddBotDialog}"
+                IsVisible="{Binding ShowAddBotDialog, FallbackValue=False}"
                 Background="#80000000"
                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
             <Border Classes="card"
