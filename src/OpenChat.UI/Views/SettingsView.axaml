@@ -195,6 +195,26 @@
                             <TextBlock Text="Publishing..." Classes="muted" FontSize="13" />
                         </StackPanel>
                     </StackPanel>
+
+                    <!-- Audit Key Packages -->
+                    <StackPanel Spacing="8">
+                        <Button Classes="secondary" Content="Audit Key Packages"
+                                Command="{Binding AuditKeyPackagesCommand}"
+                                IsEnabled="{Binding !IsAuditingKeyPackages}"
+                                HorizontalAlignment="Left" />
+
+                        <Border IsVisible="{Binding AuditStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                Background="{DynamicResource SurfaceSecondaryBrush}"
+                                CornerRadius="8" Padding="12">
+                            <TextBlock Text="{Binding AuditStatus}"
+                                       FontSize="13" TextWrapping="Wrap" />
+                        </Border>
+
+                        <StackPanel Orientation="Horizontal" Spacing="8"
+                                    IsVisible="{Binding IsAuditingKeyPackages}">
+                            <TextBlock Text="Auditing..." Classes="muted" FontSize="13" />
+                        </StackPanel>
+                    </StackPanel>
                 </StackPanel>
             </Border>
 

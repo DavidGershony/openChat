@@ -127,6 +127,16 @@ public class MainActivity : AppCompatActivity, IActivatableView
             .Commit();
     }
 
+    public void NavigateToAddBot()
+    {
+        if (_shellViewModel?.MainViewModel == null) return;
+        var fragment = new AddBotFragment(_shellViewModel.MainViewModel);
+        SupportFragmentManager.BeginTransaction()
+            .Replace(Resource.Id.fragment_container, fragment, "addbot")
+            .AddToBackStack("addbot")
+            .Commit();
+    }
+
     protected override void OnResume()
     {
         base.OnResume();
