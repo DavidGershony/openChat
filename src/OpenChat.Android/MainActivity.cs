@@ -141,6 +141,36 @@ public class MainActivity : AppCompatActivity, IActivatableView
     {
         base.OnResume();
 
+        // Reconnect relay WebSockets after returning from background
+        // (Android suspends network connections when app is backgrounded)
+        if (_shellViewModel?.MainViewModel != null && _shellViewModel.IsLoggedIn)
+        {
+            var mainVm = _shellViewModel.MainViewModel;
+            mainVm.ChatListViewModel.StatusMessage = "Reconnecting to relays...";
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await mainVm.ReconnectCommand.Execute();
+                    RunOnUiThread(() =>
+                    {
+                        var connected = mainVm.RelayStatuses.Count(r => r.IsConnected);
+                        var total = mainVm.RelayStatuses.Count;
+                        mainVm.ChatListViewModel.StatusMessage = $"Connected to {connected}/{total} relays";
+                    });
+                }
+                catch (Exception ex)
+                {
+                    global::Android.Util.Log.Error("OpenChat", $"Relay reconnect failed: {ex.Message}");
+                    RunOnUiThread(() =>
+                    {
+                        mainVm.ChatListViewModel.StatusMessage = "Relay reconnect failed";
+                    });
+                }
+            });
+        }
+
         // Reconnect external signer WebSocket after returning from background
         // (e.g. user switched to Amber to approve, then came back)
         var signer = _shellViewModel?.LoginViewModel?.ExternalSigner;
