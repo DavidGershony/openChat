@@ -1429,6 +1429,7 @@ public class ChatItemViewModel : ViewModelBase
     [Reactive] public string? LastMessagePreview { get; set; }
     [Reactive] public DateTime LastActivityAt { get; set; }
     [Reactive] public int UnreadCount { get; set; }
+    public bool HasUnread => UnreadCount > 0;
     [Reactive] public bool IsPinned { get; set; }
     [Reactive] public bool IsMuted { get; set; }
     [Reactive] public bool IsGroup { get; set; }
@@ -1452,6 +1453,7 @@ public class ChatItemViewModel : ViewModelBase
         LastMessagePreview = chat.LastMessage?.Content;
         LastActivityAt = chat.LastActivityAt;
         UnreadCount = chat.UnreadCount;
+        this.RaisePropertyChanged(nameof(HasUnread));
         IsPinned = chat.IsPinned;
         IsMuted = chat.IsMuted;
         IsGroup = chat.Type == ChatType.Group;

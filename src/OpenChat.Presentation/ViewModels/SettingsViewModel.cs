@@ -228,6 +228,13 @@ public class SettingsViewModel : ViewModelBase
                 foreach (var relay in savedRelays)
                     Relays.Add(new RelayViewModel { Url = relay.Url, Usage = relay.Usage, IsConnected = false });
             }
+
+            // Sync actual connection state from NostrService
+            var connectedUrls = _nostrService.ConnectedRelayUrls;
+            foreach (var relay in Relays)
+            {
+                relay.IsConnected = connectedUrls.Contains(relay.Url);
+            }
         }
 
         // Load MIP-04 setting

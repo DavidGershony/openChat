@@ -182,7 +182,7 @@
 
                                 <!-- Unread Badge -->
                                 <Border Grid.Column="1"
-                                        IsVisible="{Binding UnreadCount, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                        IsVisible="{Binding HasUnread}"
                                         Background="{DynamicResource NostrPurpleBrush}"
                                         CornerRadius="10" MinWidth="20" Height="20"
                                         Padding="6,0" Margin="8,0,0,0">

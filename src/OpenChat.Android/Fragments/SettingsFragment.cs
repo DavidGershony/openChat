@@ -126,11 +126,15 @@ public class SettingsFragment : Fragment
                         _logger.LogError(ex, "Reconnect all relays failed");
                         reconnectRelaysButton.Enabled = true;
                         reconnectRelaysButton.Text = "Reconnect All";
+                        Toast.MakeText(Activity, $"Reconnect failed: {ex.Message}", ToastLength.Long)?.Show();
                     },
                     () =>
                     {
                         reconnectRelaysButton.Enabled = true;
                         reconnectRelaysButton.Text = "Reconnect All";
+                        var connected = ViewModel.Relays.Count(r => r.IsConnected);
+                        var total = ViewModel.Relays.Count;
+                        Toast.MakeText(Activity, $"Connected to {connected}/{total} relays", ToastLength.Short)?.Show();
                     })
                 .DisposeWith(_disposables);
         };
@@ -231,14 +235,28 @@ public class SettingsFragment : Fragment
             .Subscribe(npub => npubText.Text = npub ?? "No key available")
             .DisposeWith(_disposables);
 
-        // Relay collection
+        // Relay collection — rebind on add/remove
         ViewModel.Relays.CollectionChanged += (s, e) =>
         {
             Activity?.RunOnUiThread(() =>
             {
                 _relayAdapter.UpdateItems(ViewModel.Relays.ToList());
             });
+            // Subscribe to new items' property changes (for IsConnected updates)
+            if (e.NewItems != null)
+            {
+                foreach (RelayViewModel relay in e.NewItems)
+                {
+                    relay.PropertyChanged += OnRelayPropertyChanged;
+                }
+            }
         };
+
+        // Subscribe to existing relays' property changes (for status dot updates)
+        foreach (var relay in ViewModel.Relays)
+        {
+            relay.PropertyChanged += OnRelayPropertyChanged;
+        }
 
         // NIP-65 relay list status
         ViewModel.WhenAnyValue(x => x.PublishRelayListStatus)
@@ -425,6 +443,17 @@ public class SettingsFragment : Fragment
 
         // Load initial content
         logContent.Text = ViewModel.LogContent ?? "No logs available";
+    }
+
+    private void OnRelayPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(RelayViewModel.IsConnected))
+        {
+            Activity?.RunOnUiThread(() =>
+            {
+                _relayAdapter?.UpdateItems(ViewModel.Relays.ToList());
+            });
+        }
     }
 
     private void CopyToClipboard(string label, string? text)

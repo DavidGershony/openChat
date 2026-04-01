@@ -43,6 +43,7 @@ public class ChatListAdapter : RecyclerView.Adapter
         private readonly TextView _name;
         private readonly TextView _lastMessage;
         private readonly TextView _timestamp;
+        private readonly TextView _unreadBadge;
 
         public ChatViewHolder(View itemView) : base(itemView)
         {
@@ -50,6 +51,7 @@ public class ChatListAdapter : RecyclerView.Adapter
             _name = itemView.FindViewById<TextView>(Resource.Id.chat_name)!;
             _lastMessage = itemView.FindViewById<TextView>(Resource.Id.chat_last_message)!;
             _timestamp = itemView.FindViewById<TextView>(Resource.Id.chat_timestamp)!;
+            _unreadBadge = itemView.FindViewById<TextView>(Resource.Id.chat_unread_badge)!;
         }
 
         public void Bind(ChatItemViewModel item)
@@ -61,6 +63,17 @@ public class ChatListAdapter : RecyclerView.Adapter
             // Avatar: first letter of name
             var initial = string.IsNullOrEmpty(item.Name) ? "?" : item.Name[..1].ToUpper();
             _avatar.Text = initial;
+
+            // Unread badge
+            if (item.UnreadCount > 0)
+            {
+                _unreadBadge.Text = item.UnreadCount.ToString();
+                _unreadBadge.Visibility = ViewStates.Visible;
+            }
+            else
+            {
+                _unreadBadge.Visibility = ViewStates.Gone;
+            }
         }
 
         private static string FormatRelativeTime(DateTime dateTime)
