@@ -21,6 +21,7 @@ public class BlossomUploadService : IMediaUploadService
 
     public const string DefaultServerUrl = "https://blossom.primal.net";
     public string BlossomServerUrl { get; set; } = DefaultServerUrl;
+    private bool _lastFailureWasHttpRejection;
 
     public BlossomUploadService(IExternalSigner? externalSigner = null, HttpClient? httpClient = null)
     {
@@ -38,12 +39,14 @@ public class BlossomUploadService : IMediaUploadService
     public async Task<BlobUploadResult> UploadAsync(byte[] encryptedData, string? privateKeyHex, string? contentType = null, CancellationToken ct = default)
     {
         var sha256Hex = Convert.ToHexString(SHA256.HashData(encryptedData)).ToLowerInvariant();
+        _lastFailureWasHttpRejection = false;
 
         var result = await TryUploadToServerAsync(BlossomServerUrl, encryptedData, sha256Hex, privateKeyHex, ct);
         if (result != null) return result;
 
-        // Fallback to default server if configured server failed and is different
-        if (!string.Equals(BlossomServerUrl.TrimEnd('/'), DefaultServerUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
+        // Only fallback on HTTP rejections (401/403), not connection failures
+        if (_lastFailureWasHttpRejection &&
+            !string.Equals(BlossomServerUrl.TrimEnd('/'), DefaultServerUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
         {
             _logger.LogWarning("Upload to {Server} failed, falling back to default {Default}",
                 BlossomServerUrl, DefaultServerUrl);
@@ -71,9 +74,8 @@ public class BlossomUploadService : IMediaUploadService
             return await TryUploadAsync(url, encryptedData, sha256Hex, authHeader, ct);
         }
 
-        // No credentials — try anonymous upload
-        var anonResult = await TryUploadAsync(url, encryptedData, sha256Hex, authHeader: null, ct);
-        return anonResult;
+        // No credentials at all — fail fast
+        throw new InvalidOperationException("Cannot upload to Blossom: no private key and no external signer.");
     }
 
     private async Task<BlobUploadResult?> TryUploadAsync(string url, byte[] data, string sha256Hex, string? authHeader, CancellationToken ct)
@@ -92,6 +94,7 @@ public class BlossomUploadService : IMediaUploadService
             {
                 var body = await response.Content.ReadAsStringAsync(ct);
                 _lastUploadError = $"{(int)response.StatusCode} {response.StatusCode}: {body}";
+                _lastFailureWasHttpRejection = true;
                 _logger.LogWarning("Blossom upload attempt failed: {Status} {Body}", response.StatusCode, body);
                 return null;
             }
