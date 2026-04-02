@@ -536,6 +536,67 @@ public class ExternalSignerService : IExternalSigner, IDisposable
         return await tcs.Task;
     }
 
+    /// <summary>
+    /// Processes a decrypted NIP-46 JSON message (request or response) from a signer.
+    /// Extracted for testability — called by ProcessMessage after NIP-04/NIP-44 decryption.
+    /// </summary>
+    internal void ProcessDecryptedNip46Message(string decryptedJson, string senderPubKey)
+    {
+        using var nip46Doc = JsonDocument.Parse(decryptedJson);
+        if (nip46Doc.RootElement.TryGetProperty("method", out var methodProp))
+        {
+            // Incoming request from signer (nostrconnect:// flow)
+            var method = methodProp.GetString();
+            var reqId = nip46Doc.RootElement.TryGetProperty("id", out var idProp) ? idProp.GetString() : null;
+            _logger.LogInformation("NIP-46 incoming request: method={Method}, id={Id}", method, reqId);
+
+            if (method == "connect")
+            {
+                HandleIncomingConnect(senderPubKey, nip46Doc.RootElement, reqId);
+            }
+        }
+        else
+        {
+            // Response to a pending request (bunker:// flow)
+            var response = JsonSerializer.Deserialize<Nip46Response>(decryptedJson);
+
+            if (response?.Id != null && _pendingRequests.TryGetValue(response.Id, out var tcs))
+            {
+                _pendingRequests.Remove(response.Id);
+
+                if (response.Error != null)
+                {
+                    _logger.LogWarning("NIP-46 signer returned error: {Error}", response.Error);
+                    tcs.TrySetException(new Exception(response.Error));
+                }
+                else
+                {
+                    var idPreview = response.Id.Length >= 8 ? response.Id[..8] : response.Id;
+                    _logger.LogInformation("NIP-46 signer returned result for request {Id}", idPreview);
+                    tcs.TrySetResult(response.Result ?? "");
+                }
+            }
+            else if (!IsConnected && response?.Result != null)
+            {
+                // Unmatched response while not connected — this is Amber's connect ack
+                // (nostrconnect:// flow: Amber sends a response with the secret as result)
+                _logger.LogInformation("NIP-46 treating unmatched response as connect ack from {Sender}", senderPubKey[..16]);
+                HandleIncomingConnect(senderPubKey, nip46Doc.RootElement, response?.Id);
+            }
+            else if (response?.Result != null && response.Error == null)
+            {
+                // Unmatched response while already connected — likely a sign_event response replayed after reconnect.
+                var idStr = response.Id != null && response.Id.Length >= 8 ? response.Id[..8] : response.Id ?? "?";
+                _logger.LogInformation("NIP-46 caching unmatched response {Id} (likely replayed after reconnect)", idStr);
+                _replayedSignEventResult = response.Result;
+            }
+            else
+            {
+                _logger.LogWarning("NIP-46 received response for unknown request: {Id}", response?.Id);
+            }
+        }
+    }
+
     private void HandleIncomingConnect(string senderPubKey, JsonElement root, string? reqId)
     {
         _remotePubKey = senderPubKey;
@@ -733,59 +794,7 @@ public class ExternalSignerService : IExternalSigner, IDisposable
                             _logger.LogDebug("NIP-46 decrypted (NIP-44): {Message}", decrypted.Length > 200 ? decrypted[..200] + "..." : decrypted);
                         }
 
-                        // Check if this is an incoming request (has "method") or a response
-                        using var nip46Doc = JsonDocument.Parse(decrypted);
-                        if (nip46Doc.RootElement.TryGetProperty("method", out var methodProp))
-                        {
-                            // Incoming request from signer (nostrconnect:// flow)
-                            var method = methodProp.GetString();
-                            var reqId = nip46Doc.RootElement.TryGetProperty("id", out var idProp) ? idProp.GetString() : null;
-                            _logger.LogInformation("NIP-46 incoming request: method={Method}, id={Id}", method, reqId);
-
-                            if (method == "connect")
-                            {
-                                HandleIncomingConnect(senderPubKey, nip46Doc.RootElement, reqId);
-                            }
-                        }
-                        else
-                        {
-                            // Response to a pending request (bunker:// flow)
-                            var response = JsonSerializer.Deserialize<Nip46Response>(decrypted);
-
-                            if (response?.Id != null && _pendingRequests.TryGetValue(response.Id, out var tcs))
-                            {
-                                _pendingRequests.Remove(response.Id);
-
-                                if (response.Error != null)
-                                {
-                                    _logger.LogWarning("NIP-46 signer returned error: {Error}", response.Error);
-                                    tcs.TrySetException(new Exception(response.Error));
-                                }
-                                else
-                                {
-                                    _logger.LogInformation("NIP-46 signer returned result for request {Id}", response.Id[..8]);
-                                    tcs.TrySetResult(response.Result ?? "");
-                                }
-                            }
-                            else if (response?.Result != null && response.Error == null)
-                            {
-                                // Unmatched response — likely a sign_event response replayed after reconnect.
-                                // Cache it so SendRequestAsync can use it instead of sending a duplicate request.
-                                _logger.LogInformation("NIP-46 caching unmatched response {Id} (likely replayed after reconnect)", response.Id?[..8] ?? "?");
-                                _replayedSignEventResult = response.Result;
-                            }
-                            else if (!IsConnected)
-                            {
-                                // Unsolicited response while waiting for connection (nostrconnect:// flow)
-                                // Some signers send a response instead of a request
-                                _logger.LogInformation("NIP-46 treating unsolicited response as connect from {Sender}", senderPubKey[..16]);
-                                HandleIncomingConnect(senderPubKey, nip46Doc.RootElement, response?.Id);
-                            }
-                            else
-                            {
-                                _logger.LogWarning("NIP-46 received response for unknown request: {Id}", response?.Id);
-                            }
-                        }
+                        ProcessDecryptedNip46Message(decrypted, senderPubKey);
                     }
                 }
             }
