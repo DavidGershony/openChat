@@ -501,19 +501,24 @@ public class StorageService : IStorageService
 
         await command.ExecuteNonQueryAsync();
 
-        // Save participants
-        var deleteParticipants = connection.CreateCommand();
-        deleteParticipants.CommandText = "DELETE FROM ChatParticipants WHERE ChatId = @ChatId";
-        deleteParticipants.Parameters.AddWithValue("@ChatId", chat.Id);
-        await deleteParticipants.ExecuteNonQueryAsync();
-
-        foreach (var publicKey in chat.ParticipantPublicKeys)
+        // Save participants — only overwrite if the chat object has participants.
+        // An empty participant list on a Group chat is always a bug (the creator is always
+        // a member), so preserve existing participants to prevent accidental data loss.
+        if (chat.ParticipantPublicKeys.Count > 0)
         {
-            var insertParticipant = connection.CreateCommand();
-            insertParticipant.CommandText = "INSERT INTO ChatParticipants (ChatId, PublicKeyHex) VALUES (@ChatId, @PublicKeyHex)";
-            insertParticipant.Parameters.AddWithValue("@ChatId", chat.Id);
-            insertParticipant.Parameters.AddWithValue("@PublicKeyHex", publicKey);
-            await insertParticipant.ExecuteNonQueryAsync();
+            var deleteParticipants = connection.CreateCommand();
+            deleteParticipants.CommandText = "DELETE FROM ChatParticipants WHERE ChatId = @ChatId";
+            deleteParticipants.Parameters.AddWithValue("@ChatId", chat.Id);
+            await deleteParticipants.ExecuteNonQueryAsync();
+
+            foreach (var publicKey in chat.ParticipantPublicKeys)
+            {
+                var insertParticipant = connection.CreateCommand();
+                insertParticipant.CommandText = "INSERT INTO ChatParticipants (ChatId, PublicKeyHex) VALUES (@ChatId, @PublicKeyHex)";
+                insertParticipant.Parameters.AddWithValue("@ChatId", chat.Id);
+                insertParticipant.Parameters.AddWithValue("@PublicKeyHex", publicKey);
+                await insertParticipant.ExecuteNonQueryAsync();
+            }
         }
 
         // Save relays
