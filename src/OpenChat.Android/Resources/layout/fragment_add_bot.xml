@@ -9,7 +9,7 @@
         android:id="@+id/add_bot_toolbar"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
-        app:title="AI Connect"
+        app:title="Link Device"
         app:navigationIcon="?attr/homeAsUpIndicator" />
 
     <ScrollView
@@ -27,7 +27,7 @@
             <com.google.android.material.textfield.TextInputLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:hint="Bot public key (npub or hex)">
+                android:hint="Device public key (npub or hex)">
 
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/add_bot_npub_input"
@@ -42,7 +42,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Enter the npub of the bot you want to chat with. Messages use NIP-17 encrypted DMs."
+                android:text="Enter the npub of a bot or IoT device. Messages use NIP-17 encrypted DMs."
                 android:textSize="12sp"
                 android:textColor="@color/text_secondary"
                 android:layout_marginTop="8dp" />
@@ -60,7 +60,7 @@
                 android:id="@+id/add_bot_button"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Connect"
+                android:text="Link"
                 android:layout_marginTop="24dp" />
 
         </LinearLayout>
@@ -84,7 +84,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Connecting to bot..."
+            android:text="Linking device..."
             android:textSize="16sp"
             android:textColor="@color/text_primary"
             android:layout_marginTop="16dp" />

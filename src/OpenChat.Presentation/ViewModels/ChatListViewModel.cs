@@ -68,7 +68,7 @@ public class ChatListViewModel : ViewModelBase
     [Reactive] public string JoinGroupId { get; set; } = string.Empty;
     [Reactive] public string? JoinGroupError { get; set; }
 
-    // Add Bot Dialog
+    // Add Bot / DM Dialog
     [Reactive] public bool ShowAddBotDialog { get; set; }
     [Reactive] public string BotNpub { get; set; } = string.Empty;
     [Reactive] public string? AddBotError { get; set; }
@@ -180,7 +180,7 @@ public class ChatListViewModel : ViewModelBase
 
         AddBotCommand = ReactiveCommand.Create(() =>
         {
-            _logger.LogInformation("Opening add bot dialog");
+            _logger.LogInformation("Opening link device dialog");
             BotNpub = string.Empty;
             AddBotError = null;
             ShowAddBotDialog = true;
@@ -1126,14 +1126,14 @@ public class ChatListViewModel : ViewModelBase
                 return;
             }
 
-            // Try to fetch bot profile for name resolution
+            // Try to fetch profile for name resolution
             try
             {
                 await _messageService.FetchAndCacheProfileAsync(hex);
             }
             catch (Exception ex)
             {
-                _logger.LogDebug(ex, "Could not fetch bot profile, continuing with hex name");
+                _logger.LogDebug(ex, "Could not fetch profile, continuing with hex name");
             }
 
             var chat = await _messageService.GetOrCreateBotChatAsync(hex);
@@ -1154,7 +1154,7 @@ public class ChatListViewModel : ViewModelBase
                 SelectedChat = chatItem;
             }
 
-            _logger.LogInformation("Created bot chat {ChatId} for {BotPub}",
+            _logger.LogInformation("Linked device chat {ChatId} for {Pub}",
                 chat.Id[..Math.Min(8, chat.Id.Length)], hex[..Math.Min(16, hex.Length)]);
         }
         catch (Exception ex)

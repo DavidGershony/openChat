@@ -60,9 +60,18 @@ public class ChatListAdapter : RecyclerView.Adapter
             _lastMessage.Text = item.LastMessagePreview ?? "";
             _timestamp.Text = FormatRelativeTime(item.LastActivityAt);
 
-            // Avatar: first letter of name
-            var initial = string.IsNullOrEmpty(item.Name) ? "?" : item.Name[..1].ToUpper();
-            _avatar.Text = initial;
+            // Avatar: type-specific display
+            if (item.IsBot)
+            {
+                _avatar.Text = "\U0001F50C"; // electric plug emoji
+                _avatar.SetTextSize(global::Android.Util.ComplexUnitType.Sp, 24);
+            }
+            else
+            {
+                var initial = string.IsNullOrEmpty(item.Name) ? "?" : item.Name[..1].ToUpper();
+                _avatar.Text = initial;
+                _avatar.SetTextSize(global::Android.Util.ComplexUnitType.Sp, 20);
+            }
 
             // Unread badge
             if (item.UnreadCount > 0)

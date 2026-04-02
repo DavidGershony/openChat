@@ -39,7 +39,6 @@ public class AddBotFragment : Fragment
         var addButton = view.FindViewById<MaterialButton>(Resource.Id.add_bot_button)!;
         var sendingOverlay = view.FindViewById<LinearLayout>(Resource.Id.add_bot_sending_overlay)!;
         var formScroll = view.FindViewById<ScrollView>(Resource.Id.add_bot_form_scroll)!;
-
         // Back navigation
         toolbar.NavigationClick += (s, e) =>
         {
@@ -71,7 +70,7 @@ public class AddBotFragment : Fragment
             {
                 formScroll.Visibility = creating ? ViewStates.Gone : ViewStates.Visible;
                 sendingOverlay.Visibility = creating ? ViewStates.Visible : ViewStates.Gone;
-                toolbar.Title = creating ? "Connecting..." : "AI Connect";
+                toolbar.Title = creating ? "Linking..." : "Link Device";
                 addButton.Enabled = !creating;
             })
             .DisposeWith(_disposables);

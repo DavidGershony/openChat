@@ -718,7 +718,7 @@
                                 IsVisible="{Binding !CreateBotChatCommand.IsExecuting^}">
                         <!-- Header -->
                         <Grid ColumnDefinitions="*,Auto">
-                            <TextBlock Text="AI Connect"
+                            <TextBlock Text="Link Device"
                                        FontSize="22" FontWeight="Bold"
                                        VerticalAlignment="Center" />
                             <Button Grid.Column="1" Classes="icon"
@@ -729,13 +729,13 @@
                             </Button>
                         </Grid>
 
-                        <!-- Bot npub Input -->
+                        <!-- Device Public Key Input -->
                         <StackPanel Spacing="6">
-                            <TextBlock Text="Bot Public Key" Classes="secondary" FontSize="13" />
+                            <TextBlock Text="Device Public Key" Classes="secondary" FontSize="13" />
                             <TextBox Text="{Binding BotNpub}"
                                      Watermark="npub1..."
                                      AcceptsReturn="False" />
-                            <TextBlock Text="Enter the npub of the bot you want to chat with. Messages use NIP-17 encrypted DMs."
+                            <TextBlock Text="Enter the npub of a bot or IoT device. Messages use NIP-17 encrypted DMs."
                                        Classes="muted" FontSize="11" TextWrapping="Wrap" />
                         </StackPanel>
 
@@ -756,7 +756,7 @@
                                     HorizontalContentAlignment="Center" />
                             <Button Grid.Column="2"
                                     Classes="primary"
-                                    Content="Connect"
+                                    Content="Link"
                                     Command="{Binding CreateBotChatCommand}"
                                     HorizontalAlignment="Stretch"
                                     HorizontalContentAlignment="Center" />
@@ -771,7 +771,7 @@
                                 Margin="40">
                         <ProgressBar IsIndeterminate="True" Width="160" Height="4"
                                      Foreground="{DynamicResource NostrPurpleBrush}" />
-                        <TextBlock Text="Connecting to bot..."
+                        <TextBlock Text="Linking device..."
                                    FontSize="15" FontWeight="SemiBold"
                                    HorizontalAlignment="Center" />
                         <TextBlock Text="This may take a moment"
