@@ -155,10 +155,11 @@ public class SettingsViewModel : ViewModelBase
             {
                 try
                 {
-                    await _storageService.SaveSettingAsync("blossom_server_url", url.Trim());
+                    var normalized = url.Trim().ToLowerInvariant();
+                    await _storageService.SaveSettingAsync("blossom_server_url", normalized);
                     if (ChatViewModel.MediaUploadService is BlossomUploadService blossom)
-                        blossom.BlossomServerUrl = url.Trim();
-                    _logger.LogInformation("Blossom server URL updated: {Url}", url.Trim());
+                        blossom.BlossomServerUrl = normalized;
+                    _logger.LogInformation("Blossom server URL updated: {Url}", normalized);
                 }
                 catch (Exception ex)
                 {
