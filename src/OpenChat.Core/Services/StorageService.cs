@@ -315,7 +315,7 @@ public class StorageService : IStorageService
             if (await reader.ReadAsync())
             {
                 var user = ReadUser(reader);
-                _logger.LogInformation("Retrieved current user: {Npub}", user.Npub ?? user.PublicKeyHex[..16]);
+                _logger.LogInformation("Retrieved current user: {Npub}...", user.Npub?[..Math.Min(12, user.Npub.Length)] ?? user.PublicKeyHex[..16]);
                 return user;
             }
 

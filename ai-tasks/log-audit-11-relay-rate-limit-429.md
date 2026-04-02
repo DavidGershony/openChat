@@ -1,6 +1,6 @@
 # Task: Handle relay HTTP 429 rate-limiting gracefully
 
-## Status: Not Started
+## Status: COMPLETED
 
 ## Epic: log-audit (2026-04-02 v0.2.4 log analysis)
 

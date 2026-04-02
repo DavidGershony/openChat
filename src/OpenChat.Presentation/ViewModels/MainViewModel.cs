@@ -272,7 +272,7 @@ public class MainViewModel : ViewModelBase
     {
         if (CurrentUser == null) return;
 
-        _logger.LogInformation("InitializeAfterLoginAsync starting for {Npub}", CurrentUser.Npub);
+        _logger.LogInformation("InitializeAfterLoginAsync starting for {Npub}...", CurrentUser.Npub?[..Math.Min(12, CurrentUser.Npub.Length)]);
 
         try
         {

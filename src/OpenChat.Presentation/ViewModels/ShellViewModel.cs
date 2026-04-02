@@ -99,7 +99,7 @@ public class ShellViewModel : ViewModelBase
 
                 if (savedUser != null)
                 {
-                    _logger.LogInformation("Auto-login: found saved user {Npub}", savedUser.Npub);
+                    _logger.LogInformation("Auto-login: found saved user {Npub}...", savedUser.Npub?[..Math.Min(12, savedUser.Npub.Length)]);
                     await ActivateSession(savedUser, storageService);
                     return;
                 }
@@ -121,7 +121,7 @@ public class ShellViewModel : ViewModelBase
     {
         try
         {
-            _logger.LogInformation("Login completed for {Npub}, setting up profile", user.Npub);
+            _logger.LogInformation("Login completed for {Npub}..., setting up profile", user.Npub?[..Math.Min(12, user.Npub.Length)]);
 
             // Derive profile from the user's public key (unless --profile was explicit)
             if (!ProfileConfiguration.WasExplicitlySet)
@@ -185,8 +185,8 @@ public class ShellViewModel : ViewModelBase
         });
         await tcs.Task;
 
-        _logger.LogInformation("Session activated for {Npub} in profile {Profile}",
-            user.Npub, ProfileConfiguration.ProfileName);
+        _logger.LogInformation("Session activated for {Npub}... in profile {Profile}",
+            user.Npub?[..Math.Min(12, user.Npub.Length)], ProfileConfiguration.ProfileName);
 
         // Initialize in the background (relay connections, MLS, etc.)
         await MainViewModel.InitializeAfterLoginAsync();

@@ -32,6 +32,9 @@ public class NostrService : INostrService, IDisposable
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _relayListeners = new();
     private readonly ConcurrentDictionary<string, byte> _subscribedGroupIds = new();
     private readonly ConcurrentDictionary<string, byte> _recentlyProcessedEventIds = new();
+    private readonly ConcurrentDictionary<string, int> _relayBackoffSeconds = new();
+    private const int MaxBackoffSeconds = 60;
+    private const int RateLimitBackoffSeconds = 60;
     private DateTimeOffset? _groupMessagesSince;
     private string? _subscribedUserPubKey;
     private string? _subscribedUserPrivKey;
@@ -119,11 +122,26 @@ public class NostrService : INostrService, IDisposable
 
             _logger.LogInformation("Successfully connected to relay: {RelayUrl}", relayUrl);
 
+            // Reset backoff on successful connection
+            _relayBackoffSeconds.TryRemove(relayUrl, out _);
+
             // Start listening for events in background
             _ = ListenToRelayAsync(relayUrl, ws, cts.Token);
 
             // Re-send any active subscriptions to this relay
             await ResendSubscriptionsToRelayAsync(relayUrl, ws);
+        }
+        catch (WebSocketException ex) when (ex.Message.Contains("429"))
+        {
+            _logger.LogWarning("Rate-limited by relay {RelayUrl} (HTTP 429), backing off {Seconds}s",
+                relayUrl, RateLimitBackoffSeconds);
+            _relayBackoffSeconds[relayUrl] = RateLimitBackoffSeconds;
+            _connectionStatus.OnNext(new NostrConnectionStatus
+            {
+                RelayUrl = relayUrl,
+                IsConnected = false,
+                Error = "Rate-limited (429)"
+            });
         }
         catch (Exception ex)
         {
@@ -212,6 +230,7 @@ public class NostrService : INostrService, IDisposable
     private async Task ListenToRelayAsync(string relayUrl, ClientWebSocket ws, CancellationToken ct)
     {
         var buffer = new byte[65536];
+        var wasCancelled = false;
 
         try
         {
@@ -230,6 +249,7 @@ public class NostrService : INostrService, IDisposable
         catch (OperationCanceledException)
         {
             _logger.LogDebug("Relay listener cancelled for {RelayUrl}", relayUrl);
+            wasCancelled = true;
         }
         catch (Exception ex)
         {
@@ -242,6 +262,28 @@ public class NostrService : INostrService, IDisposable
                 RelayUrl = relayUrl,
                 IsConnected = false
             });
+        }
+
+        // Auto-reconnect with exponential backoff (unless deliberately cancelled)
+        if (!wasCancelled && !_disposed)
+        {
+            var backoff = _relayBackoffSeconds.GetOrAdd(relayUrl, 1);
+            _logger.LogInformation("Auto-reconnecting to {RelayUrl} in {Seconds}s", relayUrl, backoff);
+
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(backoff), CancellationToken.None);
+            }
+            catch (TaskCanceledException) { return; }
+
+            // Increase backoff for next failure (exponential: 1, 2, 4, 8, 16, 32, 60)
+            _relayBackoffSeconds[relayUrl] = Math.Min(backoff * 2, MaxBackoffSeconds);
+
+            if (!_disposed)
+            {
+                await DisconnectSingleRelayAsync(relayUrl);
+                await ConnectToRelayAsync(relayUrl);
+            }
         }
     }
 
@@ -687,6 +729,7 @@ public class NostrService : INostrService, IDisposable
     public async Task ReconnectRelayAsync(string relayUrl)
     {
         _logger.LogInformation("Reconnecting to relay: {RelayUrl}", relayUrl);
+        _relayBackoffSeconds.TryRemove(relayUrl, out _);
         await DisconnectSingleRelayAsync(relayUrl);
         await ConnectToRelayAsync(relayUrl);
     }
@@ -747,7 +790,7 @@ public class NostrService : INostrService, IDisposable
             var npub = Bech32.Encode("npub", publicKeyBytes);
             _logger.LogDebug("Encoded keys to bech32 format - nsec length: {NsecLen}, npub length: {NpubLen}", nsec.Length, npub.Length);
 
-            _logger.LogInformation("Successfully generated keypair. Public key (npub): {Npub}", npub);
+            _logger.LogInformation("Successfully generated keypair. Public key (npub): {Npub}...", npub[..12]);
             return (privateKeyHex, publicKeyHex, nsec, npub);
         }
         catch (Exception ex)
@@ -794,7 +837,7 @@ public class NostrService : INostrService, IDisposable
             var nsec = Bech32.Encode("nsec", privateKeyBytes);
             var npub = Bech32.Encode("npub", publicKeyBytes);
 
-            _logger.LogInformation("Successfully imported private key. Public key (npub): {Npub}", npub);
+            _logger.LogInformation("Successfully imported private key. Public key (npub): {Npub}...", npub[..12]);
             return (privateKeyHex, publicKeyHex, nsec, npub);
         }
         catch (FormatException ex)
@@ -1973,7 +2016,7 @@ public class NostrService : INostrService, IDisposable
             }
 
             // If no metadata found, return basic info
-            _logger.LogInformation("No metadata found for {Npub}, returning basic info", npub);
+            _logger.LogInformation("No metadata found for {Npub}..., returning basic info", npub[..Math.Min(12, npub.Length)]);
             return new UserMetadata
             {
                 PublicKeyHex = publicKeyHex,
@@ -2346,7 +2389,7 @@ public class NostrService : INostrService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to convert npub to hex: {Npub}", npub);
+            _logger.LogWarning(ex, "Failed to convert npub to hex: {Npub}...", npub[..Math.Min(12, npub.Length)]);
         }
 
         return null;
