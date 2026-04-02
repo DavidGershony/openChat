@@ -110,6 +110,8 @@ public class MainActivity : AppCompatActivity, IActivatableView
     public void NavigateToNewChat()
     {
         if (_shellViewModel?.MainViewModel == null) return;
+        // Execute command to clear state and populate relay selection list
+        _shellViewModel.MainViewModel.ChatListViewModel.NewChatCommand.Execute().Subscribe();
         var fragment = new NewChatFragment(_shellViewModel.MainViewModel);
         SupportFragmentManager.BeginTransaction()
             .Replace(Resource.Id.fragment_container, fragment, "newchat")
@@ -120,6 +122,8 @@ public class MainActivity : AppCompatActivity, IActivatableView
     public void NavigateToNewGroup()
     {
         if (_shellViewModel?.MainViewModel == null) return;
+        // Execute command to clear state and populate relay selection list
+        _shellViewModel.MainViewModel.ChatListViewModel.NewGroupCommand.Execute().Subscribe();
         var fragment = new NewGroupFragment(_shellViewModel.MainViewModel);
         SupportFragmentManager.BeginTransaction()
             .Replace(Resource.Id.fragment_container, fragment, "newgroup")
