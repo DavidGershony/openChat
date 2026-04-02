@@ -1,6 +1,6 @@
 # Task: Remove or replace unreachable relay.nostr.band for NIP-65 lookups
 
-## Status: Not Started
+## Status: COMPLETED
 
 ## Epic: log-audit (2026-04-02 v0.2.4 log analysis)
 

@@ -1,6 +1,6 @@
 # Task: Truncate contact pubkeys in log output
 
-## Status: Not Started
+## Status: COMPLETED — already truncated to 16 chars in all locations
 
 ## Epic: log-audit (2026-04-02 v0.2.4 log analysis)
 

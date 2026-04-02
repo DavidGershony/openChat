@@ -23,6 +23,6 @@ public static class NostrConstants
     public static readonly string[] DiscoveryRelays =
     {
         "wss://purplepag.es",
-        "wss://relay.nostr.band"
+        "wss://relay.damus.io"
     };
 }
