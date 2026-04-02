@@ -213,7 +213,7 @@ public class ChatListFragment : Fragment
     {
         if (Context == null) return;
 
-        var items = new[] { "New Chat", "New Group", "AI Connect" };
+        var items = new[] { "New Chat", "New Group", "Link Device" };
         new MaterialAlertDialogBuilder(Context)
             .SetTitle("Create")!
             .SetItems(items, (s, e) =>

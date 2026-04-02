@@ -115,6 +115,13 @@ already used throughout the app.
 - No Blockcore.Nostr.Client or NNostr.Client integration
 - No changes to ExternalSignerService
 
+## Pre-requisite
+
+Before starting implementation, check the Websocket.Client GitHub repo (https://github.com/Marfusios/websocket-client)
+for current maintenance status: last commit date, open issues (especially #124 memory leaks and #139 deadlocks
+on Stop()), and whether these have been resolved. If the library is unmaintained or has unresolved critical
+issues, evaluate alternatives before proceeding.
+
 ## Estimated effort
 
 ~1-2 days. Most time spent on testing reconnection behavior and verifying large MLS messages
