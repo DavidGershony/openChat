@@ -93,6 +93,7 @@ public class ExternalSignerService : IExternalSigner, IDisposable
             _subscriptionSince = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 5;
             _cts = new CancellationTokenSource();
             _webSocket = new ClientWebSocket();
+            _webSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(30);
             await _webSocket.ConnectAsync(new Uri(_relayUrl!), _cts.Token);
             _logger.LogInformation("Successfully connected to relay");
 
@@ -170,6 +171,7 @@ public class ExternalSignerService : IExternalSigner, IDisposable
             _subscriptionSince = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 5;
             _cts = new CancellationTokenSource();
             _webSocket = new ClientWebSocket();
+            _webSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(30);
             await _webSocket.ConnectAsync(new Uri(_relayUrl), _cts.Token);
             _logger.LogInformation("WebSocket connected to {Relay} for session restore", _relayUrl);
 
@@ -283,7 +285,10 @@ public class ExternalSignerService : IExternalSigner, IDisposable
         _subscriptionSince = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 120; // 2 min window for slow connections
         _cts = new CancellationTokenSource();
         _webSocket = new ClientWebSocket();
-        await _webSocket.ConnectAsync(new Uri(relayUrl), _cts.Token);
+        _webSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(30);
+        using var connectTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, connectTimeout.Token);
+        await _webSocket.ConnectAsync(new Uri(relayUrl), linked.Token);
         _logger.LogInformation("WebSocket connected to {Relay}. State: {State}", relayUrl, _webSocket.State);
 
         _ = Task.Run(() => ListenForMessagesAsync(_cts.Token));
@@ -321,6 +326,7 @@ public class ExternalSignerService : IExternalSigner, IDisposable
             // Re-establish connection (keep the original _subscriptionSince so we don't miss events)
             _cts = new CancellationTokenSource();
             _webSocket = new ClientWebSocket();
+            _webSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(30);
             await _webSocket.ConnectAsync(new Uri(_relayUrl), _cts.Token);
             _logger.LogInformation("Reconnected WebSocket to {Relay}. State: {State}", _relayUrl, _webSocket.State);
 

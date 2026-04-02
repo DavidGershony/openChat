@@ -40,7 +40,7 @@ public class LoginViewModel : ViewModelBase
     [Reactive] public string? NostrConnectUri { get; set; }
     /// <summary>QR code as PNG bytes (platform-neutral). Views convert to their image type.</summary>
     [Reactive] public byte[]? NostrConnectQrPngBytes { get; set; }
-    [Reactive] public string SignerRelayInput { get; set; } = "wss://relay.damus.io";
+    [Reactive] public string SignerRelayInput { get; set; } = "wss://nos.lol";
 
     // Login method selection
     [Reactive] public LoginMethod SelectedLoginMethod { get; set; } = LoginMethod.PrivateKey;
