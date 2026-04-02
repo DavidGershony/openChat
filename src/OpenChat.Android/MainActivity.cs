@@ -19,7 +19,9 @@ namespace OpenChat.Android;
 [Activity(Label = "OpenChat", MainLauncher = true, Theme = "@style/AppTheme")]
 public class MainActivity : AppCompatActivity, IActivatableView
 {
-    private ShellViewModel? _shellViewModel;
+    // Static so services survive Activity.Recreate() (theme change)
+    private static ShellViewModel? _shellViewModel;
+    private static bool _servicesInitialized;
     private CompositeDisposable _disposables = new();
 
     public ViewModelActivator Activator { get; } = new ViewModelActivator();
@@ -31,7 +33,7 @@ public class MainActivity : AppCompatActivity, IActivatableView
 
         base.OnCreate(savedInstanceState);
 
-        // Initialize logging
+        // Initialize logging (safe to call multiple times — guarded internally)
         var logDir = System.IO.Path.Combine(
             System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData),
             "OpenChat", "logs");
@@ -41,26 +43,30 @@ public class MainActivity : AppCompatActivity, IActivatableView
 
         SetContentView(Resource.Layout.activity_main);
 
-        // Create services (StorageService handles its own directory creation)
-        var secureStorage = new AndroidSecureStorage();
-        var nostrService = new NostrService();
+        if (!_servicesInitialized)
+        {
+            // Create services only once — they survive Activity.Recreate()
+            var secureStorage = new AndroidSecureStorage();
+            var nostrService = new NostrService();
 
-        // Create platform services
-        var clipboard = new AndroidClipboardService(this);
-        var qrCodeGenerator = new AndroidQrCodeGenerator();
-        var launcher = new AndroidLauncher(this);
+            // Create platform services
+            var clipboard = new AndroidClipboardService(this);
+            var qrCodeGenerator = new AndroidQrCodeGenerator();
+            var launcher = new AndroidLauncher(this);
 
-        // Audio and upload services for voice messages
-        var audioRecording = new OpenChat.Android.Services.AndroidAudioRecordingService(this);
-        var audioPlayback = new OpenChat.Android.Services.AndroidAudioPlaybackService(this);
-        var blossomUpload = new BlossomUploadService();
-        ChatViewModel.AudioRecordingService = audioRecording;
-        ChatViewModel.AudioPlaybackService = audioPlayback;
-        ChatViewModel.MediaUploadService = blossomUpload;
+            // Audio and upload services for voice messages
+            var audioRecording = new OpenChat.Android.Services.AndroidAudioRecordingService(this);
+            var audioPlayback = new OpenChat.Android.Services.AndroidAudioPlaybackService(this);
+            var blossomUpload = new BlossomUploadService();
+            ChatViewModel.AudioRecordingService = audioRecording;
+            ChatViewModel.AudioPlaybackService = audioPlayback;
+            ChatViewModel.MediaUploadService = blossomUpload;
 
-        // Create ShellViewModel (manages login → service creation → MainViewModel lifecycle)
-        _shellViewModel = new ShellViewModel(nostrService, secureStorage, clipboard, qrCodeGenerator, launcher);
-        _shellViewModel.MlsServiceFactory = storage => new ManagedMlsService(storage);
+            // Create ShellViewModel (manages login → service creation → MainViewModel lifecycle)
+            _shellViewModel = new ShellViewModel(nostrService, secureStorage, clipboard, qrCodeGenerator, launcher);
+            _shellViewModel.MlsServiceFactory = storage => new ManagedMlsService(storage);
+            _servicesInitialized = true;
+        }
 
         // Observe login state and switch fragments
         _shellViewModel.WhenAnyValue(x => x.IsLoggedIn)

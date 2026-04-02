@@ -208,6 +208,54 @@ public class MessageAdapter : RecyclerView.Adapter
         }
     }
 
+    private static readonly string[] ReactionEmojis = { "\ud83d\udc4d", "\u2764\ufe0f", "\ud83d\ude02", "\ud83d\ude2e", "\ud83d\ude22", "\ud83d\udd25" };
+
+    private static void BindReactions(View itemView, MessageViewModel item, CompositeDisposable disposables)
+    {
+        var reactionsDisplay = itemView.FindViewById<TextView>(Resource.Id.reactions_display);
+        if (reactionsDisplay == null) return;
+
+        item.WhenAnyValue(x => x.ReactionsDisplay)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(display =>
+            {
+                if (string.IsNullOrEmpty(display))
+                {
+                    reactionsDisplay.Visibility = ViewStates.Gone;
+                }
+                else
+                {
+                    reactionsDisplay.Text = display;
+                    reactionsDisplay.Visibility = ViewStates.Visible;
+                }
+            })
+            .DisposeWith(disposables);
+
+        // Long-press to show reaction picker
+        itemView.SetOnLongClickListener(new ActionLongClickListener(() =>
+        {
+            ShowReactionPicker(itemView, item);
+        }));
+    }
+
+    private static void ShowReactionPicker(View anchor, MessageViewModel item)
+    {
+        var context = anchor.Context;
+        if (context == null) return;
+
+        var popup = new AndroidX.AppCompat.Widget.PopupMenu(context, anchor);
+        for (var i = 0; i < ReactionEmojis.Length; i++)
+        {
+            popup.Menu?.Add(0, i, i, ReactionEmojis[i]);
+        }
+        popup.MenuItemClick += (s, e) =>
+        {
+            var emoji = ReactionEmojis[e.Item!.ItemId];
+            item.ReactCommand?.Execute(emoji).Subscribe();
+        };
+        popup.Show();
+    }
+
     private class SentMessageViewHolder : RecyclerView.ViewHolder
     {
         private readonly TextView _content;
@@ -226,6 +274,7 @@ public class MessageAdapter : RecyclerView.Adapter
             _disposables = new CompositeDisposable();
 
             BindMediaViews(ItemView, item, _disposables);
+            BindReactions(ItemView, item, _disposables);
             _timestamp.Text = item.Timestamp.ToLocalTime().ToString("HH:mm");
         }
     }
@@ -251,8 +300,16 @@ public class MessageAdapter : RecyclerView.Adapter
 
             _senderName.Text = item.SenderName;
             BindMediaViews(ItemView, item, _disposables);
+            BindReactions(ItemView, item, _disposables);
             _timestamp.Text = item.Timestamp.ToLocalTime().ToString("HH:mm");
         }
+    }
+
+    private class ActionLongClickListener : Java.Lang.Object, View.IOnLongClickListener
+    {
+        private readonly Action _action;
+        public ActionLongClickListener(Action action) => _action = action;
+        public bool OnLongClick(View? v) { _action(); return true; }
     }
 
     private class ActionClickListener : Java.Lang.Object, View.IOnClickListener
