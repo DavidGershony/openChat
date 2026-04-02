@@ -32,7 +32,7 @@ public static class LoggingConfiguration
     /// <param name="logDirectory">Optional custom log directory. Defaults to AppData/OpenChat/logs</param>
     /// <param name="minimumLevel">Minimum log level. Defaults to Debug.</param>
     /// <param name="perSession">When true, creates a new log file per app session instead of per day. Useful for mobile.</param>
-    public static void Initialize(string? logDirectory = null, LogEventLevel minimumLevel = LogEventLevel.Debug, bool perSession = false)
+    public static void Initialize(string? logDirectory = null, LogEventLevel minimumLevel = LogEventLevel.Debug, bool perSession = false, string? appVersion = null)
     {
         lock (_lock)
         {
@@ -85,6 +85,8 @@ public static class LoggingConfiguration
             _loggerFactory = new SerilogLoggerFactory(Log.Logger);
 
             Log.Information("=== OpenChat Application Started ===");
+            if (!string.IsNullOrEmpty(appVersion))
+                Log.Information("App version: {AppVersion}", appVersion);
             Log.Information("Log directory: {LogDirectory}", LogDirectory);
             Log.Information("Log level: {Level}", minimumLevel);
 

@@ -825,6 +825,18 @@ public class ChatViewModel : ViewModelBase
     {
         if (AudioRecordingService == null || _currentChat == null) return;
 
+        if (_currentChat.MlsGroupId == null)
+        {
+            _logger.LogWarning("SendVoiceMessage: MLS group not available (chat type: {Type})", _currentChat.Type);
+            UploadStatus = "Voice messages require an MLS group chat";
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(3000);
+                RxApp.MainThreadScheduler.Schedule(Unit.Default, (_, __) => { UploadStatus = null; return System.Reactive.Disposables.Disposable.Empty; });
+            });
+            return;
+        }
+
         try
         {
             IsSendingVoice = true;

@@ -19,12 +19,13 @@ public class BlossomUploadService : IMediaUploadService
     private IExternalSigner? _externalSigner;
     private string? _lastUploadError;
 
-    public string BlossomServerUrl { get; set; } = "https://blossom.primal.net";
+    public const string DefaultServerUrl = "https://blossom.primal.net";
+    public string BlossomServerUrl { get; set; } = DefaultServerUrl;
 
-    public BlossomUploadService(IExternalSigner? externalSigner = null)
+    public BlossomUploadService(IExternalSigner? externalSigner = null, HttpClient? httpClient = null)
     {
         _logger = LoggingConfiguration.CreateLogger<BlossomUploadService>();
-        _httpClient = new HttpClient { Timeout = TimeSpan.FromMinutes(2) };
+        _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromMinutes(2) };
         _externalSigner = externalSigner;
         _logger.LogInformation("BlossomUploadService initialized (server: {Server})", BlossomServerUrl);
     }
@@ -37,11 +38,31 @@ public class BlossomUploadService : IMediaUploadService
     public async Task<BlobUploadResult> UploadAsync(byte[] encryptedData, string? privateKeyHex, string? contentType = null, CancellationToken ct = default)
     {
         var sha256Hex = Convert.ToHexString(SHA256.HashData(encryptedData)).ToLowerInvariant();
-        _logger.LogInformation("Uploading {Size} bytes to {Server} (sha256: {Hash})",
-            encryptedData.Length, BlossomServerUrl, sha256Hex[..16]);
 
-        var url = $"{BlossomServerUrl.TrimEnd('/')}/upload";
-        string? lastError = null;
+        var result = await TryUploadToServerAsync(BlossomServerUrl, encryptedData, sha256Hex, privateKeyHex, ct);
+        if (result != null) return result;
+
+        // Fallback to default server if configured server failed and is different
+        if (!string.Equals(BlossomServerUrl.TrimEnd('/'), DefaultServerUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning("Upload to {Server} failed, falling back to default {Default}",
+                BlossomServerUrl, DefaultServerUrl);
+
+            result = await TryUploadToServerAsync(DefaultServerUrl, encryptedData, sha256Hex, privateKeyHex, ct);
+            if (result != null) return result;
+        }
+
+        var errorDetail = !string.IsNullOrEmpty(_lastUploadError) ? _lastUploadError : "server returned an error";
+        throw new InvalidOperationException($"Blossom upload failed: {errorDetail}");
+    }
+
+    private async Task<BlobUploadResult?> TryUploadToServerAsync(string serverUrl, byte[] encryptedData,
+        string sha256Hex, string? privateKeyHex, CancellationToken ct)
+    {
+        _logger.LogInformation("Uploading {Size} bytes to {Server} (sha256: {Hash})",
+            encryptedData.Length, serverUrl, sha256Hex[..16]);
+
+        var url = $"{serverUrl.TrimEnd('/')}/upload";
 
         // Skip anonymous upload when using external signer (auth is always required)
         if (!string.IsNullOrEmpty(privateKeyHex) || _externalSigner?.IsConnected != true)
@@ -49,18 +70,12 @@ public class BlossomUploadService : IMediaUploadService
             var anonResult = await TryUploadAsync(url, encryptedData, sha256Hex, authHeader: null, ct);
             if (anonResult != null) return anonResult;
 
-            lastError = _lastUploadError;
             _logger.LogInformation("Anonymous upload rejected, retrying with NIP-98 auth");
         }
 
         // Authenticated upload (local key or external signer)
         var authHeader = await BuildAuthHeaderAsync(sha256Hex, privateKeyHex);
-        var authResult = await TryUploadAsync(url, encryptedData, sha256Hex, authHeader, ct);
-        if (authResult != null) return authResult;
-
-        lastError = _lastUploadError ?? lastError;
-        var errorDetail = !string.IsNullOrEmpty(lastError) ? lastError : "server returned an error";
-        throw new InvalidOperationException($"Blossom upload failed: {errorDetail}");
+        return await TryUploadAsync(url, encryptedData, sha256Hex, authHeader, ct);
     }
 
     private async Task<BlobUploadResult?> TryUploadAsync(string url, byte[] data, string sha256Hex, string? authHeader, CancellationToken ct)

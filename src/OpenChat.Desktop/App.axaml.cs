@@ -31,7 +31,8 @@ public partial class App : Application
     public override void Initialize()
     {
         // Initialize logging first, before anything else
-        LoggingConfiguration.Initialize(logDirectory: ProfileConfiguration.LogDirectory);
+        var appVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown";
+        LoggingConfiguration.Initialize(logDirectory: ProfileConfiguration.LogDirectory, appVersion: appVersion);
         _logger = LoggingConfiguration.CreateLogger("App");
 
         // Set up global exception handlers
