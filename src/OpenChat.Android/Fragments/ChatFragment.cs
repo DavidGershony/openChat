@@ -22,6 +22,7 @@ using OpenChat.Presentation.ViewModels;
 using ReactiveUI;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
+using System.Linq;
 using Fragment = AndroidX.Fragment.App.Fragment;
 
 namespace OpenChat.Android.Fragments;
@@ -123,9 +124,27 @@ public class ChatFragment : Fragment
             ViewModel.CancelRecordingCommand.Execute().Subscribe().DisposeWith(_disposables);
         };
 
-        // Attach file button
+        // Attach file button — request media permissions on Android 13+, then attach
         attachButton.Click += (s, e) =>
         {
+            if (OperatingSystem.IsAndroidVersionAtLeast(33))
+            {
+                var needed = new List<string>();
+                if (ContextCompat.CheckSelfPermission(RequireContext(), Manifest.Permission.ReadMediaImages) != Permission.Granted)
+                    needed.Add(Manifest.Permission.ReadMediaImages);
+                if (ContextCompat.CheckSelfPermission(RequireContext(), Manifest.Permission.ReadMediaVideo) != Permission.Granted)
+                    needed.Add(Manifest.Permission.ReadMediaVideo);
+                if (needed.Count > 0)
+                {
+                    RequestPermissions(needed.ToArray(), 1002);
+                    return;
+                }
+            }
+            else if (ContextCompat.CheckSelfPermission(RequireContext(), Manifest.Permission.ReadExternalStorage) != Permission.Granted)
+            {
+                RequestPermissions(new[] { Manifest.Permission.ReadExternalStorage }, 1002);
+                return;
+            }
             ViewModel.AttachFileCommand.Execute().Subscribe().DisposeWith(_disposables);
         };
 
@@ -228,7 +247,7 @@ public class ChatFragment : Fragment
         _filePickerTcs = new TaskCompletionSource<(byte[] Data, string FileName, string MimeType)?>();
         try
         {
-            _filePickerLauncher?.Launch("image/*");
+            _filePickerLauncher?.Launch("*/*");
         }
         catch (Exception ex)
         {
@@ -291,6 +310,29 @@ public class ChatFragment : Fragment
             _logger.LogWarning(ex, "Failed to get file name from URI");
         }
         return null;
+    }
+
+    public override void OnRequestPermissionsResult(int requestCode, string[] permissions, Permission[] grantResults)
+    {
+        base.OnRequestPermissionsResult(requestCode, permissions, grantResults);
+
+        if (grantResults.Length == 0 || grantResults.Any(r => r != Permission.Granted))
+        {
+            _logger.LogWarning("Permission denied for request code {Code}", requestCode);
+            return;
+        }
+
+        switch (requestCode)
+        {
+            case 1001: // RECORD_AUDIO
+                _logger.LogInformation("RECORD_AUDIO permission granted, starting recording");
+                ViewModel.ToggleRecordingCommand.Execute().Subscribe().DisposeWith(_disposables);
+                break;
+            case 1002: // READ_MEDIA / READ_EXTERNAL_STORAGE
+                _logger.LogInformation("Media read permission granted, launching file picker");
+                ViewModel.AttachFileCommand.Execute().Subscribe().DisposeWith(_disposables);
+                break;
+        }
     }
 
     private void ShowContactInfoBottomSheet()

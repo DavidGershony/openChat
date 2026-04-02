@@ -1,7 +1,10 @@
+using Android;
 using Android.Content;
+using Android.Content.PM;
 using Android.OS;
 using Android.Views;
 using Android.Widget;
+using AndroidX.Core.Content;
 using AndroidX.RecyclerView.Widget;
 using Google.Android.Material.AppBar;
 using Google.Android.Material.Button;
@@ -16,6 +19,7 @@ using OpenChat.Presentation.ViewModels;
 using ReactiveUI;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
+using System.Linq;
 using Fragment = AndroidX.Fragment.App.Fragment;
 
 namespace OpenChat.Android.Fragments;
@@ -164,11 +168,42 @@ public class SettingsFragment : Fragment
             ViewModel.AuditKeyPackagesCommand.Execute().Subscribe().DisposeWith(_disposables);
         };
 
-        // MIP-04 Toggle
+        // MIP-04 Toggle — request media + audio permissions when enabling
         mip04Toggle.Checked = ViewModel.IsMip04Enabled;
         mip04Toggle.CheckedChange += (s, e) =>
         {
-            ViewModel.IsMip04Enabled = e.IsChecked;
+            if (!e.IsChecked)
+            {
+                ViewModel.IsMip04Enabled = false;
+                return;
+            }
+
+            // Collect all needed permissions
+            var needed = new List<string>();
+            if (ContextCompat.CheckSelfPermission(RequireContext(), Manifest.Permission.RecordAudio) != Permission.Granted)
+                needed.Add(Manifest.Permission.RecordAudio);
+
+            if (OperatingSystem.IsAndroidVersionAtLeast(33))
+            {
+                if (ContextCompat.CheckSelfPermission(RequireContext(), Manifest.Permission.ReadMediaImages) != Permission.Granted)
+                    needed.Add(Manifest.Permission.ReadMediaImages);
+                if (ContextCompat.CheckSelfPermission(RequireContext(), Manifest.Permission.ReadMediaVideo) != Permission.Granted)
+                    needed.Add(Manifest.Permission.ReadMediaVideo);
+            }
+            else if (ContextCompat.CheckSelfPermission(RequireContext(), Manifest.Permission.ReadExternalStorage) != Permission.Granted)
+            {
+                needed.Add(Manifest.Permission.ReadExternalStorage);
+            }
+
+            if (needed.Count > 0)
+            {
+                // Revert toggle until permissions are granted
+                mip04Toggle.Checked = false;
+                RequestPermissions(needed.ToArray(), 1003);
+                return;
+            }
+
+            ViewModel.IsMip04Enabled = true;
         };
 
         // Blossom server URL
@@ -466,6 +501,25 @@ public class SettingsFragment : Fragment
             var clip = ClipData.NewPlainText(label, text);
             clipboard.PrimaryClip = clip;
             Toast.MakeText(Activity, "Copied!", ToastLength.Short)?.Show();
+        }
+    }
+
+    public override void OnRequestPermissionsResult(int requestCode, string[] permissions, Permission[] grantResults)
+    {
+        base.OnRequestPermissionsResult(requestCode, permissions, grantResults);
+
+        if (requestCode == 1003)
+        {
+            if (grantResults.Length > 0 && grantResults.All(r => r == Permission.Granted))
+            {
+                _logger.LogInformation("MIP-04 permissions granted, enabling feature");
+                ViewModel.IsMip04Enabled = true;
+            }
+            else
+            {
+                _logger.LogWarning("MIP-04 permissions denied");
+                Toast.MakeText(Activity, "Media permissions required for MIP-04", ToastLength.Short)?.Show();
+            }
         }
     }
 
