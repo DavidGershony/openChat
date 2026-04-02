@@ -142,4 +142,142 @@ public class HeadlessDmAndBotTests : HeadlessTestBase
         Assert.Single(chatListVm.Chats);
         Assert.True(chatListVm.Chats[0].IsBot);
     }
+
+    // --- Join Group by ID ---
+
+    [AvaloniaTheory]
+    [InlineData("rust")]
+    [InlineData("managed")]
+    public async Task JoinGroup_OpensDialog(string backend)
+    {
+        if (ShouldSkip(backend)) return;
+        var ctx = await CreateRealContext(backend);
+        await ctx.MessageService.InitializeAsync();
+
+        var chatListVm = new ChatListViewModel(ctx.MessageService, ctx.Storage, ctx.MlsService, ctx.MockNostr.Object);
+        await chatListVm.LoadChatsAsync();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.False(chatListVm.ShowJoinGroupDialog);
+
+        chatListVm.JoinGroupCommand.Execute().Subscribe();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(chatListVm.ShowJoinGroupDialog);
+    }
+
+    [AvaloniaTheory]
+    [InlineData("rust")]
+    [InlineData("managed")]
+    public async Task JoinGroup_CreatesPlaceholderChat(string backend)
+    {
+        if (ShouldSkip(backend)) return;
+        var ctx = await CreateRealContext(backend);
+        await ctx.MessageService.InitializeAsync();
+
+        var chatListVm = new ChatListViewModel(ctx.MessageService, ctx.Storage, ctx.MlsService, ctx.MockNostr.Object);
+        await chatListVm.LoadChatsAsync();
+        Dispatcher.UIThread.RunJobs();
+
+        // Open dialog and set group ID
+        chatListVm.JoinGroupCommand.Execute().Subscribe();
+        Dispatcher.UIThread.RunJobs();
+
+        var groupId = "deadbeef01020304050607080910111213141516";
+        chatListVm.JoinGroupId = groupId;
+
+        await chatListVm.ConfirmJoinGroupCommand.Execute();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.False(chatListVm.ShowJoinGroupDialog);
+        Assert.Single(chatListVm.Chats);
+        Assert.Equal(groupId, chatListVm.Chats[0].Id);
+    }
+
+    [AvaloniaTheory]
+    [InlineData("rust")]
+    [InlineData("managed")]
+    public async Task JoinGroup_CancelClosesDialog(string backend)
+    {
+        if (ShouldSkip(backend)) return;
+        var ctx = await CreateRealContext(backend);
+        await ctx.MessageService.InitializeAsync();
+
+        var chatListVm = new ChatListViewModel(ctx.MessageService, ctx.Storage, ctx.MlsService, ctx.MockNostr.Object);
+        await chatListVm.LoadChatsAsync();
+        Dispatcher.UIThread.RunJobs();
+
+        chatListVm.JoinGroupCommand.Execute().Subscribe();
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(chatListVm.ShowJoinGroupDialog);
+
+        chatListVm.CancelJoinGroupCommand.Execute().Subscribe();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.False(chatListVm.ShowJoinGroupDialog);
+        Assert.Empty(chatListVm.Chats);
+    }
+
+    // --- Lookup Key Packages ---
+
+    [AvaloniaTheory]
+    [InlineData("rust")]
+    [InlineData("managed")]
+    public async Task LookupKeyPackage_FindsPackage(string backend)
+    {
+        if (ShouldSkip(backend)) return;
+        var ctx = await CreateRealContext(backend);
+        await ctx.MessageService.InitializeAsync();
+
+        var targetPubKey = "aa".PadLeft(64, 'a');
+        var kp = new KeyPackage
+        {
+            Data = new byte[256],
+            NostrEventId = "kp_event_123",
+            CreatedAt = DateTime.UtcNow,
+            CiphersuiteId = 0x0001,
+            NostrTags = new List<List<string>>
+            {
+                new() { "encoding", "base64" },
+                new() { "mls_protocol_version", "1.0" },
+                new() { "mls_ciphersuite", "0x0001" }
+            }
+        };
+        ctx.MockNostr.Setup(n => n.FetchKeyPackagesAsync(targetPubKey))
+            .ReturnsAsync((IEnumerable<KeyPackage>)new[] { kp });
+
+        var chatListVm = new ChatListViewModel(ctx.MessageService, ctx.Storage, ctx.MlsService, ctx.MockNostr.Object);
+        Dispatcher.UIThread.RunJobs();
+
+        chatListVm.NewChatPublicKey = targetPubKey;
+        await chatListVm.LookupKeyPackageCommand.Execute();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(chatListVm.HasKeyPackage);
+        Assert.NotEmpty(chatListVm.FoundKeyPackages);
+    }
+
+    [AvaloniaTheory]
+    [InlineData("rust")]
+    [InlineData("managed")]
+    public async Task LookupKeyPackage_NoPackageFound(string backend)
+    {
+        if (ShouldSkip(backend)) return;
+        var ctx = await CreateRealContext(backend);
+        await ctx.MessageService.InitializeAsync();
+
+        var targetPubKey = "bb".PadLeft(64, 'b');
+        ctx.MockNostr.Setup(n => n.FetchKeyPackagesAsync(targetPubKey))
+            .ReturnsAsync(Enumerable.Empty<KeyPackage>());
+
+        var chatListVm = new ChatListViewModel(ctx.MessageService, ctx.Storage, ctx.MlsService, ctx.MockNostr.Object);
+        Dispatcher.UIThread.RunJobs();
+
+        chatListVm.NewChatPublicKey = targetPubKey;
+        await chatListVm.LookupKeyPackageCommand.Execute();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.False(chatListVm.HasKeyPackage);
+        Assert.Contains("No KeyPackage", chatListVm.KeyPackageStatus ?? "");
+    }
 }

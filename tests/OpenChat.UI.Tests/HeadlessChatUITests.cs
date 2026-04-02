@@ -1,0 +1,261 @@
+using System.Reactive.Linq;
+using Avalonia.Headless.XUnit;
+using Avalonia.Threading;
+using Moq;
+using OpenChat.Core.Models;
+using OpenChat.Core.Services;
+using OpenChat.Presentation.Services;
+using OpenChat.Presentation.ViewModels;
+using Xunit;
+
+namespace OpenChat.UI.Tests;
+
+/// <summary>
+/// Headless tests for Chat UI interactions: info panel, invite dialog,
+/// recording state, file attach, and audio playback.
+/// </summary>
+public class HeadlessChatUITests : HeadlessTestBase
+{
+    private async Task<(RealTestContext Ctx, Chat Chat, ChatViewModel ChatVm)> CreateChatWithViewModel(string backend)
+    {
+        var ctx = await CreateRealContext(backend);
+        await ctx.MessageService.InitializeAsync();
+
+        var groupInfo = await ctx.MlsService.CreateGroupAsync("UI Test Group", new[] { "wss://relay.test" });
+        var chat = new Chat
+        {
+            Id = Guid.NewGuid().ToString(),
+            Name = "UI Test Group",
+            Type = ChatType.Group,
+            MlsGroupId = groupInfo.GroupId,
+            MlsEpoch = groupInfo.Epoch,
+            ParticipantPublicKeys = new List<string> { ctx.User.PublicKeyHex },
+            CreatedAt = DateTime.UtcNow,
+            LastActivityAt = DateTime.UtcNow
+        };
+        await ctx.Storage.SaveChatAsync(chat);
+
+        var chatVm = new ChatViewModel(
+            ctx.MessageService, ctx.Storage, ctx.MockNostr.Object, ctx.MlsService, ctx.MockClipboard.Object);
+
+        chatVm.LoadChat(chat);
+        Dispatcher.UIThread.RunJobs();
+
+        return (ctx, chat, chatVm);
+    }
+
+    // --- Chat Info Panel ---
+
+    [AvaloniaTheory]
+    [InlineData("rust")]
+    [InlineData("managed")]
+    public async Task ShowChatInfo_TogglesMetadataPanel(string backend)
+    {
+        if (ShouldSkip(backend)) return;
+        var (ctx, chat, chatVm) = await CreateChatWithViewModel(backend);
+
+        Assert.False(chatVm.ShowMetadataPanel);
+
+        chatVm.ToggleMetadataPanelCommand.Execute().Subscribe();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(chatVm.ShowMetadataPanel);
+
+        // Toggle off
+        chatVm.ToggleMetadataPanelCommand.Execute().Subscribe();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.False(chatVm.ShowMetadataPanel);
+    }
+
+    [AvaloniaTheory]
+    [InlineData("rust")]
+    [InlineData("managed")]
+    public async Task ShowChatInfo_FetchesContactMetadata(string backend)
+    {
+        if (ShouldSkip(backend)) return;
+        var ctx = await CreateRealContext(backend);
+        await ctx.MessageService.InitializeAsync();
+
+        // Create a DM chat so there's a contact to fetch metadata for
+        var contactPubKey = "aa".PadLeft(64, 'a');
+        var dmChat = await ctx.MessageService.GetOrCreateDirectMessageAsync(contactPubKey);
+
+        ctx.MockNostr.Setup(n => n.FetchUserMetadataAsync(contactPubKey))
+            .ReturnsAsync(new UserMetadata
+            {
+                DisplayName = "Alice",
+                Name = "alice",
+                About = "Hello world",
+                Picture = "https://example.com/alice.png"
+            });
+
+        var chatVm = new ChatViewModel(
+            ctx.MessageService, ctx.Storage, ctx.MockNostr.Object, ctx.MlsService, ctx.MockClipboard.Object);
+
+        chatVm.LoadChat(dmChat);
+        Dispatcher.UIThread.RunJobs();
+
+        await chatVm.ShowChatInfoCommand.Execute();
+        await Task.Delay(200);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(chatVm.ShowMetadataPanel);
+        ctx.MockNostr.Verify(n => n.FetchUserMetadataAsync(contactPubKey), Times.AtLeastOnce);
+    }
+
+    // --- Invite Dialog ---
+
+    [AvaloniaTheory]
+    [InlineData("rust")]
+    [InlineData("managed")]
+    public async Task ShowInviteDialog_OpensWithGroupLink(string backend)
+    {
+        if (ShouldSkip(backend)) return;
+        var (ctx, chat, chatVm) = await CreateChatWithViewModel(backend);
+
+        Assert.False(chatVm.ShowInviteDialog);
+
+        chatVm.ShowInviteDialogCommand.Execute().Subscribe();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(chatVm.ShowInviteDialog);
+        Assert.Equal(chat.Id, chatVm.GroupInviteLink);
+        Assert.Equal(string.Empty, chatVm.InvitePublicKey);
+    }
+
+    [AvaloniaTheory]
+    [InlineData("rust")]
+    [InlineData("managed")]
+    public async Task CopyGroupLink_CopiesToClipboard(string backend)
+    {
+        if (ShouldSkip(backend)) return;
+        var (ctx, chat, chatVm) = await CreateChatWithViewModel(backend);
+
+        ctx.MockClipboard.Setup(c => c.SetTextAsync(It.IsAny<string>())).Returns(Task.CompletedTask);
+
+        chatVm.ShowInviteDialogCommand.Execute().Subscribe();
+        Dispatcher.UIThread.RunJobs();
+
+        chatVm.CopyGroupLinkCommand.Execute().Subscribe();
+        await Task.Delay(200);
+        Dispatcher.UIThread.RunJobs();
+
+        ctx.MockClipboard.Verify(c => c.SetTextAsync(chat.Id), Times.Once);
+        Assert.Contains("copied", chatVm.InviteSuccess?.ToLower() ?? "");
+    }
+
+    // --- Recording UI State Transitions ---
+
+    [AvaloniaTheory]
+    [InlineData("rust")]
+    [InlineData("managed")]
+    public async Task Recording_StartSetsIsRecording(string backend)
+    {
+        if (ShouldSkip(backend)) return;
+        var (ctx, chat, chatVm) = await CreateChatWithViewModel(backend);
+
+        var mockAudio = new Mock<IAudioRecordingService>();
+        mockAudio.Setup(a => a.StartRecordingAsync()).Returns(Task.CompletedTask);
+        mockAudio.Setup(a => a.IsRecording).Returns(true);
+        ChatViewModel.AudioRecordingService = mockAudio.Object;
+
+        Assert.False(chatVm.IsRecording);
+
+        chatVm.ToggleRecordingCommand.Execute().Subscribe();
+        await Task.Delay(200);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(chatVm.IsRecording);
+        mockAudio.Verify(a => a.StartRecordingAsync(), Times.Once);
+
+        ChatViewModel.AudioRecordingService = null;
+    }
+
+    [AvaloniaTheory]
+    [InlineData("rust")]
+    [InlineData("managed")]
+    public async Task Recording_CancelStopsWithoutSending(string backend)
+    {
+        if (ShouldSkip(backend)) return;
+        var (ctx, chat, chatVm) = await CreateChatWithViewModel(backend);
+
+        var mockAudio = new Mock<IAudioRecordingService>();
+        mockAudio.Setup(a => a.StartRecordingAsync()).Returns(Task.CompletedTask);
+        mockAudio.Setup(a => a.CancelRecordingAsync()).Returns(Task.CompletedTask);
+        mockAudio.Setup(a => a.IsRecording).Returns(true);
+        ChatViewModel.AudioRecordingService = mockAudio.Object;
+
+        // Start recording
+        chatVm.ToggleRecordingCommand.Execute().Subscribe();
+        await Task.Delay(200);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(chatVm.IsRecording);
+
+        // Cancel recording
+        chatVm.CancelRecordingCommand.Execute().Subscribe();
+        await Task.Delay(200);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.False(chatVm.IsRecording);
+        mockAudio.Verify(a => a.CancelRecordingAsync(), Times.Once);
+
+        ChatViewModel.AudioRecordingService = null;
+    }
+
+    // --- File Attach Flow ---
+
+    [AvaloniaTheory]
+    [InlineData("managed")] // Rust backend doesn't support MIP-04 media exporter secret
+    public async Task AttachFile_CallsFilePickerAndUploads(string backend)
+    {
+        if (ShouldSkip(backend)) return;
+        var (ctx, chat, chatVm) = await CreateChatWithViewModel(backend);
+
+        var fileData = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x01, 0x02, 0x03, 0x04 };
+        ChatViewModel.FilePickerFunc = () =>
+            Task.FromResult<(byte[] Data, string FileName, string MimeType)?>(
+                (fileData, "test.png", "image/png"));
+
+        var mockUpload = new Mock<IMediaUploadService>();
+        mockUpload.Setup(u => u.UploadAsync(It.IsAny<byte[]>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BlobUploadResult { Url = "https://blossom.test/abc123", Sha256 = "abcdef1234567890" });
+        ChatViewModel.MediaUploadService = mockUpload.Object;
+
+        await chatVm.AttachFileCommand.Execute();
+        await Task.Delay(500);
+        Dispatcher.UIThread.RunJobs();
+
+        mockUpload.Verify(u => u.UploadAsync(It.IsAny<byte[]>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+
+        ChatViewModel.FilePickerFunc = null;
+        ChatViewModel.MediaUploadService = null;
+    }
+
+    [AvaloniaTheory]
+    [InlineData("rust")]
+    [InlineData("managed")]
+    public async Task AttachFile_UserCancels_NoUpload(string backend)
+    {
+        if (ShouldSkip(backend)) return;
+        var (ctx, chat, chatVm) = await CreateChatWithViewModel(backend);
+
+        // File picker returns null (user cancelled)
+        ChatViewModel.FilePickerFunc = () =>
+            Task.FromResult<(byte[] Data, string FileName, string MimeType)?>(null);
+
+        var mockUpload = new Mock<IMediaUploadService>();
+        ChatViewModel.MediaUploadService = mockUpload.Object;
+
+        await chatVm.AttachFileCommand.Execute();
+        await Task.Delay(200);
+        Dispatcher.UIThread.RunJobs();
+
+        mockUpload.Verify(u => u.UploadAsync(It.IsAny<byte[]>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.False(chatVm.IsSendingImage);
+
+        ChatViewModel.FilePickerFunc = null;
+        ChatViewModel.MediaUploadService = null;
+    }
+}

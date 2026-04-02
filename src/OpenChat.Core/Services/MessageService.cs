@@ -596,7 +596,24 @@ public class MessageService : IMessageService, IDisposable
         if (_currentUser == null)
             throw new InvalidOperationException("User not logged in");
 
-        await RemoveMemberAsync(chatId, _currentUser.PublicKeyHex);
+        var chat = await _storageService.GetChatAsync(chatId)
+            ?? throw new ArgumentException("Chat not found", nameof(chatId));
+
+        if (chat.MlsGroupId == null)
+            throw new InvalidOperationException("Cannot leave a non-MLS chat");
+
+        var groupIdHex = Convert.ToHexString(chat.MlsGroupId).ToLowerInvariant();
+        _logger.LogInformation("LeaveGroup: leaving chat {ChatId}, group {GroupId}",
+            chatId, groupIdHex[..Math.Min(16, groupIdHex.Length)]);
+
+        // MLS does not allow self-removal via Commit (RFC 9420).
+        // Clean up locally: delete MLS state, chat, and messages.
+        // Other members will keep encrypting for us until they remove us.
+        await _storageService.DeleteMlsStateAsync(groupIdHex);
+        await _storageService.DeleteChatAsync(chatId);
+        _chatUpdates.OnNext(chat);
+
+        _logger.LogInformation("LeaveGroup: local state for chat {ChatId} cleaned up", chatId);
     }
 
     public async Task MarkAsReadAsync(string chatId)
