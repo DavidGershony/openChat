@@ -61,7 +61,9 @@ public class ChatListAdapter : RecyclerView.Adapter
         public void Bind(ChatItemViewModel item)
         {
             _name.Text = item.Name;
-            _lastMessage.Text = item.LastMessagePreview ?? "";
+            _lastMessage.Text = item.NeedsRepair
+                ? "[Orphaned - long press to reset or delete]"
+                : item.LastMessagePreview ?? "";
             _timestamp.Text = FormatRelativeTime(item.LastActivityAt);
 
             // Avatar: try cached image first, then fall back to text

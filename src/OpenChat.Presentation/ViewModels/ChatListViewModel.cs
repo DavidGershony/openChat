@@ -351,15 +351,29 @@ public class ChatListViewModel : ViewModelBase
             // Cache current user pubkey for self-invite validation
             var currentUser = await _storageService.GetCurrentUserAsync();
             _currentUserPubKeyHex = currentUser?.PublicKeyHex;
+            _logger.LogInformation("LoadChats: currentUserPubKey={PubKey}",
+                _currentUserPubKeyHex?[..Math.Min(16, _currentUserPubKeyHex?.Length ?? 0)] ?? "null");
 
             var chats = await _messageService.GetChatsAsync();
+            _logger.LogInformation("LoadChats: {Total} chats loaded from DB (IsArchived=0)", chats.Count());
 
             Chats.Clear();
             foreach (var chat in chats
-                .Where(c => _currentUserPubKeyHex == null || c.ParticipantPublicKeys.Contains(_currentUserPubKeyHex))
                 .OrderByDescending(c => c.IsPinned).ThenByDescending(c => c.LastActivityAt))
             {
+                var isParticipant = _currentUserPubKeyHex == null ||
+                    chat.ParticipantPublicKeys.Contains(_currentUserPubKeyHex);
+
+                if (!isParticipant)
+                {
+                    _logger.LogWarning("LoadChats: chat {ChatId} '{ChatName}' (type={Type}) has {Count} participants but current user NOT found. Participants: [{Participants}]. Marking as orphaned.",
+                        chat.Id[..Math.Min(8, chat.Id.Length)], chat.Name, chat.Type,
+                        chat.ParticipantPublicKeys.Count,
+                        string.Join(", ", chat.ParticipantPublicKeys.Select(p => p[..Math.Min(16, p.Length)])));
+                }
+
                 var chatItem = new ChatItemViewModel(chat);
+                chatItem.NeedsRepair = !isParticipant;
 
                 // Resolve avatar for DM/bot chats from the other participant's profile
                 if (chat.Type != ChatType.Group && _currentUserPubKeyHex != null)
@@ -1265,9 +1279,13 @@ public class ChatListViewModel : ViewModelBase
     {
         var existing = Chats.FirstOrDefault(c => c.Id == chat.Id);
 
+        var isParticipant = _currentUserPubKeyHex == null ||
+            chat.ParticipantPublicKeys.Contains(_currentUserPubKeyHex);
+
         if (existing != null)
         {
             existing.Update(chat);
+            existing.NeedsRepair = !isParticipant;
             // Re-sort if needed
             var index = Chats.IndexOf(existing);
             var newIndex = GetInsertIndex(chat);
@@ -1279,6 +1297,7 @@ public class ChatListViewModel : ViewModelBase
         else
         {
             var newItem = new ChatItemViewModel(chat);
+            newItem.NeedsRepair = !isParticipant;
             var insertIndex = GetInsertIndex(chat);
             Chats.Insert(insertIndex, newItem);
         }
@@ -1452,6 +1471,7 @@ public class ChatItemViewModel : ViewModelBase
     [Reactive] public bool IsGroup { get; set; }
     [Reactive] public bool IsBot { get; set; }
     [Reactive] public bool IsVisible { get; set; } = true;
+    [Reactive] public bool NeedsRepair { get; set; }
 
     public Chat Chat { get; private set; }
 
