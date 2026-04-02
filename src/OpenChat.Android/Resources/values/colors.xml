@@ -29,8 +29,8 @@
     <color name="status_warning">#FFF59E0B</color>
 
     <!-- Chat bubbles -->
-    <color name="bubble_sent">#FF7C3AED</color>
-    <color name="bubble_sent_text">#FFFFFFFF</color>
+    <color name="bubble_sent">#FF1A1A2E</color>
+    <color name="bubble_sent_text">#FFE0E0FF</color>
     <color name="bubble_received">#FF2D2D4A</color>
     <color name="bubble_received_text">#FFE0E0FF</color>
 

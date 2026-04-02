@@ -20,7 +20,7 @@
             android:text="Application Logs"
             android:textSize="16sp"
             android:textStyle="bold"
-            android:textColor="@color/text_primary"
+            android:textColor="?attr/colorOnSurface"
             android:layout_marginStart="8dp" />
 
         <com.google.android.material.button.MaterialButton
@@ -47,7 +47,7 @@
             android:layout_height="wrap_content"
             android:fontFamily="monospace"
             android:textSize="10sp"
-            android:textColor="@color/text_secondary"
+            android:textColor="?attr/colorOnSurfaceVariant"
             android:textIsSelectable="true" />
     </ScrollView>
 </LinearLayout>

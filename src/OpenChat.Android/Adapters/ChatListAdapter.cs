@@ -63,8 +63,8 @@ public class ChatListAdapter : RecyclerView.Adapter
             // Avatar: type-specific display
             if (item.IsBot)
             {
-                _avatar.Text = "\U0001F50C"; // electric plug emoji
-                _avatar.SetTextSize(global::Android.Util.ComplexUnitType.Sp, 24);
+                _avatar.Text = "BOT";
+                _avatar.SetTextSize(global::Android.Util.ComplexUnitType.Sp, 14);
             }
             else
             {

@@ -27,14 +27,14 @@
             android:text="OpenChat"
             android:textSize="28sp"
             android:textStyle="bold"
-            android:textColor="@color/text_primary"
+            android:textColor="?attr/colorOnSurface"
             android:layout_marginTop="16dp" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Secure messaging with Nostr + MLS"
-            android:textColor="@color/text_secondary"
+            android:textColor="?attr/colorOnSurfaceVariant"
             android:layout_marginTop="4dp" />
 
         <!-- Tab Buttons -->
@@ -227,7 +227,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:textSize="14sp"
-                android:textColor="@color/primary"
+                android:textColor="?attr/colorPrimary"
                 android:layout_marginTop="8dp"
                 android:padding="12dp"
                 android:gravity="center"
@@ -267,7 +267,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:textSize="13sp"
-                android:textColor="@color/text_secondary"
+                android:textColor="?attr/colorOnSurfaceVariant"
                 android:layout_marginTop="8dp"
                 android:visibility="gone" />
 

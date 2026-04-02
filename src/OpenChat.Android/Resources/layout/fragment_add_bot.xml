@@ -44,7 +44,7 @@
                 android:layout_height="wrap_content"
                 android:text="Enter the npub of a bot or IoT device. Messages use NIP-17 encrypted DMs."
                 android:textSize="12sp"
-                android:textColor="@color/text_secondary"
+                android:textColor="?attr/colorOnSurfaceVariant"
                 android:layout_marginTop="8dp" />
 
             <TextView
@@ -86,7 +86,7 @@
             android:layout_height="wrap_content"
             android:text="Linking device..."
             android:textSize="16sp"
-            android:textColor="@color/text_primary"
+            android:textColor="?attr/colorOnSurface"
             android:layout_marginTop="16dp" />
 
         <TextView
@@ -94,7 +94,7 @@
             android:layout_height="wrap_content"
             android:text="This may take a moment"
             android:textSize="13sp"
-            android:textColor="@color/text_secondary"
+            android:textColor="?attr/colorOnSurfaceVariant"
             android:layout_marginTop="4dp"
             android:gravity="center" />
     </LinearLayout>

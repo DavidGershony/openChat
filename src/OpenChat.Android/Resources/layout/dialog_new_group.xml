@@ -67,7 +67,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textSize="12sp"
-        android:textColor="@color/text_secondary"
+        android:textColor="?attr/colorOnSurfaceVariant"
         android:layout_marginTop="8dp"
         android:visibility="gone" />
 
@@ -76,7 +76,7 @@
         android:layout_height="wrap_content"
         android:text="Relays"
         android:textSize="13sp"
-        android:textColor="@color/text_secondary"
+        android:textColor="?attr/colorOnSurfaceVariant"
         android:layout_marginTop="12dp" />
 
     <LinearLayout
@@ -91,7 +91,7 @@
         android:layout_height="wrap_content"
         android:text="Select relays to include in the group"
         android:textSize="11sp"
-        android:textColor="@color/text_secondary"
+        android:textColor="?attr/colorOnSurfaceVariant"
         android:layout_marginTop="4dp" />
 
     <TextView

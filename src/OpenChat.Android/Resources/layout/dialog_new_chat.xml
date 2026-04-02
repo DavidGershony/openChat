@@ -58,7 +58,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:textSize="12sp"
-            android:textColor="@color/text_secondary"
+            android:textColor="?attr/colorOnSurfaceVariant"
             android:layout_marginTop="8dp"
             android:visibility="gone" />
 
@@ -67,7 +67,7 @@
             android:layout_height="wrap_content"
             android:text="Relays"
             android:textSize="13sp"
-            android:textColor="@color/text_secondary"
+            android:textColor="?attr/colorOnSurfaceVariant"
             android:layout_marginTop="12dp" />
 
         <LinearLayout
@@ -82,7 +82,7 @@
             android:layout_height="wrap_content"
             android:text="Select relays to include in the group"
             android:textSize="11sp"
-            android:textColor="@color/text_secondary"
+            android:textColor="?attr/colorOnSurfaceVariant"
             android:layout_marginTop="4dp" />
 
         <TextView
@@ -116,7 +116,7 @@
             android:layout_height="wrap_content"
             android:text="Sending invite..."
             android:textSize="16sp"
-            android:textColor="@color/text_primary"
+            android:textColor="?attr/colorOnSurface"
             android:layout_marginTop="16dp" />
 
         <TextView
@@ -124,7 +124,7 @@
             android:layout_height="wrap_content"
             android:text="Creating group and publishing welcome message"
             android:textSize="13sp"
-            android:textColor="@color/text_secondary"
+            android:textColor="?attr/colorOnSurfaceVariant"
             android:layout_marginTop="4dp"
             android:gravity="center" />
     </LinearLayout>

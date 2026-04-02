@@ -28,7 +28,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:textSize="14sp"
-        android:textColor="@color/text_secondary"
+        android:textColor="?attr/colorOnSurfaceVariant"
         android:layout_marginTop="2dp"
         android:visibility="gone" />
 
@@ -47,7 +47,7 @@
         android:layout_height="wrap_content"
         android:text="Public Key (npub)"
         android:textSize="12sp"
-        android:textColor="@color/text_secondary"
+        android:textColor="?attr/colorOnSurfaceVariant"
         android:layout_marginTop="16dp" />
 
     <!-- npub row with copy button -->

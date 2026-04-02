@@ -238,7 +238,7 @@
                         android:layout_height="wrap_content"
                         android:text="Publish your relay list so others can discover how to reach you"
                         android:textSize="13sp"
-                        android:textColor="@color/text_secondary"
+                        android:textColor="?attr/colorOnSurfaceVariant"
                         android:layout_marginTop="4dp" />
 
                     <com.google.android.material.button.MaterialButton
@@ -284,7 +284,7 @@
                         android:layout_height="wrap_content"
                         android:text="Publish a key package so others can invite you to groups"
                         android:textSize="13sp"
-                        android:textColor="@color/text_secondary"
+                        android:textColor="?attr/colorOnSurfaceVariant"
                         android:layout_marginTop="4dp" />
 
                     <com.google.android.material.button.MaterialButton
@@ -390,7 +390,7 @@
                         android:layout_height="wrap_content"
                         android:text="Server for uploading encrypted voice messages and media"
                         android:textSize="12sp"
-                        android:textColor="@color/text_secondary"
+                        android:textColor="?attr/colorOnSurfaceVariant"
                         android:layout_marginTop="2dp" />
 
                     <com.google.android.material.textfield.TextInputLayout
@@ -473,7 +473,7 @@
                         android:layout_height="wrap_content"
                         android:text="Customize the app appearance"
                         android:textSize="13sp"
-                        android:textColor="@color/text_secondary"
+                        android:textColor="?attr/colorOnSurfaceVariant"
                         android:layout_marginTop="4dp" />
 
                     <com.google.android.material.button.MaterialButton
@@ -511,7 +511,7 @@
                         android:layout_height="wrap_content"
                         android:text="OpenChat is an open-source chat application built with Nostr and the Marmot Protocol (MLS) for end-to-end encrypted messaging."
                         android:textSize="13sp"
-                        android:textColor="@color/text_secondary"
+                        android:textColor="?attr/colorOnSurfaceVariant"
                         android:layout_marginTop="8dp" />
 
                     <TextView
