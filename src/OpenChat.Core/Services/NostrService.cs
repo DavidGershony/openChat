@@ -309,7 +309,7 @@ public class NostrService : INostrService, IDisposable
                     if (!string.IsNullOrEmpty(nostrEvent.EventId) &&
                         !_recentlyProcessedEventIds.TryAdd(nostrEvent.EventId, 0))
                     {
-                        _logger.LogDebug("Skipping duplicate event {EventId} from {RelayUrl}",
+                        _logger.LogTrace("Skipping duplicate event {EventId} from {RelayUrl}",
                             nostrEvent.EventId[..Math.Min(16, nostrEvent.EventId.Length)], relayUrl);
                         return;
                     }

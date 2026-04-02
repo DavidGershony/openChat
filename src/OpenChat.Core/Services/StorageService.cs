@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text;
 using Microsoft.Data.Sqlite;
@@ -14,6 +15,8 @@ public class StorageService : IStorageService
     private readonly string _databasePath;
     private readonly ISecureStorage? _secureStorage;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
+    private readonly ConcurrentDictionary<string, string?> _settingsCache = new();
+    private User? _cachedCurrentUser;
     private bool _initialized;
 
     public StorageService(string? databasePath = null, ISecureStorage? secureStorage = null)
@@ -301,6 +304,9 @@ public class StorageService : IStorageService
 
     public async Task<User?> GetCurrentUserAsync()
     {
+        if (_cachedCurrentUser != null)
+            return _cachedCurrentUser;
+
         _logger.LogDebug("Retrieving current user from database");
 
         try
@@ -315,6 +321,7 @@ public class StorageService : IStorageService
             if (await reader.ReadAsync())
             {
                 var user = ReadUser(reader);
+                _cachedCurrentUser = user;
                 _logger.LogInformation("Retrieved current user: {Npub}...", user.Npub?[..Math.Min(12, user.Npub.Length)] ?? user.PublicKeyHex[..16]);
                 return user;
             }
@@ -334,11 +341,14 @@ public class StorageService : IStorageService
         _logger.LogInformation("Saving current user: {Npub}", user.Npub ?? user.PublicKeyHex[..16]);
         user.IsCurrentUser = true;
         await SaveUserAsync(user);
+        _cachedCurrentUser = user;
     }
 
     public async Task ClearCurrentUserAsync() => await ExecuteWithWriteLockAsync(async () =>
     {
         _logger.LogInformation("Clearing current user flag (logout)");
+        _cachedCurrentUser = null;
+        _settingsCache.Clear();
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync();
         var command = connection.CreateCommand();
@@ -1423,6 +1433,9 @@ public class StorageService : IStorageService
 
     public async Task<string?> GetSettingAsync(string key)
     {
+        if (_settingsCache.TryGetValue(key, out var cached))
+            return cached;
+
         try
         {
             await using var connection = new SqliteConnection(_connectionString);
@@ -1434,6 +1447,7 @@ public class StorageService : IStorageService
 
             var result = await command.ExecuteScalarAsync();
             var value = result as string;
+            _settingsCache[key] = value;
             _logger.LogDebug("GetSetting: key={Key}, found={Found}", key, value != null);
             return value;
         }
@@ -1459,6 +1473,7 @@ public class StorageService : IStorageService
             command.Parameters.AddWithValue("@Value", value);
 
             await command.ExecuteNonQueryAsync();
+            _settingsCache[key] = value;
             _logger.LogInformation("SaveSetting: key={Key}", key);
         }
         catch (Exception ex)

@@ -64,18 +64,16 @@ public class BlossomUploadService : IMediaUploadService
 
         var url = $"{serverUrl.TrimEnd('/')}/upload";
 
-        // Skip anonymous upload when using external signer (auth is always required)
-        if (!string.IsNullOrEmpty(privateKeyHex) || _externalSigner?.IsConnected != true)
+        // If we have credentials, skip anonymous attempt and go straight to authenticated upload
+        if (!string.IsNullOrEmpty(privateKeyHex) || _externalSigner?.IsConnected == true)
         {
-            var anonResult = await TryUploadAsync(url, encryptedData, sha256Hex, authHeader: null, ct);
-            if (anonResult != null) return anonResult;
-
-            _logger.LogInformation("Anonymous upload rejected, retrying with NIP-98 auth");
+            var authHeader = await BuildAuthHeaderAsync(sha256Hex, privateKeyHex);
+            return await TryUploadAsync(url, encryptedData, sha256Hex, authHeader, ct);
         }
 
-        // Authenticated upload (local key or external signer)
-        var authHeader = await BuildAuthHeaderAsync(sha256Hex, privateKeyHex);
-        return await TryUploadAsync(url, encryptedData, sha256Hex, authHeader, ct);
+        // No credentials — try anonymous upload
+        var anonResult = await TryUploadAsync(url, encryptedData, sha256Hex, authHeader: null, ct);
+        return anonResult;
     }
 
     private async Task<BlobUploadResult?> TryUploadAsync(string url, byte[] data, string sha256Hex, string? authHeader, CancellationToken ct)

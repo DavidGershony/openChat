@@ -185,7 +185,7 @@ public class LogAuditP0Tests
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.UploadAsync(new byte[] { 1, 2, 3, 4 }, privKeyHex, "audio/opus"));
 
-        // 2 calls only (anonymous + auth on default), not 4 (no fallback to same server)
-        Assert.Equal(2, callCount);
+        // 1 call only (auth-first when credentials present), not 2+ (no fallback to same server)
+        Assert.Equal(1, callCount);
     }
 }

@@ -1,6 +1,6 @@
 # Task: Deduplicate relay events earlier to reduce log noise and processing
 
-## Status: Not Started
+## Status: COMPLETED
 
 ## Epic: log-audit (2026-04-02 v0.2.4 log analysis)
 
