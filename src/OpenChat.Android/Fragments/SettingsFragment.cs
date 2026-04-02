@@ -220,6 +220,13 @@ public class SettingsFragment : Fragment
             ViewModel.ViewLogsCommand.Execute().Subscribe().DisposeWith(_disposables);
         };
 
+        // Export Logs
+        var exportLogsButton = view.FindViewById<MaterialButton>(Resource.Id.export_logs_button)!;
+        exportLogsButton.Click += (s, e) =>
+        {
+            ExportLogs();
+        };
+
         // Theme selector
         var currentTheme = ThemeService.GetSavedTheme(RequireContext());
         themeButton.Text = currentTheme.DisplayName;
@@ -478,6 +485,42 @@ public class SettingsFragment : Fragment
 
         // Load initial content
         logContent.Text = ViewModel.LogContent ?? "No logs available";
+    }
+
+    private void ExportLogs()
+    {
+        if (Activity == null) return;
+
+        try
+        {
+            var logFiles = OpenChat.Core.Logging.LoggingConfiguration.GetLogFiles().ToList();
+            if (logFiles.Count == 0)
+            {
+                Toast.MakeText(Activity, "No log files found", ToastLength.Short)?.Show();
+                return;
+            }
+
+            var latestLogFile = logFiles.First();
+            var logFile = new Java.IO.File(latestLogFile);
+            var uri = AndroidX.Core.Content.FileProvider.GetUriForFile(
+                RequireContext(),
+                RequireContext().PackageName + ".fileprovider",
+                logFile);
+
+            var intent = new Intent(Intent.ActionSend);
+            intent.SetType("text/plain");
+            intent.PutExtra(Intent.ExtraStream, uri);
+            intent.PutExtra(Intent.ExtraSubject, $"OpenChat Logs - {DateTime.Now:yyyy-MM-dd}");
+            intent.AddFlags(ActivityFlags.GrantReadUriPermission);
+
+            _logger.LogInformation("Exporting log file: {File}", latestLogFile);
+            StartActivity(Intent.CreateChooser(intent, "Export Logs"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to export logs");
+            Toast.MakeText(Activity, $"Failed to export: {ex.Message}", ToastLength.Long)?.Show();
+        }
     }
 
     private void OnRelayPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)

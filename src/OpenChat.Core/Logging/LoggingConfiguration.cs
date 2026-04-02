@@ -31,7 +31,8 @@ public static class LoggingConfiguration
     /// </summary>
     /// <param name="logDirectory">Optional custom log directory. Defaults to AppData/OpenChat/logs</param>
     /// <param name="minimumLevel">Minimum log level. Defaults to Debug.</param>
-    public static void Initialize(string? logDirectory = null, LogEventLevel minimumLevel = LogEventLevel.Debug)
+    /// <param name="perSession">When true, creates a new log file per app session instead of per day. Useful for mobile.</param>
+    public static void Initialize(string? logDirectory = null, LogEventLevel minimumLevel = LogEventLevel.Debug, bool perSession = false)
     {
         lock (_lock)
         {
@@ -45,9 +46,7 @@ public static class LoggingConfiguration
                 Directory.CreateDirectory(LogDirectory);
             }
 
-            var logFilePath = Path.Combine(LogDirectory, "openchat-.log");
-
-            Log.Logger = new LoggerConfiguration()
+            var logConfig = new LoggerConfiguration()
                 .MinimumLevel.Is(minimumLevel)
                 .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
                 .MinimumLevel.Override("System", LogEventLevel.Warning)
@@ -56,15 +55,32 @@ public static class LoggingConfiguration
                 .Enrich.WithProperty("Profile", ProfileConfiguration.ProfileName)
                 .Enrich.WithProperty("MachineName", Environment.MachineName)
                 .WriteTo.Console(
-                    outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}")
-                .WriteTo.File(
+                    outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}");
+
+            if (perSession)
+            {
+                // One file per app session — no rolling, new timestamped file each launch
+                var sessionFile = Path.Combine(LogDirectory, $"openchat-{DateTime.Now:yyyyMMdd-HHmmss}.log");
+                logConfig = logConfig.WriteTo.File(
+                    sessionFile,
+                    retainedFileCountLimit: 10,
+                    outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}",
+                    flushToDiskInterval: TimeSpan.FromSeconds(1));
+            }
+            else
+            {
+                // One file per day with daily rolling (desktop default)
+                var logFilePath = Path.Combine(LogDirectory, "openchat-.log");
+                logConfig = logConfig.WriteTo.File(
                     logFilePath,
                     rollingInterval: RollingInterval.Day,
                     retainedFileCountLimit: 7,
                     outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}",
                     shared: true,
-                    flushToDiskInterval: TimeSpan.FromSeconds(1))
-                .CreateLogger();
+                    flushToDiskInterval: TimeSpan.FromSeconds(1));
+            }
+
+            Log.Logger = logConfig.CreateLogger();
 
             _loggerFactory = new SerilogLoggerFactory(Log.Logger);
 

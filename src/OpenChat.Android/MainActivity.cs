@@ -35,7 +35,7 @@ public class MainActivity : AppCompatActivity, IActivatableView
         var logDir = System.IO.Path.Combine(
             System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData),
             "OpenChat", "logs");
-        LoggingConfiguration.Initialize(logDirectory: logDir);
+        LoggingConfiguration.Initialize(logDirectory: logDir, perSession: true);
 
         SetContentView(Resource.Layout.activity_main);
 
