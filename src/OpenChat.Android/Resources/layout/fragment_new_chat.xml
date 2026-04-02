@@ -25,9 +25,11 @@
             android:padding="20dp">
 
             <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/new_chat_pubkey_layout"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:hint="Public key (npub or hex)">
+                android:hint="Public key (npub or hex)"
+                app:errorEnabled="true">
 
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/new_chat_pubkey_input"

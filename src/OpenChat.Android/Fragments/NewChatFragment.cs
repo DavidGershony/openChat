@@ -55,16 +55,17 @@ public class NewChatFragment : Fragment
         // Create button
         createButton.Click += (s, e) =>
         {
-            ViewModel.NewChatPublicKey = pubKeyInput.Text ?? string.Empty;
             ViewModel.NewChatName = nameInput.Text ?? string.Empty;
             ViewModel.CreateChatCommand.Execute().Subscribe().DisposeWith(_disposables);
         };
 
-        // Lookup button
-        lookupButton.Click += (s, e) =>
+        // Hide manual lookup button — auto-lookup triggers on valid npub input
+        lookupButton.Visibility = ViewStates.Gone;
+
+        // Bind text input reactively to ViewModel (triggers validation + auto-lookup)
+        pubKeyInput.TextChanged += (s, e) =>
         {
             ViewModel.NewChatPublicKey = pubKeyInput.Text ?? string.Empty;
-            ViewModel.LookupKeyPackageCommand.Execute().Subscribe().DisposeWith(_disposables);
         };
 
         // Show sending overlay while creating
@@ -107,12 +108,36 @@ public class NewChatFragment : Fragment
             })
             .DisposeWith(_disposables);
 
+        // Disable Create button until KeyPackage is found and relays selected
+        ViewModel.CreateChatCommand.CanExecute
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(canCreate =>
+            {
+                createButton.Enabled = canCreate;
+            })
+            .DisposeWith(_disposables);
+
+        // Show validation error on input field
+        var pubKeyLayout = view.FindViewById<TextInputLayout>(Resource.Id.new_chat_pubkey_layout);
+        ViewModel.WhenAnyValue(x => x.IsNpubInvalid, x => x.NewChatError)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(t =>
+            {
+                var (invalid, error) = t;
+                if (!string.IsNullOrEmpty(error))
+                    pubKeyLayout?.SetError(error);
+                else if (invalid)
+                    pubKeyLayout?.SetError("Invalid npub format");
+                else
+                    pubKeyLayout?.SetError(null);
+            })
+            .DisposeWith(_disposables);
+
         ViewModel.WhenAnyValue(x => x.IsLookingUpKeyPackage)
             .ObserveOn(RxApp.MainThreadScheduler)
             .Subscribe(loading =>
             {
-                lookupButton.Enabled = !loading;
-                lookupButton.Text = loading ? "Looking up..." : "Lookup KeyPackage";
+                statusText.Text = loading ? "Looking up KeyPackage..." : statusText.Text;
             })
             .DisposeWith(_disposables);
 
