@@ -43,6 +43,11 @@ public class User
     public string? AvatarUrl { get; set; }
 
     /// <summary>
+    /// Local file path of the cached avatar image.
+    /// </summary>
+    public string? LocalAvatarPath { get; set; }
+
+    /// <summary>
     /// About/bio from Nostr profile.
     /// </summary>
     public string? About { get; set; }

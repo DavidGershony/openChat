@@ -7,16 +7,30 @@
     android:gravity="center_vertical"
     android:background="?attr/selectableItemBackground">
 
-    <!-- Avatar placeholder -->
-    <TextView
-        android:id="@+id/chat_avatar"
+    <!-- Avatar -->
+    <FrameLayout
         android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:gravity="center"
-        android:textSize="20sp"
-        android:textColor="@color/on_primary"
-        android:background="?attr/colorPrimary"
-        android:text="?" />
+        android:layout_height="48dp">
+
+        <!-- Text fallback (initial letter, BOT, etc.) -->
+        <TextView
+            android:id="@+id/chat_avatar"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:gravity="center"
+            android:textSize="20sp"
+            android:textColor="@color/on_primary"
+            android:background="?attr/colorPrimary"
+            android:text="?" />
+
+        <!-- Cached avatar image (shown when available) -->
+        <ImageView
+            android:id="@+id/chat_avatar_image"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:scaleType="centerCrop"
+            android:visibility="gone" />
+    </FrameLayout>
 
     <LinearLayout
         android:layout_width="0dp"

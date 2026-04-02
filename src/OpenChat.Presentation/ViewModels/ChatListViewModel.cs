@@ -359,7 +359,23 @@ public class ChatListViewModel : ViewModelBase
                 .Where(c => _currentUserPubKeyHex == null || c.ParticipantPublicKeys.Contains(_currentUserPubKeyHex))
                 .OrderByDescending(c => c.IsPinned).ThenByDescending(c => c.LastActivityAt))
             {
-                Chats.Add(new ChatItemViewModel(chat));
+                var chatItem = new ChatItemViewModel(chat);
+
+                // Resolve avatar for DM/bot chats from the other participant's profile
+                if (chat.Type != ChatType.Group && _currentUserPubKeyHex != null)
+                {
+                    var otherPubKey = chat.ParticipantPublicKeys.FirstOrDefault(p => p != _currentUserPubKeyHex);
+                    if (otherPubKey != null)
+                    {
+                        var otherUser = await _storageService.GetUserByPublicKeyAsync(otherPubKey);
+                        if (otherUser?.LocalAvatarPath != null && File.Exists(otherUser.LocalAvatarPath))
+                        {
+                            chatItem.LocalAvatarPath = otherUser.LocalAvatarPath;
+                        }
+                    }
+                }
+
+                Chats.Add(chatItem);
             }
 
             // Load pending invites
@@ -1426,6 +1442,7 @@ public class ChatItemViewModel : ViewModelBase
 
     [Reactive] public string Name { get; set; } = string.Empty;
     [Reactive] public string? AvatarUrl { get; set; }
+    [Reactive] public string? LocalAvatarPath { get; set; }
     [Reactive] public string? LastMessagePreview { get; set; }
     [Reactive] public DateTime LastActivityAt { get; set; }
     [Reactive] public int UnreadCount { get; set; }

@@ -1,4 +1,6 @@
+using Android.Graphics;
 using Android.Views;
+using Android.Widget;
 using AndroidX.RecyclerView.Widget;
 using OpenChat.Presentation.ViewModels;
 
@@ -40,6 +42,7 @@ public class ChatListAdapter : RecyclerView.Adapter
     private class ChatViewHolder : RecyclerView.ViewHolder
     {
         private readonly TextView _avatar;
+        private readonly ImageView _avatarImage;
         private readonly TextView _name;
         private readonly TextView _lastMessage;
         private readonly TextView _timestamp;
@@ -48,6 +51,7 @@ public class ChatListAdapter : RecyclerView.Adapter
         public ChatViewHolder(View itemView) : base(itemView)
         {
             _avatar = itemView.FindViewById<TextView>(Resource.Id.chat_avatar)!;
+            _avatarImage = itemView.FindViewById<ImageView>(Resource.Id.chat_avatar_image)!;
             _name = itemView.FindViewById<TextView>(Resource.Id.chat_name)!;
             _lastMessage = itemView.FindViewById<TextView>(Resource.Id.chat_last_message)!;
             _timestamp = itemView.FindViewById<TextView>(Resource.Id.chat_timestamp)!;
@@ -60,17 +64,24 @@ public class ChatListAdapter : RecyclerView.Adapter
             _lastMessage.Text = item.LastMessagePreview ?? "";
             _timestamp.Text = FormatRelativeTime(item.LastActivityAt);
 
-            // Avatar: type-specific display
-            if (item.IsBot)
+            // Avatar: try cached image first, then fall back to text
+            if (!string.IsNullOrEmpty(item.LocalAvatarPath) && System.IO.File.Exists(item.LocalAvatarPath))
             {
-                _avatar.Text = "BOT";
-                _avatar.SetTextSize(global::Android.Util.ComplexUnitType.Sp, 14);
+                var bitmap = BitmapFactory.DecodeFile(item.LocalAvatarPath);
+                if (bitmap != null)
+                {
+                    _avatarImage.SetImageBitmap(bitmap);
+                    _avatarImage.Visibility = ViewStates.Visible;
+                    _avatar.Visibility = ViewStates.Gone;
+                }
+                else
+                {
+                    ShowTextAvatar(item);
+                }
             }
             else
             {
-                var initial = string.IsNullOrEmpty(item.Name) ? "?" : item.Name[..1].ToUpper();
-                _avatar.Text = initial;
-                _avatar.SetTextSize(global::Android.Util.ComplexUnitType.Sp, 20);
+                ShowTextAvatar(item);
             }
 
             // Unread badge
@@ -82,6 +93,24 @@ public class ChatListAdapter : RecyclerView.Adapter
             else
             {
                 _unreadBadge.Visibility = ViewStates.Gone;
+            }
+        }
+
+        private void ShowTextAvatar(ChatItemViewModel item)
+        {
+            _avatarImage.Visibility = ViewStates.Gone;
+            _avatar.Visibility = ViewStates.Visible;
+
+            if (item.IsBot)
+            {
+                _avatar.Text = "BOT";
+                _avatar.SetTextSize(global::Android.Util.ComplexUnitType.Sp, 14);
+            }
+            else
+            {
+                var initial = string.IsNullOrEmpty(item.Name) ? "?" : item.Name[..1].ToUpper();
+                _avatar.Text = initial;
+                _avatar.SetTextSize(global::Android.Util.ComplexUnitType.Sp, 20);
             }
         }
 

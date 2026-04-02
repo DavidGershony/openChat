@@ -1572,6 +1572,14 @@ public class MessageService : IMessageService, IDisposable
                 existing.About = metadata.About ?? existing.About;
                 existing.Nip05 = metadata.Nip05 ?? existing.Nip05;
                 existing.LastUpdatedAt = DateTime.UtcNow;
+
+                // Download avatar if URL changed or no local copy
+                if (!string.IsNullOrEmpty(existing.AvatarUrl) &&
+                    (existing.LocalAvatarPath == null || !File.Exists(existing.LocalAvatarPath)))
+                {
+                    existing.LocalAvatarPath = await DownloadAvatarAsync(metadata.PublicKeyHex, existing.AvatarUrl);
+                }
+
                 await _storageService.SaveUserAsync(existing);
                 _logger.LogDebug("Updated cached profile for {PubKey}", metadata.PublicKeyHex[..16]);
             }
@@ -1592,6 +1600,13 @@ public class MessageService : IMessageService, IDisposable
                     LastUpdatedAt = DateTime.UtcNow,
                     IsCurrentUser = false
                 };
+
+                // Download avatar
+                if (!string.IsNullOrEmpty(user.AvatarUrl))
+                {
+                    user.LocalAvatarPath = await DownloadAvatarAsync(metadata.PublicKeyHex, user.AvatarUrl);
+                }
+
                 await _storageService.SaveUserAsync(user);
                 _logger.LogInformation("Cached new profile for {PubKey}: {Name}", metadata.PublicKeyHex[..16], user.DisplayName);
             }
@@ -1599,6 +1614,51 @@ public class MessageService : IMessageService, IDisposable
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to cache metadata for {PubKey}", metadata.PublicKeyHex[..16]);
+        }
+    }
+
+    private async Task<string?> DownloadAvatarAsync(string publicKeyHex, string avatarUrl)
+    {
+        try
+        {
+            var avatarDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "OpenChat", "avatars");
+            Directory.CreateDirectory(avatarDir);
+
+            var extension = Path.GetExtension(new Uri(avatarUrl).AbsolutePath);
+            if (string.IsNullOrEmpty(extension) || extension.Length > 5)
+                extension = ".jpg";
+            var localPath = Path.Combine(avatarDir, $"{publicKeyHex[..16]}{extension}");
+
+            // Skip if already downloaded
+            if (File.Exists(localPath))
+                return localPath;
+
+            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+            using var response = await httpClient.GetAsync(avatarUrl);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Avatar download failed for {PubKey}: HTTP {Status}", publicKeyHex[..16], response.StatusCode);
+                return null;
+            }
+
+            // Limit to 2MB
+            var content = await response.Content.ReadAsByteArrayAsync();
+            if (content.Length > 2 * 1024 * 1024)
+            {
+                _logger.LogWarning("Avatar too large for {PubKey}: {Size} bytes", publicKeyHex[..16], content.Length);
+                return null;
+            }
+
+            await File.WriteAllBytesAsync(localPath, content);
+            _logger.LogInformation("Downloaded avatar for {PubKey}: {Path} ({Size} bytes)", publicKeyHex[..16], localPath, content.Length);
+            return localPath;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to download avatar for {PubKey}", publicKeyHex[..16]);
+            return null;
         }
     }
 

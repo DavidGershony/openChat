@@ -71,6 +71,7 @@ public class StorageService : IStorageService
                 DisplayName TEXT,
                 Username TEXT,
                 AvatarUrl TEXT,
+                LocalAvatarPath TEXT,
                 About TEXT,
                 Nip05 TEXT,
                 CreatedAt TEXT NOT NULL,
@@ -279,6 +280,15 @@ public class StorageService : IStorageService
                 }
             }
 
+            // Migration: add LocalAvatarPath column to Users for cached avatar images
+            try
+            {
+                var migrate = connection.CreateCommand();
+                migrate.CommandText = "ALTER TABLE Users ADD COLUMN LocalAvatarPath TEXT";
+                await migrate.ExecuteNonQueryAsync();
+            }
+            catch (SqliteException) { /* Column already exists */ }
+
             _initialized = true;
             _logger.LogInformation("Database schema initialized successfully");
         }
@@ -362,9 +372,9 @@ public class StorageService : IStorageService
         var command = connection.CreateCommand();
         command.CommandText = @"
             INSERT OR REPLACE INTO Users
-            (Id, PublicKeyHex, Npub, PrivateKeyHex, Nsec, DisplayName, Username, AvatarUrl, About, Nip05, CreatedAt, LastUpdatedAt, IsCurrentUser, SignerRelayUrl, SignerRemotePubKey, SignerSecret, SignerLocalPrivateKeyHex, SignerLocalPublicKeyHex)
+            (Id, PublicKeyHex, Npub, PrivateKeyHex, Nsec, DisplayName, Username, AvatarUrl, LocalAvatarPath, About, Nip05, CreatedAt, LastUpdatedAt, IsCurrentUser, SignerRelayUrl, SignerRemotePubKey, SignerSecret, SignerLocalPrivateKeyHex, SignerLocalPublicKeyHex)
             VALUES
-            (@Id, @PublicKeyHex, @Npub, @PrivateKeyHex, @Nsec, @DisplayName, @Username, @AvatarUrl, @About, @Nip05, @CreatedAt, @LastUpdatedAt, @IsCurrentUser, @SignerRelayUrl, @SignerRemotePubKey, @SignerSecret, @SignerLocalPrivateKeyHex, @SignerLocalPublicKeyHex)";
+            (@Id, @PublicKeyHex, @Npub, @PrivateKeyHex, @Nsec, @DisplayName, @Username, @AvatarUrl, @LocalAvatarPath, @About, @Nip05, @CreatedAt, @LastUpdatedAt, @IsCurrentUser, @SignerRelayUrl, @SignerRemotePubKey, @SignerSecret, @SignerLocalPrivateKeyHex, @SignerLocalPublicKeyHex)";
 
         command.Parameters.AddWithValue("@Id", user.Id);
         command.Parameters.AddWithValue("@PublicKeyHex", user.PublicKeyHex);
@@ -374,6 +384,7 @@ public class StorageService : IStorageService
         command.Parameters.AddWithValue("@DisplayName", user.DisplayName);
         command.Parameters.AddWithValue("@Username", user.Username ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("@AvatarUrl", user.AvatarUrl ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@LocalAvatarPath", user.LocalAvatarPath ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("@About", user.About ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("@Nip05", user.Nip05 ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("@CreatedAt", user.CreatedAt.ToString("O"));
@@ -1085,6 +1096,7 @@ public class StorageService : IStorageService
             DisplayName = reader.GetString(reader.GetOrdinal("DisplayName")),
             Username = reader.IsDBNull(reader.GetOrdinal("Username")) ? null : reader.GetString(reader.GetOrdinal("Username")),
             AvatarUrl = reader.IsDBNull(reader.GetOrdinal("AvatarUrl")) ? null : reader.GetString(reader.GetOrdinal("AvatarUrl")),
+            LocalAvatarPath = SafeGetString(reader, "LocalAvatarPath"),
             About = reader.IsDBNull(reader.GetOrdinal("About")) ? null : reader.GetString(reader.GetOrdinal("About")),
             Nip05 = reader.IsDBNull(reader.GetOrdinal("Nip05")) ? null : reader.GetString(reader.GetOrdinal("Nip05")),
             CreatedAt = ParseDateTime(reader.GetString(reader.GetOrdinal("CreatedAt"))),
@@ -1200,6 +1212,16 @@ public class StorageService : IStorageService
     /// </summary>
     private static DateTime ParseDateTime(string value)
         => DateTime.Parse(value, null, DateTimeStyles.RoundtripKind);
+
+    private static string? SafeGetString(SqliteDataReader reader, string column)
+    {
+        try
+        {
+            var ordinal = reader.GetOrdinal(column);
+            return reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
+        }
+        catch (ArgumentOutOfRangeException) { return null; /* Column doesn't exist yet */ }
+    }
 
     private static string? TryGetString(SqliteDataReader reader, string column)
     {
