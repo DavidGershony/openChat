@@ -36,6 +36,7 @@ public class NostrService : INostrService, IDisposable
     private const int MaxBackoffSeconds = 60;
     private const int RateLimitBackoffSeconds = 60;
     private DateTimeOffset? _groupMessagesSince;
+    private DateTimeOffset? _welcomeMessagesSince;
     private string? _subscribedUserPubKey;
     private string? _subscribedUserPrivKey;
 
@@ -173,10 +174,16 @@ public class NostrService : INostrService, IDisposable
                     { "#p", new[] { _subscribedUserPubKey } }
                 };
 
+                if (_welcomeMessagesSince.HasValue)
+                {
+                    filter["since"] = _welcomeMessagesSince.Value.ToUnixTimeSeconds();
+                }
+
                 var reqMessage = JsonSerializer.Serialize(new object[] { "REQ", subId, filter });
                 var reqBytes = Encoding.UTF8.GetBytes(reqMessage);
                 await ws.SendAsync(new ArraySegment<byte>(reqBytes), WebSocketMessageType.Text, true, CancellationToken.None);
-                _logger.LogInformation("Re-sent Welcome subscription to {RelayUrl}", relayUrl);
+                _logger.LogInformation("Re-sent Welcome subscription to {RelayUrl} (since: {Since})",
+                    relayUrl, _welcomeMessagesSince?.ToString("o") ?? "all");
             }
 
             // Re-subscribe to Group messages (kind 445)
@@ -684,6 +691,9 @@ public class NostrService : INostrService, IDisposable
     {
         _logger.LogInformation("Disconnecting from all relays");
 
+        // Save timestamp so reconnect subscriptions use 'since' filter
+        _welcomeMessagesSince = DateTimeOffset.UtcNow;
+
         // Cancel all listeners
         foreach (var (relayUrl, cts) in _relayListeners)
         {
@@ -723,7 +733,9 @@ public class NostrService : INostrService, IDisposable
         }
         _relayConnections.Clear();
         _connectedRelays.Clear();
-        _recentlyProcessedEventIds.Clear();
+        // Preserve _recentlyProcessedEventIds across reconnects to avoid reprocessing
+        // events that arrive again from relays. The 10K cap in ProcessRelayMessageAsync
+        // prevents unbounded growth.
     }
 
     public async Task ReconnectRelayAsync(string relayUrl)
@@ -748,6 +760,9 @@ public class NostrService : INostrService, IDisposable
 
     private async Task DisconnectSingleRelayAsync(string relayUrl)
     {
+        // Track disconnect time so reconnect subscriptions use 'since' filter
+        _welcomeMessagesSince = DateTimeOffset.UtcNow;
+
         if (_relayListeners.TryRemove(relayUrl, out var cts))
         {
             cts.Cancel();
