@@ -239,12 +239,13 @@ public class ChatFragment : Fragment
             })
             .DisposeWith(_disposables);
 
-        // Bind MIP-04 enabled state for attach button visibility
+        // Bind MIP-04 enabled state for attach/record button visibility
         ViewModel.WhenAnyValue(x => x.IsMip04Enabled)
             .ObserveOn(RxApp.MainThreadScheduler)
             .Subscribe(enabled =>
             {
                 attachButton.Visibility = enabled ? ViewStates.Visible : ViewStates.Gone;
+                recordButton.Visibility = enabled ? ViewStates.Visible : ViewStates.Gone;
             })
             .DisposeWith(_disposables);
 

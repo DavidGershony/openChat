@@ -217,14 +217,16 @@ public class ChatViewModel : ViewModelBase
         var canRecord = this.WhenAnyValue(
             x => x.HasChat,
             x => x.IsSendingVoice,
-            (hasChat, sending) => hasChat && !sending);
+            x => x.IsMip04Enabled,
+            (hasChat, sending, mip04) => hasChat && !sending && mip04);
         ToggleRecordingCommand = ReactiveCommand.CreateFromTask(ToggleRecordingAsync, canRecord);
         CancelRecordingCommand = ReactiveCommand.CreateFromTask(CancelRecordingAsync);
 
         var canAttach = this.WhenAnyValue(
             x => x.HasChat,
             x => x.IsSendingImage,
-            (hasChat, sending) => hasChat && !sending);
+            x => x.IsMip04Enabled,
+            (hasChat, sending, mip04) => hasChat && !sending && mip04);
         AttachFileCommand = ReactiveCommand.CreateFromTask(AttachAndSendFileAsync, canAttach);
 
         // Log errors from media commands (ReactiveCommand swallows exceptions by default)
