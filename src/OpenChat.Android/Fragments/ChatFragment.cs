@@ -105,6 +105,16 @@ public class ChatFragment : Fragment
         _adapter = new MessageAdapter();
         recyclerView.SetAdapter(_adapter);
 
+        // Load older messages when scrolling to the top
+        recyclerView.AddOnScrollListener(new LoadOlderScrollListener(_layoutManager, () =>
+        {
+            if (ViewModel.CanLoadOlder && !ViewModel.IsLoadingOlder)
+            {
+                _logger.LogInformation("Scroll reached top, loading older messages");
+                ViewModel.LoadOlderMessagesCommand.Execute().Subscribe().DisposeWith(_disposables);
+            }
+        }));
+
         // Record button — request RECORD_AUDIO permission, then toggle recording
         var recordButton = view.FindViewById<ImageButton>(Resource.Id.record_button)!;
         recordButton.Click += (s, e) =>
@@ -549,6 +559,32 @@ public class ChatFragment : Fragment
         {
             var uri = result as global::Android.Net.Uri;
             _fragment.OnFilePickerResult(uri);
+        }
+    }
+
+    /// <summary>
+    /// Triggers a callback when the user scrolls to the top of the list.
+    /// </summary>
+    private class LoadOlderScrollListener : RecyclerView.OnScrollListener
+    {
+        private readonly LinearLayoutManager _layoutManager;
+        private readonly Action _onReachedTop;
+
+        public LoadOlderScrollListener(LinearLayoutManager layoutManager, Action onReachedTop)
+        {
+            _layoutManager = layoutManager;
+            _onReachedTop = onReachedTop;
+        }
+
+        public override void OnScrolled(RecyclerView recyclerView, int dx, int dy)
+        {
+            // Only trigger when scrolling upward
+            if (dy >= 0) return;
+
+            if (_layoutManager.FindFirstVisibleItemPosition() == 0)
+            {
+                _onReachedTop();
+            }
         }
     }
 }
