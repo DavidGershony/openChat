@@ -61,6 +61,12 @@ public class NostrService : INostrService, IDisposable
         _logger.LogInformation("External signer {Status}", signer?.IsConnected == true ? "set and connected" : "cleared");
     }
 
+    public void SetAuthCredentials(string? privateKeyHex)
+    {
+        _subscribedUserPrivKey = privateKeyHex;
+        _logger.LogInformation("NIP-42 auth credentials {Status}", !string.IsNullOrEmpty(privateKeyHex) ? "set" : "cleared");
+    }
+
     public async Task ConnectAsync(string relayUrl)
     {
         await ConnectAsync(new[] { relayUrl });

@@ -513,7 +513,9 @@ public class MainViewModel : ViewModelBase
                 _logger.LogWarning(ex, "Failed to fetch relay list, using defaults");
             }
 
-            // 2. Connect to relays
+            // 2. Set auth credentials before connecting so NIP-42 challenges can be answered
+            _nostrService.SetAuthCredentials(CurrentUser.PrivateKeyHex);
+
             _logger.LogInformation("Connecting to {Count} relays", relaysToConnect.Count);
             await _nostrService.ConnectAsync(relaysToConnect);
 

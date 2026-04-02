@@ -74,6 +74,12 @@ public interface INostrService
     void SetExternalSigner(IExternalSigner? signer);
 
     /// <summary>
+    /// Set the user's private key for NIP-42 relay authentication.
+    /// Call this before connecting to relays so AUTH challenges can be answered.
+    /// </summary>
+    void SetAuthCredentials(string? privateKeyHex);
+
+    /// <summary>
     /// Publish a KeyPackage (kind 443).
     /// </summary>
     /// <param name="keyPackageData">Base64-encoded KeyPackage content bytes.</param>
