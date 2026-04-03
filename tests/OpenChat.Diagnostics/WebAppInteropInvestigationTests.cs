@@ -8,11 +8,11 @@ using OpenChat.Core.Configuration;
 using OpenChat.Core.Marmot;
 using OpenChat.Core.Models;
 using OpenChat.Core.Services;
-using OpenChat.Core.Tests.TestHelpers;
+using OpenChat.Diagnostics.TestHelpers;
 using Xunit;
 using Xunit.Abstractions;
 
-namespace OpenChat.Core.Tests;
+namespace OpenChat.Diagnostics;
 
 /// <summary>
 /// Investigation tests for OpenChat ↔ marmot-ts web app interop.

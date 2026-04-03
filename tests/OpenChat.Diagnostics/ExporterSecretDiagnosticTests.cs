@@ -5,11 +5,11 @@ using Microsoft.Data.Sqlite;
 using OpenChat.Core.Configuration;
 using OpenChat.Core.Models;
 using OpenChat.Core.Services;
-using OpenChat.Core.Tests.TestHelpers;
+using OpenChat.Diagnostics.TestHelpers;
 using Xunit;
 using Xunit.Abstractions;
 
-namespace OpenChat.Core.Tests;
+namespace OpenChat.Diagnostics;
 
 /// <summary>
 /// Diagnostic tests to dump MLS key schedule values for cross-implementation comparison.

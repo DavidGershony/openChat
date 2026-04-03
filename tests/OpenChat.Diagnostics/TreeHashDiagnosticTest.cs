@@ -7,11 +7,11 @@ using DotnetMls.Tree;
 using OpenChat.Core.Configuration;
 using OpenChat.Core.Models;
 using OpenChat.Core.Services;
-using OpenChat.Core.Tests.TestHelpers;
+using OpenChat.Diagnostics.TestHelpers;
 using Xunit;
 using Xunit.Abstractions;
 
-namespace OpenChat.Core.Tests;
+namespace OpenChat.Diagnostics;
 
 /// <summary>
 /// Diagnostic: dumps tree_hash, epoch_authenticator, exporter_secret, and ratchet tree
