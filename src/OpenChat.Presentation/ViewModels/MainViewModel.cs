@@ -22,6 +22,7 @@ public class MainViewModel : ViewModelBase
     private readonly IStorageService _storageService;
     private readonly IMlsService _mlsService;
     private readonly IPlatformClipboard _clipboard;
+    private readonly IQrCodeGenerator _qrCodeGenerator;
 
     [Reactive] public User? CurrentUser { get; set; }
     [Reactive] public bool IsLoggedIn { get; set; }
@@ -44,6 +45,7 @@ public class MainViewModel : ViewModelBase
     [Reactive] public string? MyPictureUrl { get; set; }
     [Reactive] public string? MyAbout { get; set; }
     [Reactive] public bool IsLoadingProfile { get; set; }
+    [Reactive] public byte[]? MyNpubQrPngBytes { get; set; }
 
     private readonly Action? _onLogoutRequested;
 
@@ -75,6 +77,7 @@ public class MainViewModel : ViewModelBase
         _storageService = storageService;
         _mlsService = mlsService;
         _clipboard = clipboard;
+        _qrCodeGenerator = qrCodeGenerator;
         _onLogoutRequested = onLogoutRequested;
 
         // Initialize child view models
@@ -115,6 +118,7 @@ public class MainViewModel : ViewModelBase
             MyName = null;
             MyPictureUrl = null;
             MyAbout = null;
+            MyNpubQrPngBytes = _qrCodeGenerator.GeneratePng(MyNpub, 10);
             ShowMyProfileDialog = true;
 
             // Fetch profile metadata from Nostr
@@ -147,6 +151,7 @@ public class MainViewModel : ViewModelBase
         {
             ShowMyProfileDialog = false;
             CopyStatusMessage = null;
+            MyNpubQrPngBytes = null;
         });
 
         CopyNpubCommand = ReactiveCommand.CreateFromTask(async () =>

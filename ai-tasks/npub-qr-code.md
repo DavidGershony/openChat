@@ -1,25 +1,24 @@
 # Task: Add npub QR code display on Desktop and Mobile
 
-## Status: Not Started
+## Status: COMPLETED
 
 ## Problem
 
 Users need an easy way to share their npub with others. Currently there is no visual QR code for the user's own public key.
 
-## Goal
+## Changes
+
+### ViewModel (shared)
+- `MainViewModel.MyNpubQrPngBytes` — new `[Reactive]` property for QR PNG bytes
+- Generated via existing `IQrCodeGenerator.GeneratePng()` when profile dialog opens
+- Cleared when dialog closes
 
 ### Desktop (Avalonia)
-1. When clicking the profile image (top-left), show a popup/dialog containing:
-   - The user's npub as a QR code
-   - The npub text (copyable)
-2. Use the existing `IQrCodeGenerator` service to generate the QR image
+- Added QR code image to My Profile dialog overlay in `MainWindow.axaml`
+- Uses `PngBytesToBitmapConverter` (already existed) to bind PNG bytes to Image control
+- 200x200 white-background bordered QR above the npub text
 
 ### Android
-1. Add a "Show QR Code" button in the profile/settings screen
-2. When tapped, display a dialog/fragment with:
-   - The user's npub as a QR code
-   - The npub text (copyable)
-3. Use the existing `AndroidQrCodeGenerator` service
-
-### Performance note
-Generating QR codes from the npub string is lightweight. Cache the generated QR image in memory so it doesn't regenerate on every view.
+- Added QR `ImageView` to `dialog_my_profile.xml`
+- Bound in `ChatListFragment.ShowMyProfileDialog()` via `BitmapFactory.DecodeByteArray`
+- 200x200dp white-background QR above the npub label

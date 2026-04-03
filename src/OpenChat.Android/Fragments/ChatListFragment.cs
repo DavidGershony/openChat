@@ -306,6 +306,7 @@ public class ChatListFragment : Fragment
         var usernameText = dialogView.FindViewById<TextView>(Resource.Id.my_username_text)!;
         var aboutText = dialogView.FindViewById<TextView>(Resource.Id.my_about_text)!;
         var loadingIndicator = dialogView.FindViewById<ProgressBar>(Resource.Id.my_profile_loading)!;
+        var qrImage = dialogView.FindViewById<ImageView>(Resource.Id.my_npub_qr)!;
 
         var dialog = new MaterialAlertDialogBuilder(Context)
             .SetTitle("My Profile")!
@@ -322,6 +323,24 @@ public class ChatListFragment : Fragment
         {
             CopyToClipboard("npub", _mainViewModel.MyNpub);
         };
+
+        // Bind QR code
+        _mainViewModel.WhenAnyValue(x => x.MyNpubQrPngBytes)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(bytes =>
+            {
+                if (bytes != null && bytes.Length > 0)
+                {
+                    var bitmap = global::Android.Graphics.BitmapFactory.DecodeByteArray(bytes, 0, bytes.Length);
+                    qrImage.SetImageBitmap(bitmap);
+                    qrImage.Visibility = ViewStates.Visible;
+                }
+                else
+                {
+                    qrImage.Visibility = ViewStates.Gone;
+                }
+            })
+            .DisposeWith(_disposables);
 
         // Bind profile properties
         _mainViewModel.WhenAnyValue(x => x.MyNpub)

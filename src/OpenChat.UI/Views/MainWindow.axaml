@@ -5,6 +5,7 @@
         xmlns:vm="using:OpenChat.Presentation.ViewModels"
         xmlns:views="using:OpenChat.UI.Views"
         xmlns:asyncImageLoader="using:AsyncImageLoader"
+        xmlns:converters="using:OpenChat.UI.Converters"
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
         x:Class="OpenChat.UI.Views.MainWindow"
         x:DataType="vm:ShellViewModel"
@@ -17,6 +18,10 @@
         ExtendClientAreaTitleBarHeightHint="38"
         TransparencyLevelHint="Transparent"
         Background="Transparent">
+
+    <Window.Resources>
+        <converters:PngBytesToBitmapConverter x:Key="PngBytesToBitmapConverter" />
+    </Window.Resources>
 
     <!-- Design-time DataContext disabled (ShellViewModel requires runtime services) -->
 
@@ -340,6 +345,14 @@
 
                     <!-- Public Key Section -->
                     <StackPanel Spacing="8">
+                        <!-- QR Code -->
+                        <Border Background="White" CornerRadius="8" Padding="8"
+                                HorizontalAlignment="Center"
+                                IsVisible="{Binding MyNpubQrPngBytes, Converter={x:Static ObjectConverters.IsNotNull}}">
+                            <Image Source="{Binding MyNpubQrPngBytes, Converter={StaticResource PngBytesToBitmapConverter}}"
+                                   Width="200" Height="200"
+                                   Stretch="Uniform" />
+                        </Border>
                         <TextBlock Text="Your Public Key (npub)"
                                    Classes="secondary" FontSize="13" FontWeight="SemiBold" />
                         <Border Background="{DynamicResource SurfaceSecondaryBrush}"
