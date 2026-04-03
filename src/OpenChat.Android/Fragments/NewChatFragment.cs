@@ -125,11 +125,17 @@ public class NewChatFragment : Fragment
             {
                 var (invalid, error) = t;
                 if (!string.IsNullOrEmpty(error))
-                    pubKeyLayout?.SetError(error);
+                {
+                    if (pubKeyLayout != null) pubKeyLayout.Error = error;
+                }
                 else if (invalid)
-                    pubKeyLayout?.SetError("Invalid npub format");
+                {
+                    if (pubKeyLayout != null) pubKeyLayout.Error = "Invalid npub format";
+                }
                 else
-                    pubKeyLayout?.SetError(null);
+                {
+                    if (pubKeyLayout != null) pubKeyLayout.Error = null;
+                }
             })
             .DisposeWith(_disposables);
 
