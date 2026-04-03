@@ -354,9 +354,11 @@ public class ManagedMlsService : IMlsService
                 _logger.LogInformation("ProcessWelcome: matched stored KeyPackage {Index}/{Total}",
                     i + 1, _storedKeyPackages.Count);
 
-                // Remove the used KeyPackage — each can only be used once
-                _storedKeyPackages.RemoveAt(i);
-                await SaveServiceStateAsync();
+                // Retain the KeyPackage — MIP-00 mandates last_resort (0x000a) extension,
+                // meaning the init key is kept so multiple senders can use the same KP.
+                // The KP should be rotated (new KP published, old key material deleted)
+                // after a successful accept, but NOT removed immediately.
+                _logger.LogInformation("ProcessWelcome: KeyPackage retained (last_resort per MIP-00), rotation recommended");
                 await SaveGroupStateAsync(preview.GroupId);
 
                 return new MlsGroupInfo
