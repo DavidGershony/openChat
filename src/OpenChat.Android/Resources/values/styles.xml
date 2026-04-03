@@ -85,6 +85,12 @@
         <item name="android:windowBackground">#FF0D0815</item>
     </style>
 
+    <!-- Circular image clipping for avatars -->
+    <style name="CircleImageView" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">50%</item>
+    </style>
+
     <!-- Monochrome -->
     <style name="AppTheme.Monochrome" parent="Theme.Material3.Dark.NoActionBar">
         <item name="colorPrimary">#FFA0A0A0</item>

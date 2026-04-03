@@ -12,7 +12,7 @@
         android:layout_width="48dp"
         android:layout_height="48dp">
 
-        <!-- Text fallback (initial letter, BOT, etc.) -->
+        <!-- Text fallback (initial letter, bot emoji, etc.) -->
         <TextView
             android:id="@+id/chat_avatar"
             android:layout_width="48dp"
@@ -20,15 +20,17 @@
             android:gravity="center"
             android:textSize="20sp"
             android:textColor="@color/on_primary"
-            android:background="?attr/colorPrimary"
+            android:background="@drawable/avatar_background"
             android:text="?" />
 
-        <!-- Cached avatar image (shown when available) -->
-        <ImageView
+        <!-- Cached avatar image (shown when available, clipped to circle) -->
+        <com.google.android.material.imageview.ShapeableImageView
+            xmlns:app="http://schemas.android.com/apk/res-auto"
             android:id="@+id/chat_avatar_image"
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:scaleType="centerCrop"
+            app:shapeAppearanceOverlay="@style/CircleImageView"
             android:visibility="gone" />
     </FrameLayout>
 

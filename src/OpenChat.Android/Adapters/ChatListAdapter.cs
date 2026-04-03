@@ -2,6 +2,7 @@ using Android.Graphics;
 using Android.Views;
 using Android.Widget;
 using AndroidX.RecyclerView.Widget;
+using Google.Android.Material.ImageView;
 using OpenChat.Presentation.ViewModels;
 
 namespace OpenChat.Android.Adapters;
@@ -42,7 +43,7 @@ public class ChatListAdapter : RecyclerView.Adapter
     private class ChatViewHolder : RecyclerView.ViewHolder
     {
         private readonly TextView _avatar;
-        private readonly ImageView _avatarImage;
+        private readonly ShapeableImageView _avatarImage;
         private readonly TextView _name;
         private readonly TextView _lastMessage;
         private readonly TextView _timestamp;
@@ -51,7 +52,7 @@ public class ChatListAdapter : RecyclerView.Adapter
         public ChatViewHolder(View itemView) : base(itemView)
         {
             _avatar = itemView.FindViewById<TextView>(Resource.Id.chat_avatar)!;
-            _avatarImage = itemView.FindViewById<ImageView>(Resource.Id.chat_avatar_image)!;
+            _avatarImage = itemView.FindViewById<ShapeableImageView>(Resource.Id.chat_avatar_image)!;
             _name = itemView.FindViewById<TextView>(Resource.Id.chat_name)!;
             _lastMessage = itemView.FindViewById<TextView>(Resource.Id.chat_last_message)!;
             _timestamp = itemView.FindViewById<TextView>(Resource.Id.chat_timestamp)!;
@@ -105,14 +106,16 @@ public class ChatListAdapter : RecyclerView.Adapter
 
             if (item.IsBot)
             {
-                _avatar.Text = "BOT";
-                _avatar.SetTextSize(global::Android.Util.ComplexUnitType.Sp, 14);
+                _avatar.Text = "🤖";
+                _avatar.SetTextSize(global::Android.Util.ComplexUnitType.Sp, 30);
+                _avatar.SetBackgroundColor(global::Android.Graphics.Color.Transparent);
             }
             else
             {
                 var initial = string.IsNullOrEmpty(item.Name) ? "?" : item.Name[..1].ToUpper();
                 _avatar.Text = initial;
                 _avatar.SetTextSize(global::Android.Util.ComplexUnitType.Sp, 20);
+                _avatar.SetBackgroundResource(Resource.Drawable.avatar_background);
             }
         }
 

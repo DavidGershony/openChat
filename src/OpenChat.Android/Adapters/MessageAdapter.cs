@@ -1,6 +1,7 @@
 using Android.Graphics;
 using Android.Views;
 using Android.Widget;
+using AndroidX.Core.Content;
 using AndroidX.RecyclerView.Widget;
 using Google.Android.Material.Button;
 using OpenChat.Presentation.ViewModels;
@@ -151,7 +152,7 @@ public class MessageAdapter : RecyclerView.Adapter
         {
             // File downloaded
             mediaStatus.Text = $"{item.ImageDisplayText}\nDownloaded";
-            mediaStatus.SetTextColor(global::Android.Graphics.Color.ParseColor("#FF10B981"));
+            mediaStatus.SetTextColor(new global::Android.Graphics.Color(ContextCompat.GetColor(itemView.Context!, Resource.Color.status_success)));
             mediaStatus.Visibility = ViewStates.Visible;
             loadButton.Visibility = ViewStates.Gone;
             mediaImage.Visibility = ViewStates.Gone;
@@ -170,7 +171,7 @@ public class MessageAdapter : RecyclerView.Adapter
         else if (!string.IsNullOrEmpty(item.MediaError))
         {
             mediaStatus.Text = item.MediaError;
-            mediaStatus.SetTextColor(global::Android.Graphics.Color.ParseColor("#FFEF4444"));
+            mediaStatus.SetTextColor(new global::Android.Graphics.Color(ContextCompat.GetColor(itemView.Context!, Resource.Color.status_error)));
             mediaStatus.Visibility = ViewStates.Visible;
             loadButton.Visibility = ViewStates.Gone;
             mediaImage.Visibility = ViewStates.Gone;

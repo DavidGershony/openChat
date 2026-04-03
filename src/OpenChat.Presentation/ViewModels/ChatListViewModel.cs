@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
+using System.Net.Http;
 using System.Reactive;
+using System.Reactive.Concurrency;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using Microsoft.Extensions.Logging;
@@ -19,6 +21,7 @@ public class ChatListViewModel : ViewModelBase
     private readonly IMlsService? _mlsService;
     private readonly INostrService? _nostrService;
     private string? _currentUserPubKeyHex;
+    private static readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(15) };
     private IDisposable? _chatUpdateSubscription;
     private IDisposable? _inviteSubscription;
     private IDisposable? _decryptionErrorSubscription;
@@ -400,10 +403,88 @@ public class ChatListViewModel : ViewModelBase
                 PendingInvites.Add(new PendingInviteItemViewModel(invite));
             }
             PendingInviteCount = PendingInvites.Count;
+
+            // Kick off background avatar refresh for DM chats missing profile images
+            _ = Task.Run(() => RefreshAvatarsAsync());
         }
         finally
         {
             IsLoading = false;
+        }
+    }
+
+    private async Task RefreshAvatarsAsync()
+    {
+        if (_nostrService == null || _currentUserPubKeyHex == null) return;
+
+        var avatarCacheDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "OpenChat", "avatars");
+        Directory.CreateDirectory(avatarCacheDir);
+
+        // Collect DM/bot chats that need avatar refresh
+        var chatsToRefresh = Chats
+            .Where(c => !c.IsGroup && string.IsNullOrEmpty(c.LocalAvatarPath))
+            .ToList();
+
+        foreach (var chatItem in chatsToRefresh)
+        {
+            try
+            {
+                var otherPubKey = chatItem.Chat.ParticipantPublicKeys
+                    .FirstOrDefault(p => p != _currentUserPubKeyHex);
+                if (otherPubKey == null) continue;
+
+                // Check if user already has a cached avatar we missed
+                var existingUser = await _storageService.GetUserByPublicKeyAsync(otherPubKey);
+                if (existingUser?.LocalAvatarPath != null && File.Exists(existingUser.LocalAvatarPath))
+                {
+                    RxApp.MainThreadScheduler.Schedule(() => chatItem.LocalAvatarPath = existingUser.LocalAvatarPath);
+                    continue;
+                }
+
+                // Fetch kind 0 metadata from relays
+                var metadata = await _nostrService.FetchUserMetadataAsync(otherPubKey);
+                if (string.IsNullOrEmpty(metadata?.Picture)) continue;
+
+                // Download the avatar image (max 2 MB)
+                var imageBytes = await _httpClient.GetByteArrayAsync(metadata.Picture);
+                if (imageBytes.Length > 2 * 1024 * 1024)
+                {
+                    _logger.LogWarning("Avatar too large for {PubKey}: {Size} bytes", otherPubKey[..16], imageBytes.Length);
+                    continue;
+                }
+
+                // Determine file extension from URL or default to .jpg
+                var ext = ".jpg";
+                var uri = new Uri(metadata.Picture);
+                var urlPath = uri.AbsolutePath;
+                if (urlPath.EndsWith(".png", StringComparison.OrdinalIgnoreCase)) ext = ".png";
+                else if (urlPath.EndsWith(".webp", StringComparison.OrdinalIgnoreCase)) ext = ".webp";
+                else if (urlPath.EndsWith(".gif", StringComparison.OrdinalIgnoreCase)) ext = ".gif";
+
+                var localPath = Path.Combine(avatarCacheDir, $"{otherPubKey[..16]}{ext}");
+                await File.WriteAllBytesAsync(localPath, imageBytes);
+
+                // Update user record in DB
+                if (existingUser != null)
+                {
+                    existingUser.AvatarUrl = metadata.Picture;
+                    existingUser.LocalAvatarPath = localPath;
+                    existingUser.DisplayName = metadata.GetDisplayName();
+                    existingUser.LastUpdatedAt = DateTime.UtcNow;
+                    await _storageService.SaveUserAsync(existingUser);
+                }
+
+                // Update the chat item on the UI thread
+                RxApp.MainThreadScheduler.Schedule(() => chatItem.LocalAvatarPath = localPath);
+
+                _logger.LogInformation("Avatar cached for {PubKey}: {Path}", otherPubKey[..16], localPath);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to refresh avatar for chat {ChatId}", chatItem.Id[..Math.Min(8, chatItem.Id.Length)]);
+            }
         }
     }
 

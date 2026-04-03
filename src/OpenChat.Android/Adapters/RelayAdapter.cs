@@ -1,4 +1,6 @@
 using Android.Views;
+using Android.Widget;
+using AndroidX.Core.Content;
 using AndroidX.RecyclerView.Widget;
 using OpenChat.Presentation.ViewModels;
 
@@ -51,9 +53,8 @@ public class RelayAdapter : RecyclerView.Adapter
         public void Bind(RelayViewModel item)
         {
             _url.Text = item.Url;
-            _statusDot.SetBackgroundColor(item.IsConnected
-                ? global::Android.Graphics.Color.ParseColor("#FF10B981")   // success green
-                : global::Android.Graphics.Color.ParseColor("#FFEF4444")); // error red
+            var colorRes = item.IsConnected ? Resource.Color.status_success : Resource.Color.status_error;
+            _statusDot.SetBackgroundColor(new global::Android.Graphics.Color(ContextCompat.GetColor(ItemView.Context!, colorRes)));
         }
     }
 }

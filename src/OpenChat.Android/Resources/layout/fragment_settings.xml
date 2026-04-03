@@ -365,7 +365,7 @@
                         android:layout_height="wrap_content"
                         android:text="Risk: Medium — Enabling media loading exposes your IP to hosting servers and increases attack surface. Only enable if you trust your group members."
                         android:textSize="11sp"
-                        android:textColor="#FF8800"
+                        android:textColor="@color/status_warning"
                         android:layout_marginTop="4dp" />
 
                     <TextView
@@ -373,7 +373,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:textSize="12sp"
-                        android:textColor="#FFEF4444"
+                        android:textColor="@color/status_error"
                         android:fontFamily="monospace"
                         android:layout_marginTop="4dp"
                         android:visibility="gone" />
@@ -530,7 +530,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="48dp"
                 android:text="Log Out"
-                android:textColor="#FFFFFFFF"
+                android:textColor="?attr/colorOnPrimary"
                 android:layout_marginTop="16dp"
                 android:layout_marginBottom="16dp"
                 app:backgroundTint="@color/status_error" />
