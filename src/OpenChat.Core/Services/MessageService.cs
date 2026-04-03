@@ -1110,7 +1110,23 @@ public class MessageService : IMessageService, IDisposable
         // Process MLS welcome — pass both welcome data and the kind-444 wrapper event ID
         _logger.LogInformation("AcceptInvite: processing welcome with wrapperEventId={EventId}",
             invite.NostrEventId[..Math.Min(16, invite.NostrEventId.Length)]);
-        var groupInfo = await _mlsService.ProcessWelcomeAsync(invite.WelcomeData, invite.NostrEventId);
+
+        MlsGroupInfo groupInfo;
+        try
+        {
+            groupInfo = await _mlsService.ProcessWelcomeAsync(invite.WelcomeData, invite.NostrEventId);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("KeyPackage"))
+        {
+            // The private key material for the targeted KeyPackage is lost — this invite
+            // can never be accepted on this device. Auto-dismiss so it doesn't stay stuck.
+            _logger.LogWarning(ex, "AcceptInvite: KeyPackage mismatch for invite {InviteId}, auto-dismissing", inviteId);
+            await _storageService.DismissWelcomeEventAsync(invite.NostrEventId);
+            await _storageService.DeletePendingInviteAsync(inviteId);
+            throw new InvalidOperationException(
+                "This invite targets a KeyPackage whose private key is no longer available. " +
+                "The invite has been dismissed. Ask the sender to create a new invite.", ex);
+        }
 
         // Create chat for the group — fall back to sender name if the MLS Welcome
         // didn't carry a group name (e.g., Rust-originated or older welcomes)
