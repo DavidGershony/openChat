@@ -158,6 +158,43 @@ public class ChatFragment : Fragment
             ViewModel.AttachFileCommand.Execute().Subscribe().DisposeWith(_disposables);
         };
 
+        // Reply preview bar
+        var replyPreview = view.FindViewById<LinearLayout>(Resource.Id.reply_preview)!;
+        var replyPreviewSender = view.FindViewById<TextView>(Resource.Id.reply_preview_sender)!;
+        var replyPreviewContent = view.FindViewById<TextView>(Resource.Id.reply_preview_content)!;
+        var cancelReplyButton = view.FindViewById<ImageButton>(Resource.Id.cancel_reply_button)!;
+
+        cancelReplyButton.Click += (s, e) =>
+        {
+            ViewModel.CancelReplyCommand.Execute().Subscribe().DisposeWith(_disposables);
+        };
+
+        // Wire up reply from long-press menu
+        MessageAdapter.OnReplyRequested = msgVm =>
+        {
+            ViewModel.SetReplyTo(msgVm.Message);
+            messageInput.RequestFocus();
+        };
+
+        // Bind reply preview visibility
+        ViewModel.WhenAnyValue(x => x.ReplyingToMessage)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(msg =>
+            {
+                replyPreview.Visibility = msg != null ? ViewStates.Visible : ViewStates.Gone;
+            })
+            .DisposeWith(_disposables);
+
+        ViewModel.WhenAnyValue(x => x.ReplyPreviewSender)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(sender => replyPreviewSender.Text = sender ?? "")
+            .DisposeWith(_disposables);
+
+        ViewModel.WhenAnyValue(x => x.ReplyPreviewText)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(text => replyPreviewContent.Text = text ?? "")
+            .DisposeWith(_disposables);
+
         // Send button
         sendButton.Click += (s, e) =>
         {

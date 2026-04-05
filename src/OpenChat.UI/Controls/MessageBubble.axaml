@@ -25,6 +25,21 @@
                            FontSize="12" FontWeight="SemiBold"
                            IsVisible="{Binding IsFirstInGroup}" />
 
+                <!-- Reply quote -->
+                <Border IsVisible="{Binding HasReplyTo}"
+                        BorderBrush="{DynamicResource NostrPurpleBrush}" BorderThickness="2,0,0,0"
+                        Padding="8,4" Margin="0,2" Background="{DynamicResource SurfaceSecondaryBrush}"
+                        CornerRadius="0,4,4,0">
+                    <StackPanel Spacing="1">
+                        <TextBlock Text="{Binding ReplyToSenderName}"
+                                   Foreground="{DynamicResource NostrPurpleLightBrush}"
+                                   FontSize="11" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding ReplyToContent}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="12" TextTrimming="CharacterEllipsis" MaxLines="2" />
+                    </StackPanel>
+                </Border>
+
                 <!-- Image Media Widget (for image messages) -->
                 <Border IsVisible="{Binding IsImage}"
                         CornerRadius="8" Margin="0,2" ClipToBounds="True">
@@ -251,10 +266,14 @@
                            TextWrapping="Wrap" FontSize="14"
                            IsVisible="{Binding IsTextMessage}" />
 
-                <!-- Emoji reaction picker (hover) -->
+                <!-- Emoji reaction picker + reply (hover) -->
                 <StackPanel Orientation="Horizontal" Spacing="2"
                             IsVisible="{Binding IsHovering}"
                             HorizontalAlignment="Right" Margin="0,2,0,0">
+                    <Button Content="↩" Classes="icon" Padding="4,2" FontSize="14"
+                            ToolTip.Tip="Reply"
+                            Tag="{Binding}"
+                            Click="OnReplyClick" />
                     <Button Content="👍" Classes="icon" Padding="4,2" FontSize="14"
                             Command="{Binding ReactCommand}" CommandParameter="👍" />
                     <Button Content="❤️" Classes="icon" Padding="4,2" FontSize="14"
@@ -293,6 +312,21 @@
                 BorderThickness="1.5"
                 CornerRadius="16,16,4,16" Padding="12,8">
             <StackPanel Spacing="4">
+
+                <!-- Reply quote -->
+                <Border IsVisible="{Binding HasReplyTo}"
+                        BorderBrush="{DynamicResource NostrPurpleBrush}" BorderThickness="2,0,0,0"
+                        Padding="8,4" Margin="0,2" Background="{DynamicResource SurfaceSecondaryBrush}"
+                        CornerRadius="0,4,4,0" Opacity="0.8">
+                    <StackPanel Spacing="1">
+                        <TextBlock Text="{Binding ReplyToSenderName}"
+                                   Foreground="{DynamicResource NostrPurpleLightBrush}"
+                                   FontSize="11" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding ReplyToContent}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="12" TextTrimming="CharacterEllipsis" MaxLines="2" />
+                    </StackPanel>
+                </Border>
 
                 <!-- Image Media Widget (for image messages) -->
                 <Border IsVisible="{Binding IsImage}"
@@ -496,10 +530,14 @@
                            TextWrapping="Wrap" FontSize="14"
                            IsVisible="{Binding IsTextMessage}" />
 
-                <!-- Emoji reaction picker (hover) -->
+                <!-- Emoji reaction picker + reply (hover) -->
                 <StackPanel Orientation="Horizontal" Spacing="2"
                             IsVisible="{Binding IsHovering}"
                             HorizontalAlignment="Right" Margin="0,2,0,0">
+                    <Button Content="↩" Classes="icon" Padding="4,2" FontSize="14"
+                            ToolTip.Tip="Reply"
+                            Tag="{Binding}"
+                            Click="OnReplyClick" />
                     <Button Content="👍" Classes="icon" Padding="4,2" FontSize="14"
                             Command="{Binding ReactCommand}" CommandParameter="👍" />
                     <Button Content="❤️" Classes="icon" Padding="4,2" FontSize="14"

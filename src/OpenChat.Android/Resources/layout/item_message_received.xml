@@ -30,6 +30,43 @@
                 android:textStyle="bold"
                 android:textColor="?attr/colorPrimary" />
 
+            <!-- Reply quote -->
+            <LinearLayout
+                android:id="@+id/reply_quote"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="?attr/colorSurfaceVariant"
+                android:paddingStart="10dp"
+                android:paddingEnd="8dp"
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp"
+                android:layout_marginBottom="4dp"
+                android:visibility="gone">
+
+                <View
+                    android:layout_width="2dp"
+                    android:layout_height="match_parent"
+                    android:background="?attr/colorPrimary" />
+
+                <TextView
+                    android:id="@+id/reply_sender"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:textColor="?attr/colorPrimary" />
+
+                <TextView
+                    android:id="@+id/reply_content"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textSize="12sp"
+                    android:textColor="@color/text_muted"
+                    android:maxLines="2"
+                    android:ellipsize="end" />
+            </LinearLayout>
+
             <!-- MIP-04 media placeholder -->
             <TextView
                 android:id="@+id/media_status"

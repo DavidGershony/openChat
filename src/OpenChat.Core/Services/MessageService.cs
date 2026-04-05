@@ -385,10 +385,93 @@ public class MessageService : IMessageService, IDisposable
 
     public async Task<Message> SendReplyAsync(string chatId, string content, string replyToMessageId)
     {
-        var message = await SendMessageAsync(chatId, content);
-        message.ReplyToMessageId = replyToMessageId;
-        message.ReplyToMessage = await _storageService.GetMessageAsync(replyToMessageId);
+        if (_currentUser == null)
+            throw new InvalidOperationException("User not logged in");
+
+        var chat = await _storageService.GetChatAsync(chatId)
+            ?? throw new ArgumentException("Chat not found", nameof(chatId));
+
+        var replyToMessage = await _storageService.GetMessageAsync(replyToMessageId);
+
+        var message = new Message
+        {
+            Id = Guid.NewGuid().ToString(),
+            ChatId = chatId,
+            SenderPublicKey = _currentUser.PublicKeyHex,
+            Sender = _currentUser,
+            Type = MessageType.Text,
+            Content = content,
+            Timestamp = DateTime.UtcNow,
+            Status = MessageStatus.Pending,
+            IsFromCurrentUser = true,
+            ReplyToMessageId = replyToMessageId,
+            ReplyToMessage = replyToMessage
+        };
+
         await _storageService.SaveMessageAsync(message);
+        _newMessages.OnNext(message);
+
+        try
+        {
+            if (chat.MlsGroupId != null)
+            {
+                // Build reply "e" tag with "reply" marker per NIP-10.
+                // Use RumorEventId if available (for targeting within MLS), otherwise NostrEventId.
+                var targetEventId = replyToMessage?.RumorEventId ?? replyToMessage?.NostrEventId ?? replyToMessageId;
+                var replyTags = new List<List<string>>
+                {
+                    new() { "e", targetEventId, "", "reply" }
+                };
+
+                _logger.LogInformation("SendReply: encrypting reply to {Target} for group, content length={Len}",
+                    targetEventId[..Math.Min(16, targetEventId.Length)], content.Length);
+
+                var eventJsonBytes = await _mlsService.EncryptMessageAsync(chat.MlsGroupId, content, replyTags);
+                message.RumorEventId = _mlsService.LastEncryptedRumorEventId;
+                message.NostrEventId = await _nostrService.PublishRawEventJsonAsync(eventJsonBytes);
+
+                _logger.LogInformation("SendReply: published kind 445 event {EventId}", message.NostrEventId);
+            }
+            else if (chat.Type == ChatType.Bot)
+            {
+                var botPublicKey = chat.ParticipantPublicKeys
+                    .FirstOrDefault(pk => pk != _currentUser.PublicKeyHex);
+
+                if (!string.IsNullOrEmpty(botPublicKey))
+                {
+                    var targetEventId = replyToMessage?.NostrEventId ?? replyToMessageId;
+                    var rumorTags = new List<List<string>>
+                    {
+                        new() { "p", botPublicKey },
+                        new() { "e", targetEventId, "", "reply" }
+                    };
+
+                    message.NostrEventId = await _nostrService.PublishGiftWrapAsync(
+                        rumorKind: 14,
+                        content: content,
+                        rumorTags: rumorTags,
+                        senderPrivateKeyHex: _currentUser.PrivateKeyHex,
+                        senderPublicKeyHex: _currentUser.PublicKeyHex,
+                        recipientPublicKeyHex: botPublicKey);
+                }
+            }
+
+            message.Status = MessageStatus.Sent;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "SendReply: failed to encrypt/publish reply for chat {ChatId}", chatId);
+            message.Status = MessageStatus.Failed;
+        }
+
+        await _storageService.SaveMessageAsync(message);
+        _messageStatusUpdates.OnNext((message.Id, message.Status));
+
+        chat.LastActivityAt = DateTime.UtcNow;
+        chat.LastMessage = message;
+        await _storageService.SaveChatAsync(chat);
+        _chatUpdates.OnNext(chat);
+
         return message;
     }
 
@@ -1073,6 +1156,24 @@ public class MessageService : IMessageService, IDisposable
             Status = MessageStatus.Delivered,
             IsFromCurrentUser = decrypted.SenderPublicKey == _currentUser?.PublicKeyHex
         };
+
+        // Resolve reply-to reference if present
+        if (!string.IsNullOrEmpty(decrypted.ReplyToRumorEventId))
+        {
+            var replyTarget = await _storageService.GetMessageByRumorEventIdAsync(decrypted.ReplyToRumorEventId)
+                           ?? await _storageService.GetMessageByNostrEventIdAsync(decrypted.ReplyToRumorEventId);
+            if (replyTarget != null)
+            {
+                message.ReplyToMessageId = replyTarget.Id;
+                message.ReplyToMessage = replyTarget;
+                _logger.LogInformation("HandleGroupMessage: resolved reply to message {MessageId}", replyTarget.Id);
+            }
+            else
+            {
+                _logger.LogDebug("HandleGroupMessage: reply target {EventId} not found in local DB",
+                    decrypted.ReplyToRumorEventId[..Math.Min(16, decrypted.ReplyToRumorEventId.Length)]);
+            }
+        }
 
         message.Sender = await _storageService.GetUserByPublicKeyAsync(message.SenderPublicKey);
 

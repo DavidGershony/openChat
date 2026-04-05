@@ -229,6 +229,12 @@ public class MlsDecryptedMessage
     public string? ReactionTargetEventId { get; set; }
 
     /// <summary>
+    /// For reply messages: the rumor event ID of the message being replied to.
+    /// Populated from an "e" tag with "reply" marker in the inner rumor event.
+    /// </summary>
+    public string? ReplyToRumorEventId { get; set; }
+
+    /// <summary>
     /// For reaction events (kind 7): the emoji (e.g. "👍"). NIP-25 "+" maps to 👍, "-" to 👎.
     /// </summary>
     public string? ReactionEmoji { get; set; }

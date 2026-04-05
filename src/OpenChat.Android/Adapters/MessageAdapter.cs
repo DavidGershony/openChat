@@ -239,22 +239,53 @@ public class MessageAdapter : RecyclerView.Adapter
         }));
     }
 
+    /// <summary>
+    /// Callback for when the user taps "Reply" on a message. Set by ChatFragment.
+    /// </summary>
+    public static Action<MessageViewModel>? OnReplyRequested { get; set; }
+
     private static void ShowReactionPicker(View anchor, MessageViewModel item)
     {
         var context = anchor.Context;
         if (context == null) return;
 
         var popup = new AndroidX.AppCompat.Widget.PopupMenu(context, anchor);
+        // Reply option
+        popup.Menu?.Add(0, 100, 0, "\u21a9 Reply");
         for (var i = 0; i < ReactionEmojis.Length; i++)
         {
-            popup.Menu?.Add(0, i, i, ReactionEmojis[i]);
+            popup.Menu?.Add(0, i, i + 1, ReactionEmojis[i]);
         }
         popup.MenuItemClick += (s, e) =>
         {
-            var emoji = ReactionEmojis[e.Item!.ItemId];
+            if (e.Item!.ItemId == 100)
+            {
+                OnReplyRequested?.Invoke(item);
+                return;
+            }
+            var emoji = ReactionEmojis[e.Item.ItemId];
             item.ReactCommand?.Execute(emoji).Subscribe();
         };
         popup.Show();
+    }
+
+    private static void BindReplyQuote(View itemView, MessageViewModel item)
+    {
+        var replyQuote = itemView.FindViewById<LinearLayout>(Resource.Id.reply_quote);
+        if (replyQuote == null) return;
+
+        if (item.HasReplyTo)
+        {
+            replyQuote.Visibility = ViewStates.Visible;
+            var replySender = itemView.FindViewById<TextView>(Resource.Id.reply_sender);
+            var replyContent = itemView.FindViewById<TextView>(Resource.Id.reply_content);
+            if (replySender != null) replySender.Text = item.ReplyToSenderName ?? "";
+            if (replyContent != null) replyContent.Text = item.ReplyToContent ?? "";
+        }
+        else
+        {
+            replyQuote.Visibility = ViewStates.Gone;
+        }
     }
 
     private class SentMessageViewHolder : RecyclerView.ViewHolder
@@ -274,6 +305,7 @@ public class MessageAdapter : RecyclerView.Adapter
             _disposables.Dispose();
             _disposables = new CompositeDisposable();
 
+            BindReplyQuote(ItemView, item);
             BindMediaViews(ItemView, item, _disposables);
             BindReactions(ItemView, item, _disposables);
             _timestamp.Text = item.Timestamp.ToLocalTime().ToString("HH:mm");
@@ -300,6 +332,7 @@ public class MessageAdapter : RecyclerView.Adapter
             _disposables = new CompositeDisposable();
 
             _senderName.Text = item.SenderName;
+            BindReplyQuote(ItemView, item);
             BindMediaViews(ItemView, item, _disposables);
             BindReactions(ItemView, item, _disposables);
             _timestamp.Text = item.Timestamp.ToLocalTime().ToString("HH:mm");

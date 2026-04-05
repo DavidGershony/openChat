@@ -746,6 +746,26 @@ public class StorageService : IStorageService
         return null;
     }
 
+    public async Task<Message?> GetMessageByRumorEventIdAsync(string rumorEventId)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        var command = connection.CreateCommand();
+        command.CommandText = "SELECT * FROM Messages WHERE RumorEventId = @RumorEventId LIMIT 1";
+        command.Parameters.AddWithValue("@RumorEventId", rumorEventId);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            var message = ReadMessage(reader);
+            message.Reactions = await GetMessageReactionsAsync(connection, message.Id);
+            return message;
+        }
+
+        return null;
+    }
+
     public async Task<KeyPackage?> GetKeyPackageAsync(string id)
     {
         await using var connection = new SqliteConnection(_connectionString);

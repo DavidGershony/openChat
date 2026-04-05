@@ -529,6 +529,7 @@ public class ManagedMlsService : IMlsService
             string? rumorEventId = null;
             string? reactionTargetEventId = null;
             string? reactionEmoji = null;
+            string? replyToRumorEventId = null;
 
             if (plaintext.Length > 0 && plaintext[0] == '{')
             {
@@ -564,10 +565,18 @@ public class ManagedMlsService : IMlsService
                             if (tag.GetArrayLength() < 2) continue;
                             var tagName = tag[0].GetString();
 
-                            // Parse "e" tags for reaction target
+                            // Parse "e" tags — check for marker to distinguish replies from reactions
                             if (tagName == "e")
                             {
-                                reactionTargetEventId = tag[1].GetString();
+                                var marker = tag.GetArrayLength() >= 4 ? tag[3].GetString() : null;
+                                if (marker == "reply")
+                                {
+                                    replyToRumorEventId = tag[1].GetString();
+                                }
+                                else
+                                {
+                                    reactionTargetEventId = tag[1].GetString();
+                                }
                             }
 
                             // Parse imeta tags for image metadata (MIP-04)
@@ -649,7 +658,8 @@ public class ManagedMlsService : IMlsService
                 RumorEventId = rumorEventId,
                 RumorKind = rumorKind,
                 ReactionTargetEventId = reactionTargetEventId,
-                ReactionEmoji = reactionEmoji
+                ReactionEmoji = reactionEmoji,
+                ReplyToRumorEventId = replyToRumorEventId
             };
         }
 

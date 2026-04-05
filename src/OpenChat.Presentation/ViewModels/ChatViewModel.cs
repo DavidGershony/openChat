@@ -101,6 +101,12 @@ public class ChatViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> CancelRecordingCommand { get; }
     public ReactiveCommand<Unit, Unit> AttachFileCommand { get; }
 
+    // Reply state
+    [Reactive] public Message? ReplyingToMessage { get; set; }
+    [Reactive] public string? ReplyPreviewText { get; set; }
+    [Reactive] public string? ReplyPreviewSender { get; set; }
+    public ReactiveCommand<Unit, Unit> CancelReplyCommand { get; }
+
     // Sending image state
     [Reactive] public bool IsSendingImage { get; set; }
 
@@ -228,6 +234,14 @@ public class ChatViewModel : ViewModelBase
             x => x.IsMip04Enabled,
             (hasChat, sending, mip04) => hasChat && !sending && mip04);
         AttachFileCommand = ReactiveCommand.CreateFromTask(AttachAndSendFileAsync, canAttach);
+
+        // Reply commands
+        CancelReplyCommand = ReactiveCommand.Create(() =>
+        {
+            ReplyingToMessage = null;
+            ReplyPreviewText = null;
+            ReplyPreviewSender = null;
+        });
 
         // Log errors from media commands (ReactiveCommand swallows exceptions by default)
         ToggleRecordingCommand.ThrownExceptions.Subscribe(ex =>
@@ -634,6 +648,14 @@ public class ChatViewModel : ViewModelBase
         }
     }
 
+    public void SetReplyTo(Message message)
+    {
+        ReplyingToMessage = message;
+        ReplyPreviewText = message.Content?.Length > 100 ? message.Content[..100] + "..." : message.Content;
+        ReplyPreviewSender = message.Sender?.DisplayName ?? message.SenderPublicKey[..Math.Min(12, message.SenderPublicKey.Length)] + "...";
+        _logger.LogDebug("Reply set to message {MessageId} from {Sender}", message.Id, ReplyPreviewSender);
+    }
+
     private async Task SendMessageAsync()
     {
         if (ChatId == null || string.IsNullOrWhiteSpace(MessageText)) return;
@@ -643,9 +665,20 @@ public class ChatViewModel : ViewModelBase
         try
         {
             var text = MessageText;
+            var replyTo = ReplyingToMessage;
             MessageText = string.Empty;
+            ReplyingToMessage = null;
+            ReplyPreviewText = null;
+            ReplyPreviewSender = null;
 
-            await _messageService.SendMessageAsync(ChatId, text);
+            if (replyTo != null)
+            {
+                await _messageService.SendReplyAsync(ChatId, text, replyTo.Id);
+            }
+            else
+            {
+                await _messageService.SendMessageAsync(ChatId, text);
+            }
         }
         finally
         {
@@ -1035,6 +1068,11 @@ public class MessageViewModel : ViewModelBase
     [Reactive] public bool HasReactions { get; set; }
     [Reactive] public bool IsHovering { get; set; }
 
+    // Reply display
+    public bool HasReplyTo { get; }
+    public string? ReplyToSenderName { get; }
+    public string? ReplyToContent { get; }
+
     public ReactiveCommand<string, Unit> ReactCommand { get; }
     public ReactiveCommand<Unit, Unit> LoadMediaCommand { get; }
     public ReactiveCommand<Unit, Unit> ToggleAudioCommand { get; }
@@ -1062,6 +1100,15 @@ public class MessageViewModel : ViewModelBase
         Timestamp = message.Timestamp;
         IsFromCurrentUser = message.IsFromCurrentUser;
         Status = message.Status;
+
+        // Reply display
+        HasReplyTo = message.ReplyToMessage != null;
+        if (HasReplyTo)
+        {
+            var reply = message.ReplyToMessage!;
+            ReplyToSenderName = reply.Sender?.GetDisplayNameOrNpub() ?? reply.SenderPublicKey[..Math.Min(12, reply.SenderPublicKey.Length)] + "...";
+            ReplyToContent = reply.Content?.Length > 80 ? reply.Content[..80] + "..." : reply.Content;
+        }
 
         IsImage = message.Type == MessageType.Image;
         IsAudio = message.Type == MessageType.Audio;

@@ -32,6 +32,24 @@ public partial class MessageBubble : UserControl
             vm.IsHovering = false;
     }
 
+    private void OnReplyClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.Tag is MessageViewModel msgVm)
+        {
+            // Walk up the visual tree to find the ChatView's DataContext (ChatViewModel)
+            var parent = this.Parent;
+            while (parent != null)
+            {
+                if (parent.DataContext is ChatViewModel chatVm)
+                {
+                    chatVm.SetReplyTo(msgVm.Message);
+                    break;
+                }
+                parent = (parent as Control)?.Parent;
+            }
+        }
+    }
+
     private void AudioSlider_PointerPressed(object? sender, RoutedEventArgs e)
     {
         if (DataContext is MessageViewModel vm)
