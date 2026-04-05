@@ -1128,6 +1128,22 @@ public class MessageService : IMessageService, IDisposable
                 "The invite has been dismissed. Ask the sender to create a new invite.", ex);
         }
 
+        // Check if we already have a chat for this MLS group (prevents duplicate chats)
+        var groupIdHex = Convert.ToHexString(groupInfo.GroupId).ToLowerInvariant();
+        var existingChats = await _storageService.GetAllChatsAsync();
+        var existingChat = existingChats.FirstOrDefault(c =>
+            c.MlsGroupId != null &&
+            Convert.ToHexString(c.MlsGroupId).Equals(groupIdHex, StringComparison.OrdinalIgnoreCase));
+
+        if (existingChat != null)
+        {
+            _logger.LogInformation("Chat already exists for group {GroupId}, returning existing chat {ChatId}",
+                groupIdHex[..Math.Min(16, groupIdHex.Length)], existingChat.Id);
+            await _storageService.DismissWelcomeEventAsync(invite.NostrEventId);
+            await _storageService.DeletePendingInviteAsync(inviteId);
+            return existingChat;
+        }
+
         // Create chat for the group — fall back to sender name if the MLS Welcome
         // didn't carry a group name (e.g., Rust-originated or older welcomes)
         var chatName = !string.IsNullOrWhiteSpace(groupInfo.GroupName)
