@@ -1177,8 +1177,58 @@ public class MessageService : IMessageService, IDisposable
         await _storageService.DeletePendingInviteAsync(inviteId);
         _chatUpdates.OnNext(chat);
 
+        // Mark the consumed KeyPackage as used so future senders don't reuse it
+        if (!string.IsNullOrEmpty(invite.KeyPackageEventId))
+        {
+            var consumedKp = await _storageService.GetKeyPackageByNostrEventIdAsync(invite.KeyPackageEventId);
+            if (consumedKp != null)
+            {
+                await _storageService.MarkKeyPackageUsedAsync(consumedKp.Id);
+                _logger.LogInformation("AcceptInvite: marked KeyPackage {KpId} as used (event {EventId})",
+                    consumedKp.Id, invite.KeyPackageEventId[..Math.Min(16, invite.KeyPackageEventId.Length)]);
+
+                // Auto-publish a new KeyPackage if this was the last unused one
+                _ = AutoPublishKeyPackageIfNeededAsync();
+            }
+            else
+            {
+                _logger.LogDebug("AcceptInvite: KeyPackage with event ID {EventId} not found in local DB, skipping mark-as-used",
+                    invite.KeyPackageEventId[..Math.Min(16, invite.KeyPackageEventId.Length)]);
+            }
+        }
+
         _logger.LogInformation("Accepted invite {InviteId}, created chat {ChatId} for group {GroupName}", inviteId, chat.Id, chat.Name);
         return chat;
+    }
+
+    private async Task AutoPublishKeyPackageIfNeededAsync()
+    {
+        try
+        {
+            if (_currentUser == null || string.IsNullOrEmpty(_currentUser.PublicKeyHex))
+                return;
+
+            var remaining = await _storageService.GetUnusedKeyPackagesAsync(_currentUser.PublicKeyHex);
+            if (remaining.Any())
+            {
+                _logger.LogDebug("AutoPublishKP: {Count} unused KeyPackages remaining, no action needed", remaining.Count());
+                return;
+            }
+
+            _logger.LogInformation("AutoPublishKP: no unused KeyPackages remaining, generating and publishing a new one");
+
+            var keyPackage = await _mlsService.GenerateKeyPackageAsync();
+            var eventId = await _nostrService.PublishKeyPackageAsync(
+                keyPackage.Data, _currentUser.PrivateKeyHex, keyPackage.NostrTags);
+            keyPackage.NostrEventId = eventId;
+            await _storageService.SaveKeyPackageAsync(keyPackage);
+
+            _logger.LogInformation("AutoPublishKP: published new KeyPackage {EventId}", eventId[..Math.Min(16, eventId.Length)]);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "AutoPublishKP: failed to auto-publish new KeyPackage");
+        }
     }
 
     public async Task DeclineInviteAsync(string inviteId)

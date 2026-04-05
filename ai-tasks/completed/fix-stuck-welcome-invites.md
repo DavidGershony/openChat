@@ -1,6 +1,6 @@
 # Fix stuck Welcome invites after KeyPackage rotation
 
-## Status: In Progress
+## Status: Completed
 
 ## Root Cause (from log analysis)
 
@@ -19,11 +19,12 @@
 In `AcceptInviteAsync`, catch "KeyPackage" mismatch and auto-dismiss the invite.
 - File: `src/OpenChat.Core/Services/MessageService.cs`
 
-### Fix 2: Track consumed KeyPackage event IDs in DB (TODO)
-The sender should not use a KP that was already consumed by a previous invite. Need to:
-- Store consumed KP Nostr event IDs in the DB (persist even if the chat is deleted)
-- When the sender fetches KPs for a recipient, exclude already-consumed ones
-- This prevents the sender from creating multiple groups with the same single-use KP
+### Fix 2: Mark consumed KeyPackage as used in DB (DONE)
+After `AcceptInviteAsync` succeeds, the consumed KP (identified via `PendingInvite.KeyPackageEventId`) is
+marked as used via `MarkKeyPackageUsedAsync`. This prevents reuse and allows audit tracking.
+- File: `src/OpenChat.Core/Services/MessageService.cs`
 
-### Fix 3: Auto-publish new KP when last one is consumed (TODO)
-When `ProcessWelcomeAsync` consumes the last stored KP, automatically generate and publish a new one so the user is always invitable.
+### Fix 3: Auto-publish new KP when last one is consumed (DONE)
+After marking a KP as used, `AutoPublishKeyPackageIfNeededAsync` checks remaining unused KPs.
+If zero remain, it auto-generates and publishes a new one so the user stays invitable.
+- File: `src/OpenChat.Core/Services/MessageService.cs`
