@@ -1,6 +1,6 @@
 # Real-time messages not appearing until app restart
 
-## Status: Open
+## Status: Fixed
 
 ## Symptom
 
@@ -58,6 +58,21 @@ In `Mdk.cs` `ProcessMessageAsync`, incoming kind 445 events are now parsed as `P
 - `src/OpenChat.Core/Services/MessageService.cs` — `HandleGroupMessage`, `OnNostrEventReceived`, message dedup logic
 - `src/OpenChat.Core/Services/NostrService.cs` — group subscription setup, `since` filter, event routing
 - `src/OpenChat.Presentation/ViewModels/ChatViewModel.cs` — message list observable binding
+
+## Root cause (found)
+
+The external signer session restoration during `InitializeAfterLoginAsync` emits an `ExternalSignerState.Connected` status. `LoginViewModel` subscribes to signer status changes and auto-sets `LoggedInUser` when connected. This triggers `ShellViewModel.OnLoginCompleted`, which calls `ActivateSession` a **second time**.
+
+The second `ActivateSession` creates a new `MessageService` (service2) that subscribes to the same `NostrService.Events` as the first (service1). The UI binds to service2. When a new event arrives:
+1. service1 processes it first → saves to DB → fires `_newMessages.OnNext` (nobody listening)
+2. service2 checks `MessageExistsByNostrEventIdAsync` → **true** (service1 already saved it) → skips
+
+Messages appear after restart because `LoadChatsAsync` reads them from the DB.
+
+## Fix
+
+1. **ShellViewModel**: Added `_sessionActivated` guard to `ActivateSession` — prevents the second call entirely. Reset on logout.
+2. **MessageService**: `InitializeAsync` now disposes previous `_eventSubscription` before creating a new one — defense-in-depth against double-subscribe.
 
 ## Not related to
 

@@ -59,6 +59,9 @@ public class MessageService : IMessageService, IDisposable
             }
 
             // Subscribe to Nostr events (kind 444 Welcome, etc.)
+            // Dispose any previous subscription to prevent duplicate event processing
+            // (e.g., if InitializeAsync is called more than once)
+            _eventSubscription?.Dispose();
             _eventSubscription = _nostrService.Events.Subscribe(OnNostrEventReceived);
 
             _logger.LogInformation("MessageService initialized for {PubKey}",

@@ -34,6 +34,7 @@ public class ShellViewModel : ViewModelBase
     private IStorageService? _storageService;
     private IMlsService? _mlsService;
     private IMessageService? _messageService;
+    private bool _sessionActivated;
 
     [Reactive] public bool IsLoggedIn { get; set; }
     [Reactive] public MainViewModel? MainViewModel { get; set; }
@@ -151,6 +152,13 @@ public class ShellViewModel : ViewModelBase
 
     private async Task ActivateSession(User user, IStorageService storageService)
     {
+        if (_sessionActivated)
+        {
+            _logger.LogWarning("ActivateSession called but session already active — ignoring duplicate (signer auto-login race)");
+            return;
+        }
+        _sessionActivated = true;
+
         _storageService = storageService;
 
         // Create MLS service via platform factory
@@ -229,6 +237,7 @@ public class ShellViewModel : ViewModelBase
         _storageService = null;
         _mlsService = null;
         _messageService = null;
+        _sessionActivated = false;
 
         // Update UI on main thread
         RxApp.MainThreadScheduler.Schedule(Unit.Default, (_, __) =>
