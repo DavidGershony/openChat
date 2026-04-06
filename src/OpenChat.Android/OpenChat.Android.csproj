@@ -7,7 +7,7 @@
     <RootNamespace>OpenChat.Android</RootNamespace>
     <ApplicationId>com.openchat.app</ApplicationId>
     <ApplicationVersion>1</ApplicationVersion>
-    <ApplicationDisplayVersion>0.4.10</ApplicationDisplayVersion>
+    <ApplicationDisplayVersion>0.5.0</ApplicationDisplayVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>

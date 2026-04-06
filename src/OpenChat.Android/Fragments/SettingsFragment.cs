@@ -78,6 +78,8 @@ public class SettingsFragment : Fragment
 
         // Developer views
         var viewLogsButton = view.FindViewById<MaterialButton>(Resource.Id.view_logs_button)!;
+        var libraryVersionsText = view.FindViewById<TextView>(Resource.Id.library_versions_text)!;
+        libraryVersionsText.Text = $"MarmotCs: {ViewModel.MarmotCsVersion}  |  DotnetMls: {ViewModel.DotnetMlsVersion}";
 
         // Theme views
         var themeButton = view.FindViewById<MaterialButton>(Resource.Id.theme_selector_button)!;

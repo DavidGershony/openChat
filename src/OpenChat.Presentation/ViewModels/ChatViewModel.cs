@@ -571,7 +571,33 @@ public class ChatViewModel : ViewModelBase
 
             var welcome = await _mlsService.AddMemberAsync(_currentChat.MlsGroupId, keyPackage);
 
-            // Step 3: Publish Welcome to relays (kind 444)
+            // Step 3: Publish Commit BEFORE Welcome (MIP-02/03)
+            // Existing group members need the Commit to advance their epoch.
+            if (welcome.CommitData != null && welcome.CommitData.Length > 0)
+            {
+                _logger.LogDebug("Publishing Commit to Nostr (kind 445) for existing members");
+                InviteSuccess = "Publishing commit...";
+
+                try
+                {
+                    var commitEventJson = await _mlsService.EncryptCommitAsync(
+                        _currentChat.MlsGroupId, welcome.CommitData);
+                    var commitEventId = await _nostrService.PublishRawEventJsonAsync(commitEventJson);
+                    _logger.LogInformation("Published Commit {EventId} for invite to {PubKey}",
+                        commitEventId[..Math.Min(16, commitEventId.Length)], pubKeyHex[..16] + "...");
+                }
+                catch (NotSupportedException)
+                {
+                    var groupIdHex = Convert.ToHexString(_currentChat.MlsGroupId).ToLowerInvariant();
+                    var commitEventId = await _nostrService.PublishCommitAsync(
+                        welcome.CommitData, groupIdHex, _currentUserPrivateKeyHex);
+                    _logger.LogInformation("Published Commit {EventId} for invite to {PubKey} (legacy)",
+                        commitEventId[..Math.Min(16, commitEventId.Length)], pubKeyHex[..16] + "...");
+                }
+                // TODO: Wait for relay OK confirmation instead of relying on send order
+            }
+
+            // Step 4: Publish Welcome to relays (kind 444)
             _logger.LogDebug("Publishing Welcome message to relays");
             InviteSuccess = "Publishing invite to Nostr...";
 

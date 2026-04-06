@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Reactive;
+using System.Reflection;
 using System.Reactive.Linq;
 using Microsoft.Extensions.Logging;
 using ReactiveUI;
@@ -61,6 +62,10 @@ public class SettingsViewModel : ViewModelBase
     // Blossom server
     [Reactive] public string BlossomServerUrl { get; set; } = "https://blossom.primal.net";
     [Reactive] public string? BlossomStatus { get; set; }
+
+    // Library versions
+    public string MarmotCsVersion { get; } = GetPackageVersion("MarmotCs.Core");
+    public string DotnetMlsVersion { get; } = GetPackageVersion("DotnetMls");
 
     // Theme selection
     [Reactive] public int SelectedThemeIndex { get; set; }
@@ -466,6 +471,24 @@ public class SettingsViewModel : ViewModelBase
         {
             IsAuditingKeyPackages = false;
         }
+    }
+
+    private static string GetPackageVersion(string packageName)
+    {
+        try
+        {
+            var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+            var asm = assemblies.FirstOrDefault(a =>
+                a.GetName().Name?.Equals(packageName, StringComparison.OrdinalIgnoreCase) == true);
+            if (asm != null)
+            {
+                var ver = asm.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>();
+                if (ver != null) return ver.InformationalVersion.Split('+')[0];
+                return asm.GetName().Version?.ToString() ?? "unknown";
+            }
+            return "not loaded";
+        }
+        catch { return "error"; }
     }
 }
 
