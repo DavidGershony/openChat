@@ -114,6 +114,12 @@ public interface INostrService
     Task<string> PublishRawEventJsonAsync(byte[] eventJsonBytes);
 
     /// <summary>
+    /// Waits for at least one relay to confirm acceptance of a published event.
+    /// Returns true if accepted, false on timeout.
+    /// </summary>
+    Task<bool> WaitForRelayOkAsync(string eventId, int timeoutMs = 5000);
+
+    /// <summary>
     /// Fetch KeyPackages for a user.
     /// </summary>
     Task<IEnumerable<KeyPackage>> FetchKeyPackagesAsync(string publicKeyHex);

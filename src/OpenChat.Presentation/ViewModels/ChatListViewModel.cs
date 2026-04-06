@@ -843,6 +843,7 @@ public class ChatListViewModel : ViewModelBase
                     var commitEventId = await _nostrService.PublishRawEventJsonAsync(commitEventJson);
                     _logger.LogInformation("Published Commit {EventId} for group {GroupId}",
                         commitEventId[..Math.Min(16, commitEventId.Length)], groupIdHex[..Math.Min(16, groupIdHex.Length)]);
+                    await _nostrService.WaitForRelayOkAsync(commitEventId);
                 }
                 catch (NotSupportedException)
                 {
@@ -851,8 +852,8 @@ public class ChatListViewModel : ViewModelBase
                         welcome.CommitData, groupIdHex, currentUser.PrivateKeyHex);
                     _logger.LogInformation("Published Commit {EventId} for group {GroupId} (legacy)",
                         commitEventId[..Math.Min(16, commitEventId.Length)], groupIdHex[..Math.Min(16, groupIdHex.Length)]);
+                    await _nostrService.WaitForRelayOkAsync(commitEventId);
                 }
-                await Task.Delay(500);
             }
             else
             {
@@ -1020,6 +1021,7 @@ public class ChatListViewModel : ViewModelBase
                                     var commitEventId = await _nostrService.PublishRawEventJsonAsync(commitEventJson);
                                     _logger.LogInformation("Published Commit {EventId} for group {GroupId}",
                                         commitEventId[..Math.Min(16, commitEventId.Length)], chat.Id[..Math.Min(16, chat.Id.Length)]);
+                                    await _nostrService.WaitForRelayOkAsync(commitEventId);
                                 }
                                 catch (NotSupportedException)
                                 {
@@ -1027,11 +1029,8 @@ public class ChatListViewModel : ViewModelBase
                                         welcome.CommitData, chat.Id, currentUser.PrivateKeyHex);
                                     _logger.LogInformation("Published Commit {EventId} for group {GroupId} (legacy)",
                                         commitEventId[..Math.Min(16, commitEventId.Length)], chat.Id[..Math.Min(16, chat.Id.Length)]);
+                                    await _nostrService.WaitForRelayOkAsync(commitEventId);
                                 }
-
-                                // Small delay to allow commit to propagate to relays before welcome
-                                // TODO: Replace with actual relay OK confirmation per MIP-02
-                                await Task.Delay(500);
                             }
                             else if (welcome.CommitData != null && welcome.CommitData.Length > 0)
                             {

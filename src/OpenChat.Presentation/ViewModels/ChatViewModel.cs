@@ -585,6 +585,7 @@ public class ChatViewModel : ViewModelBase
                     var commitEventId = await _nostrService.PublishRawEventJsonAsync(commitEventJson);
                     _logger.LogInformation("Published Commit {EventId} for invite to {PubKey}",
                         commitEventId[..Math.Min(16, commitEventId.Length)], pubKeyHex[..16] + "...");
+                    await _nostrService.WaitForRelayOkAsync(commitEventId);
                 }
                 catch (NotSupportedException)
                 {
@@ -593,8 +594,8 @@ public class ChatViewModel : ViewModelBase
                         welcome.CommitData, groupIdHex, _currentUserPrivateKeyHex);
                     _logger.LogInformation("Published Commit {EventId} for invite to {PubKey} (legacy)",
                         commitEventId[..Math.Min(16, commitEventId.Length)], pubKeyHex[..16] + "...");
+                    await _nostrService.WaitForRelayOkAsync(commitEventId);
                 }
-                // TODO: Wait for relay OK confirmation instead of relying on send order
             }
 
             // Step 4: Publish Welcome to relays (kind 444)

@@ -33,6 +33,7 @@ public class NostrService : INostrService, IDisposable
     private readonly ConcurrentDictionary<string, byte> _subscribedGroupIds = new();
     private readonly ConcurrentDictionary<string, byte> _recentlyProcessedEventIds = new();
     private readonly ConcurrentDictionary<string, int> _relayBackoffSeconds = new();
+    private readonly ConcurrentDictionary<string, TaskCompletionSource<bool>> _pendingOkCallbacks = new();
     private const int MaxBackoffSeconds = 60;
     private const int RateLimitBackoffSeconds = 60;
     private DateTimeOffset? _groupMessagesSince;
@@ -379,6 +380,8 @@ public class NostrService : INostrService, IDisposable
                 if (accepted)
                 {
                     _logger.LogDebug("Event {EventId} accepted by {RelayUrl}", eventId, relayUrl);
+                    if (eventId != null && _pendingOkCallbacks.TryRemove(eventId, out var tcs))
+                        tcs.TrySetResult(true);
                 }
                 else
                 {
@@ -1490,6 +1493,27 @@ public class NostrService : INostrService, IDisposable
         _logger.LogInformation("Pre-built event {EventId} published to {Count} relays",
             eventId, _relayConnections.Count);
         return eventId;
+    }
+
+    public async Task<bool> WaitForRelayOkAsync(string eventId, int timeoutMs = 5000)
+    {
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _pendingOkCallbacks[eventId] = tcs;
+
+        using var cts = new CancellationTokenSource(timeoutMs);
+        cts.Token.Register(() =>
+        {
+            _pendingOkCallbacks.TryRemove(eventId, out _);
+            tcs.TrySetResult(false);
+        });
+
+        var result = await tcs.Task;
+        if (result)
+            _logger.LogDebug("Relay OK confirmed for event {EventId}", eventId[..Math.Min(16, eventId.Length)]);
+        else
+            _logger.LogWarning("Relay OK timeout for event {EventId} after {Timeout}ms", eventId[..Math.Min(16, eventId.Length)], timeoutMs);
+
+        return result;
     }
 
     public async Task<IEnumerable<KeyPackage>> FetchKeyPackagesAsync(string publicKeyHex)
