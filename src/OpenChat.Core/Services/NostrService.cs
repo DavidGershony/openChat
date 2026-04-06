@@ -180,16 +180,15 @@ public class NostrService : INostrService, IDisposable
                     { "#p", new[] { _subscribedUserPubKey } }
                 };
 
-                if (_welcomeMessagesSince.HasValue)
-                {
-                    filter["since"] = _welcomeMessagesSince.Value.ToUnixTimeSeconds();
-                }
+                // NIP-59 gift wraps use randomized created_at timestamps for privacy.
+                // A 'since' filter would miss new events whose random timestamp is before
+                // the disconnect time. Rely on in-memory + DB deduplication instead.
 
                 var reqMessage = JsonSerializer.Serialize(new object[] { "REQ", subId, filter });
                 var reqBytes = Encoding.UTF8.GetBytes(reqMessage);
                 await ws.SendAsync(new ArraySegment<byte>(reqBytes), WebSocketMessageType.Text, true, CancellationToken.None);
-                _logger.LogInformation("Re-sent Welcome subscription to {RelayUrl} (since: {Since})",
-                    relayUrl, _welcomeMessagesSince?.ToString("o") ?? "all");
+                _logger.LogInformation("Re-sent Welcome subscription to {RelayUrl} (no since — NIP-59 randomized timestamps)",
+                    relayUrl);
             }
 
             // Re-subscribe to Group messages (kind 445)
