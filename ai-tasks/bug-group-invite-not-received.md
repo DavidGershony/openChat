@@ -92,8 +92,9 @@ could never be generated. Not related to recent fixes (hex case, NIP-59 timestam
 
 ## Steps
 - [x] Investigate logs and code
-- [ ] Write failing test
-- [ ] Fix participant-add ordering in SendInviteAsync
-- [ ] Fix misleading success log/message
-- [ ] Run tests
+- [x] Write failing tests (SendInvite_MlsFails_DoesNotAddParticipant, SendInvite_NoKeyPackage_ShowsError)
+- [x] Fix: participant only added after PublishWelcomeAsync succeeds
+- [x] Fix: missing KeyPackage now shows error instead of silent local add
+- [x] Fix: MLS/publish errors now propagate to the outer catch (shows error to user)
+- [x] Run tests (200 passed, 0 failed)
 - [ ] Commit

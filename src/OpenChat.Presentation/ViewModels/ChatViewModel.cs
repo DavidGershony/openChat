@@ -552,41 +552,37 @@ public class ChatViewModel : ViewModelBase
             if (keyPackage == null)
             {
                 _logger.LogWarning("No KeyPackage found for {PubKey}", pubKeyHex);
-                // Fall back to local-only invite if no KeyPackage
-                InviteSuccess = "No KeyPackage found - adding locally...";
+                InviteError = "No KeyPackage found for this user. They need to publish a KeyPackage first.";
+                InviteSuccess = null;
+                return;
             }
-            else
+
+            if (_currentChat.MlsGroupId == null)
             {
-                // Step 2: Create MLS Welcome message using their KeyPackage
-                _logger.LogDebug("Creating MLS Welcome message");
-                InviteSuccess = "Creating encrypted invite...";
-
-                if (_currentChat.MlsGroupId != null)
-                {
-                    try
-                    {
-                        var welcome = await _mlsService.AddMemberAsync(_currentChat.MlsGroupId, keyPackage);
-
-                        // Step 3: Publish Welcome to relays (kind 444)
-                        _logger.LogDebug("Publishing Welcome message to relays");
-                        InviteSuccess = "Publishing invite to Nostr...";
-
-                        var eventId = await _nostrService.PublishWelcomeAsync(
-                            welcome.WelcomeData,
-                            pubKeyHex,
-                            _currentUserPrivateKeyHex);
-
-                        _logger.LogInformation("Published Welcome message {EventId} for {PubKey}",
-                            eventId, pubKeyHex[..16] + "...");
-                    }
-                    catch (Exception mlsEx)
-                    {
-                        _logger.LogWarning(mlsEx, "MLS operation failed - falling back to local invite");
-                    }
-                }
+                InviteError = "Cannot invite to a non-MLS group.";
+                _logger.LogWarning("SendInvite: chat {ChatId} has no MLS group ID", ChatId);
+                return;
             }
 
-            // Step 4: Add to local participants list
+            // Step 2: Create MLS Welcome message using their KeyPackage
+            _logger.LogDebug("Creating MLS Welcome message");
+            InviteSuccess = "Creating encrypted invite...";
+
+            var welcome = await _mlsService.AddMemberAsync(_currentChat.MlsGroupId, keyPackage);
+
+            // Step 3: Publish Welcome to relays (kind 444)
+            _logger.LogDebug("Publishing Welcome message to relays");
+            InviteSuccess = "Publishing invite to Nostr...";
+
+            var eventId = await _nostrService.PublishWelcomeAsync(
+                welcome.WelcomeData,
+                pubKeyHex,
+                _currentUserPrivateKeyHex);
+
+            _logger.LogInformation("Published Welcome message {EventId} for {PubKey}",
+                eventId, pubKeyHex[..16] + "...");
+
+            // Step 4: Add to local participants list ONLY after Welcome is published
             _currentChat.ParticipantPublicKeys.Add(pubKeyHex);
             _currentChat.LastActivityAt = DateTime.UtcNow;
 

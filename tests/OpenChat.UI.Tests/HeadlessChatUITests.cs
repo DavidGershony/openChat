@@ -258,4 +258,72 @@ public class HeadlessChatUITests : HeadlessTestBase
         ChatViewModel.FilePickerFunc = null;
         ChatViewModel.MediaUploadService = null;
     }
+
+    // --- Invite Flow Bugs ---
+
+    [AvaloniaTheory]
+    [InlineData("rust")]
+    [InlineData("managed")]
+    public async Task SendInvite_MlsFails_DoesNotAddParticipant(string backend)
+    {
+        if (ShouldSkip(backend)) return;
+        var (ctx, chat, chatVm) = await CreateChatWithViewModel(backend);
+        chatVm.SetUserContext(ctx.User.PrivateKeyHex, ctx.User.PublicKeyHex);
+
+        // Generate an invitee keypair and publish a KeyPackage
+        var nostrService = new NostrService();
+        var (_, inviteePubKey, _, _) = nostrService.GenerateKeyPair();
+
+        // Mock FetchKeyPackagesAsync to return a valid KeyPackage
+        // but the MLS AddMemberAsync will fail because the KeyPackage
+        // doesn't match a real MLS client — simulating the GroupNotFoundException scenario.
+        // We use a fake KeyPackage that will cause MLS to throw.
+        var fakeKp = KeyPackage.Create(inviteePubKey, new byte[32], 0x0001);
+        ctx.MockNostr.Setup(n => n.FetchKeyPackagesAsync(inviteePubKey))
+            .ReturnsAsync(new[] { fakeKp });
+
+        var initialCount = chat.ParticipantPublicKeys.Count;
+
+        chatVm.ShowInviteDialogCommand.Execute().Subscribe();
+        Dispatcher.UIThread.RunJobs();
+
+        chatVm.InvitePublicKey = inviteePubKey;
+        chatVm.SendInviteCommand.Execute().Subscribe();
+        await Task.Delay(500);
+        Dispatcher.UIThread.RunJobs();
+
+        // After MLS failure, participant should NOT be added
+        var storedChat = await ctx.Storage.GetChatAsync(chat.Id);
+        Assert.Equal(initialCount, storedChat!.ParticipantPublicKeys.Count);
+        Assert.DoesNotContain(inviteePubKey, storedChat.ParticipantPublicKeys);
+    }
+
+    [AvaloniaTheory]
+    [InlineData("rust")]
+    [InlineData("managed")]
+    public async Task SendInvite_NoKeyPackage_ShowsError(string backend)
+    {
+        if (ShouldSkip(backend)) return;
+        var (ctx, chat, chatVm) = await CreateChatWithViewModel(backend);
+        chatVm.SetUserContext(ctx.User.PrivateKeyHex, ctx.User.PublicKeyHex);
+
+        var nostrService = new NostrService();
+        var (_, inviteePubKey, _, _) = nostrService.GenerateKeyPair();
+
+        // No KeyPackages available
+        ctx.MockNostr.Setup(n => n.FetchKeyPackagesAsync(inviteePubKey))
+            .ReturnsAsync(Enumerable.Empty<KeyPackage>());
+
+        chatVm.ShowInviteDialogCommand.Execute().Subscribe();
+        Dispatcher.UIThread.RunJobs();
+
+        chatVm.InvitePublicKey = inviteePubKey;
+        chatVm.SendInviteCommand.Execute().Subscribe();
+        await Task.Delay(500);
+        Dispatcher.UIThread.RunJobs();
+
+        // Should show error, not silently add
+        Assert.NotNull(chatVm.InviteError);
+        Assert.DoesNotContain(inviteePubKey, chat.ParticipantPublicKeys);
+    }
 }
