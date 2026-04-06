@@ -1451,6 +1451,7 @@ public class ChatListViewModel : ViewModelBase
                 await _nostrService.SubscribeToGroupMessagesAsync(new[] { subGroupId });
             }
 
+            inviteVm.IsAccepting = false;
             PendingInvites.Remove(inviteVm);
             PendingInviteCount = PendingInvites.Count;
             StatusMessage = null;

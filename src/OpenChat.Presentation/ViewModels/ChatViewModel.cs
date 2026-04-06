@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Reactive;
+using System.Text.RegularExpressions;
 using System.Reactive.Linq;
 using Microsoft.Extensions.Logging;
 using ReactiveUI;
@@ -1092,7 +1093,7 @@ public class MessageViewModel : ViewModelBase
         SenderPublicKey = message.SenderPublicKey;
         SenderName = message.Sender?.GetDisplayNameOrNpub() ?? message.SenderPublicKey[..12] + "...";
         SenderAvatarUrl = message.Sender?.AvatarUrl;
-        Content = message.Content;
+        Content = StripNostrMentions(message.Content);
         Timestamp = message.Timestamp;
         IsFromCurrentUser = message.IsFromCurrentUser;
         Status = message.Status;
@@ -1103,7 +1104,8 @@ public class MessageViewModel : ViewModelBase
         {
             var reply = message.ReplyToMessage!;
             ReplyToSenderName = reply.Sender?.GetDisplayNameOrNpub() ?? reply.SenderPublicKey[..Math.Min(12, reply.SenderPublicKey.Length)] + "...";
-            ReplyToContent = reply.Content?.Length > 80 ? reply.Content[..80] + "..." : reply.Content;
+            var replyText = StripNostrMentions(reply.Content);
+            ReplyToContent = replyText?.Length > 80 ? replyText[..80] + "..." : replyText;
         }
 
         IsImage = message.Type == MessageType.Image;
@@ -1177,6 +1179,15 @@ public class MessageViewModel : ViewModelBase
                 this.RaisePropertyChanged(nameof(ShowTapToLoad));
                 this.RaisePropertyChanged(nameof(ShowMediaDisabled));
             });
+    }
+
+    private static readonly Regex NostrMentionRegex = new(@"nostr:n[a-z]+1[a-zA-Z0-9]+", RegexOptions.Compiled);
+
+    private static string? StripNostrMentions(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+        var result = NostrMentionRegex.Replace(text, "").Trim();
+        return string.IsNullOrEmpty(result) ? text : result;
     }
 
     public void UpdateReactionsDisplay()
