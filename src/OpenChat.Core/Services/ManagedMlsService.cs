@@ -366,7 +366,7 @@ public class ManagedMlsService : IMlsService
                     GroupId = preview.GroupId,
                     GroupName = preview.GroupName,
                     Epoch = group.Epoch,
-                    MemberPublicKeys = preview.MemberIdentities.ToList()
+                    MemberPublicKeys = preview.MemberIdentities.Select(k => k.ToLowerInvariant()).ToList()
                 };
             }
             catch (Exception ex)
@@ -512,7 +512,7 @@ public class ManagedMlsService : IMlsService
 
         if (result is ApplicationMessageResult appMsg)
         {
-            var senderHex = Convert.ToHexString(appMsg.Message.SenderIdentity);
+            var senderHex = Convert.ToHexString(appMsg.Message.SenderIdentity).ToLowerInvariant();
             var plaintext = Encoding.UTF8.GetString(appMsg.Message.Content);
             var rumorJsonFull = plaintext; // Preserve full rumor JSON before content extraction
 
@@ -753,7 +753,7 @@ public class ManagedMlsService : IMlsService
             GroupId = groupId,
             GroupName = group.Name,
             Epoch = group.Epoch,
-            MemberPublicKeys = members.Select(m => m.identityHex).ToList()
+            MemberPublicKeys = members.Select(m => m.identityHex.ToLowerInvariant()).ToList()
         };
     }
 

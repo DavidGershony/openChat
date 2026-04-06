@@ -1,3 +1,4 @@
+using System.Linq;
 using Microsoft.Extensions.Logging;
 using OpenChat.Core.Logging;
 using OpenChat.Core.Models;
@@ -188,7 +189,7 @@ public class MlsService : IMlsService
             GroupId = groupId,
             GroupName = groupName,
             Epoch = epoch,
-            MemberPublicKeys = members
+            MemberPublicKeys = members.Select(m => m.ToLowerInvariant()).ToList()
         };
     }
 
@@ -276,7 +277,7 @@ public class MlsService : IMlsService
             GroupId = info.Value.groupId,
             GroupName = info.Value.groupName,
             Epoch = info.Value.epoch,
-            MemberPublicKeys = info.Value.members
+            MemberPublicKeys = info.Value.members.Select(m => m.ToLowerInvariant()).ToList()
         };
     }
 

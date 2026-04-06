@@ -365,7 +365,7 @@ public class ChatListViewModel : ViewModelBase
                 .OrderByDescending(c => c.IsPinned).ThenByDescending(c => c.LastActivityAt))
             {
                 var isParticipant = _currentUserPubKeyHex == null ||
-                    chat.ParticipantPublicKeys.Contains(_currentUserPubKeyHex);
+                    chat.ParticipantPublicKeys.Any(p => string.Equals(p, _currentUserPubKeyHex, StringComparison.OrdinalIgnoreCase));
 
                 if (!isParticipant)
                 {
@@ -381,7 +381,7 @@ public class ChatListViewModel : ViewModelBase
                 // Resolve avatar for DM/bot chats from the other participant's profile
                 if (chat.Type != ChatType.Group && _currentUserPubKeyHex != null)
                 {
-                    var otherPubKey = chat.ParticipantPublicKeys.FirstOrDefault(p => p != _currentUserPubKeyHex);
+                    var otherPubKey = chat.ParticipantPublicKeys.FirstOrDefault(p => !string.Equals(p, _currentUserPubKeyHex, StringComparison.OrdinalIgnoreCase));
                     if (otherPubKey != null)
                     {
                         var otherUser = await _storageService.GetUserByPublicKeyAsync(otherPubKey);
@@ -870,7 +870,7 @@ public class ChatListViewModel : ViewModelBase
                 publicKeyHex[..Math.Min(16, publicKeyHex.Length)]);
 
             // Add recipient to participant list
-            if (!chat.ParticipantPublicKeys.Contains(publicKeyHex))
+            if (!chat.ParticipantPublicKeys.Any(p => string.Equals(p, publicKeyHex, StringComparison.OrdinalIgnoreCase)))
             {
                 chat.ParticipantPublicKeys.Add(publicKeyHex);
             }
@@ -1053,7 +1053,7 @@ public class ChatListViewModel : ViewModelBase
                                 welcome.KeyPackageEventId?[..Math.Min(16, welcome.KeyPackageEventId.Length)] ?? "none");
 
                             // Add to participant list
-                            if (!chat.ParticipantPublicKeys.Contains(publicKeyHex))
+                            if (!chat.ParticipantPublicKeys.Any(p => string.Equals(p, publicKeyHex, StringComparison.OrdinalIgnoreCase)))
                             {
                                 chat.ParticipantPublicKeys.Add(publicKeyHex);
                             }
@@ -1361,7 +1361,7 @@ public class ChatListViewModel : ViewModelBase
         var existing = Chats.FirstOrDefault(c => c.Id == chat.Id);
 
         var isParticipant = _currentUserPubKeyHex == null ||
-            chat.ParticipantPublicKeys.Contains(_currentUserPubKeyHex);
+            chat.ParticipantPublicKeys.Any(p => string.Equals(p, _currentUserPubKeyHex, StringComparison.OrdinalIgnoreCase));
 
         if (existing != null)
         {

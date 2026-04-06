@@ -281,4 +281,37 @@ public class HeadlessChatManagementTests : HeadlessTestBase
 
         Assert.True(mainVm.ChatViewModel.ShowMetadataPanel);
     }
+
+    [AvaloniaTheory]
+    [InlineData("rust")]
+    [InlineData("managed")]
+    public async Task LoadChats_UppercaseParticipantKeys_NotMarkedOrphan(string backend)
+    {
+        if (ShouldSkip(backend)) return;
+        var ctx = await CreateRealContext(backend);
+        await ctx.MessageService.InitializeAsync();
+
+        // Simulate what happens on mobile: MLS-derived participant keys are UPPERCASE
+        // (from Convert.ToHexString) but user's PublicKeyHex is lowercase.
+        var uppercasePubKey = ctx.User.PublicKeyHex.ToUpperInvariant();
+
+        var chat = new Chat
+        {
+            Id = Guid.NewGuid().ToString(),
+            Name = "Test Group",
+            Type = ChatType.Group,
+            ParticipantPublicKeys = new List<string> { uppercasePubKey, "AABBCCDD11223344" },
+            CreatedAt = DateTime.UtcNow,
+            LastActivityAt = DateTime.UtcNow
+        };
+        await ctx.Storage.SaveChatAsync(chat);
+
+        var chatListVm = new ChatListViewModel(ctx.MessageService, ctx.Storage, ctx.MlsService, ctx.MockNostr.Object);
+        await chatListVm.LoadChatsAsync();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Single(chatListVm.Chats);
+        Assert.False(chatListVm.Chats[0].NeedsRepair,
+            $"Chat should NOT be orphaned when participant key '{uppercasePubKey}' matches user key '{ctx.User.PublicKeyHex}' (case-insensitive)");
+    }
 }

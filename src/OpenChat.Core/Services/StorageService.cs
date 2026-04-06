@@ -516,7 +516,7 @@ public class StorageService : IStorageService
                 var insertParticipant = connection.CreateCommand();
                 insertParticipant.CommandText = "INSERT INTO ChatParticipants (ChatId, PublicKeyHex) VALUES (@ChatId, @PublicKeyHex)";
                 insertParticipant.Parameters.AddWithValue("@ChatId", chat.Id);
-                insertParticipant.Parameters.AddWithValue("@PublicKeyHex", publicKey);
+                insertParticipant.Parameters.AddWithValue("@PublicKeyHex", publicKey.ToLowerInvariant());
                 await insertParticipant.ExecuteNonQueryAsync();
             }
         }

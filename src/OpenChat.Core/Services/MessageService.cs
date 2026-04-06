@@ -643,7 +643,7 @@ public class MessageService : IMessageService, IDisposable
         }
 
         // Update chat participants
-        if (!chat.ParticipantPublicKeys.Contains(memberPublicKey))
+        if (!chat.ParticipantPublicKeys.Any(p => string.Equals(p, memberPublicKey, StringComparison.OrdinalIgnoreCase)))
         {
             chat.ParticipantPublicKeys.Add(memberPublicKey);
             await _storageService.SaveChatAsync(chat);
