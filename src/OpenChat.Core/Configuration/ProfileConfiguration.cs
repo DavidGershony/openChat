@@ -1,5 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
+using OpenChat.Core.Logging;
 
 namespace OpenChat.Core.Configuration;
 
@@ -11,6 +13,8 @@ public enum MdkBackend { Rust, Managed }
 /// </summary>
 public static class ProfileConfiguration
 {
+    private static readonly ILogger _logger = LoggingConfiguration.CreateLogger<object>();
+
     public static MdkBackend ActiveMdkBackend { get; private set; } = MdkBackend.Managed;
 
     public static void SetMdkBackend(MdkBackend backend) => ActiveMdkBackend = backend;
@@ -135,9 +139,10 @@ public static class ProfileConfiguration
                     return value;
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Silently ignore — registry is best-effort
+            _logger.LogWarning(ex, "Failed to read last_user.json from {Path}",
+                Path.Combine(RootDataDirectory, "last_user.json"));
         }
         return null;
     }
@@ -154,9 +159,11 @@ public static class ProfileConfiguration
             var json = JsonSerializer.Serialize(new { public_key_hex = publicKeyHex });
             File.WriteAllText(path, json);
         }
-        catch
+        catch (Exception ex)
         {
-            // Silently ignore — registry is best-effort
+            _logger.LogError(ex, "Failed to write last_user.json to {Path} (pubkey={PubKey})",
+                Path.Combine(RootDataDirectory, "last_user.json"),
+                publicKeyHex?[..Math.Min(16, publicKeyHex?.Length ?? 0)] ?? "null");
         }
     }
 
@@ -171,9 +178,9 @@ public static class ProfileConfiguration
             if (File.Exists(path))
                 File.Delete(path);
         }
-        catch
+        catch (Exception ex)
         {
-            // Silently ignore
+            _logger.LogWarning(ex, "Failed to clear last_user.json");
         }
     }
 
