@@ -37,6 +37,8 @@ public class ChatFragment : Fragment
     private LinearLayoutManager? _layoutManager;
     private ActivityResultLauncher? _filePickerLauncher;
     private TaskCompletionSource<(byte[] Data, string FileName, string MimeType)?>? _filePickerTcs;
+    private string _pickerMimeType = "*/*";
+    private ImageButton? _attachButton;
 
     public ChatFragment(MainViewModel mainViewModel)
     {
@@ -134,7 +136,8 @@ public class ChatFragment : Fragment
             ViewModel.CancelRecordingCommand.Execute().Subscribe().DisposeWith(_disposables);
         };
 
-        // Attach file button — request media permissions on Android 13+, then attach
+        // Attach file button — request media permissions on Android 13+, then show picker menu
+        _attachButton = attachButton;
         attachButton.Click += (s, e) =>
         {
             if (OperatingSystem.IsAndroidVersionAtLeast(33))
@@ -155,7 +158,7 @@ public class ChatFragment : Fragment
                 RequestPermissions(new[] { Manifest.Permission.ReadExternalStorage }, 1002);
                 return;
             }
-            ViewModel.AttachFileCommand.Execute().Subscribe().DisposeWith(_disposables);
+            ShowAttachMenu(attachButton);
         };
 
         // Reply preview bar
@@ -290,12 +293,25 @@ public class ChatFragment : Fragment
         _adapter.UpdateItems(ViewModel.Messages.ToList());
     }
 
+    private void ShowAttachMenu(View anchor)
+    {
+        var popup = new PopupMenu(RequireContext(), anchor);
+        popup.Menu!.Add(0, 1, 0, "Photo");
+        popup.Menu!.Add(0, 2, 0, "File");
+        popup.MenuItemClick += (sender, args) =>
+        {
+            _pickerMimeType = args.Item!.ItemId == 1 ? "image/*" : "*/*";
+            ViewModel.AttachFileCommand.Execute().Subscribe().DisposeWith(_disposables);
+        };
+        popup.Show();
+    }
+
     private Task<(byte[] Data, string FileName, string MimeType)?> PickFileAsync()
     {
         _filePickerTcs = new TaskCompletionSource<(byte[] Data, string FileName, string MimeType)?>();
         try
         {
-            _filePickerLauncher?.Launch("*/*");
+            _filePickerLauncher?.Launch(_pickerMimeType);
         }
         catch (Exception ex)
         {
@@ -377,8 +393,9 @@ public class ChatFragment : Fragment
                 ViewModel.ToggleRecordingCommand.Execute().Subscribe().DisposeWith(_disposables);
                 break;
             case 1002: // READ_MEDIA / READ_EXTERNAL_STORAGE
-                _logger.LogInformation("Media read permission granted, launching file picker");
-                ViewModel.AttachFileCommand.Execute().Subscribe().DisposeWith(_disposables);
+                _logger.LogInformation("Media read permission granted, showing attach menu");
+                if (_attachButton != null)
+                    ShowAttachMenu(_attachButton);
                 break;
         }
     }
