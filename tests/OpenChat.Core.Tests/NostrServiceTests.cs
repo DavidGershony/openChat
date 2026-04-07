@@ -7,7 +7,7 @@ namespace OpenChat.Core.Tests;
 
 public class NostrServiceTests
 {
-    private const string LocalRelayUrl = "ws://localhost:7777";
+    private const string LocalRelayUrl = "wss://test.thedude.cloud";
     private readonly NostrService _nostrService;
 
     public NostrServiceTests()
@@ -111,7 +111,7 @@ public class NostrServiceTests
     [SkippableFact]
     public async Task ConnectAsync_ShouldUpdateConnectionStatus()
     {
-        Skip.IfNot(IsLocalRelayAvailable(), "Requires local relay on ws://localhost:7777");
+        Skip.IfNot(IsLocalRelayAvailable(), "Requires local relay on wss://test.thedude.cloud");
 
         // Arrange
         var statusUpdates = new List<NostrConnectionStatus>();
@@ -129,7 +129,7 @@ public class NostrServiceTests
     [SkippableFact]
     public async Task DisconnectAsync_ShouldUpdateConnectionStatus()
     {
-        Skip.IfNot(IsLocalRelayAvailable(), "Requires local relay on ws://localhost:7777");
+        Skip.IfNot(IsLocalRelayAvailable(), "Requires local relay on wss://test.thedude.cloud");
 
         // Arrange
         await _nostrService.ConnectAsync(LocalRelayUrl);

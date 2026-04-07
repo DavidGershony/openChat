@@ -12,12 +12,12 @@ namespace OpenChat.Core.Tests;
 /// <summary>
 /// Integration tests that connect to a real local Nostr relay (Docker).
 /// Requires: docker compose -f docker-compose.test.yml up -d
-/// Relay: scsibug/nostr-rs-relay on ws://localhost:7777
+/// Relay: scsibug/nostr-rs-relay on wss://test.thedude.cloud
 /// </summary>
 [Trait("Category", "Relay")]
 public class RelayIntegrationTests : IAsyncLifetime
 {
-    private const string RelayUrl = "ws://localhost:7777";
+    private const string RelayUrl = "wss://test.thedude.cloud";
 
     private NostrService _nostrServiceA = null!;
     private NostrService _nostrServiceB = null!;

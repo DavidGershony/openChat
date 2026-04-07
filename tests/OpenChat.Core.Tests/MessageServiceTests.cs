@@ -502,7 +502,7 @@ public class MessageServiceTests : IDisposable
         _storageMock.Setup(s => s.GetChatAsync(chatId)).ReturnsAsync(chat);
         _nostrMock.Setup(n => n.PublishGiftWrapAsync(
             14, "Hi bot!", It.IsAny<List<List<string>>>(),
-            _currentUser.PrivateKeyHex, _currentUser.PublicKeyHex, botPubKey))
+            _currentUser.PrivateKeyHex, _currentUser.PublicKeyHex, botPubKey, It.IsAny<List<string>?>()))
             .ReturnsAsync("giftwrap-event-id");
 
         // Act
@@ -513,7 +513,7 @@ public class MessageServiceTests : IDisposable
         Assert.Equal("giftwrap-event-id", result.NostrEventId);
         _nostrMock.Verify(n => n.PublishGiftWrapAsync(
             14, "Hi bot!", It.IsAny<List<List<string>>>(),
-            _currentUser.PrivateKeyHex, _currentUser.PublicKeyHex, botPubKey), Times.Once);
+            _currentUser.PrivateKeyHex, _currentUser.PublicKeyHex, botPubKey, It.IsAny<List<string>?>()), Times.Once);
     }
 
     [Fact]
@@ -1108,5 +1108,189 @@ public class MessageServiceTests : IDisposable
             m.Type == MessageType.Image &&
             m.Content == "[Image]"
         )), Times.Once);
+    }
+
+    // ─── Relay URL persistence ───────────────────────────────────────
+
+    [Fact]
+    public async Task HandleWelcomeEvent_ExtractsRelayUrlsFromTag()
+    {
+        // Arrange
+        await InitializeServiceAsync();
+
+        var senderPubKey = "dd".PadLeft(64, 'd');
+        var eventId = "welcome-relays".PadLeft(64, '0');
+
+        _storageMock.Setup(s => s.IsWelcomeEventDismissedAsync(eventId)).ReturnsAsync(false);
+        _storageMock.Setup(s => s.GetPendingInvitesAsync()).ReturnsAsync(new List<PendingInvite>());
+        _storageMock.Setup(s => s.SavePendingInviteAsync(It.IsAny<PendingInvite>())).Returns(Task.CompletedTask);
+        _nostrMock.Setup(n => n.FetchUserMetadataAsync(senderPubKey)).ReturnsAsync((UserMetadata?)null);
+
+        // Act
+        _eventsSubject.OnNext(new NostrEventReceived
+        {
+            Kind = 444,
+            EventId = eventId,
+            PublicKey = senderPubKey,
+            Content = Convert.ToBase64String(new byte[] { 0x01, 0x02 }),
+            CreatedAt = DateTime.UtcNow,
+            Tags = new List<List<string>>
+            {
+                new() { "h", "abcdef1234" },
+                new() { "relays", "wss://relay1.example.com", "wss://relay2.example.com" }
+            }
+        });
+
+        await Task.Delay(200);
+
+        // Assert - relay URLs extracted and saved on invite
+        _storageMock.Verify(s => s.SavePendingInviteAsync(It.Is<PendingInvite>(i =>
+            i.RelayUrls.Count == 2 &&
+            i.RelayUrls.Contains("wss://relay1.example.com") &&
+            i.RelayUrls.Contains("wss://relay2.example.com")
+        )), Times.Once);
+    }
+
+    [Fact]
+    public async Task AcceptInviteAsync_SetsRelayUrlsOnChat()
+    {
+        // Arrange
+        await InitializeServiceAsync();
+
+        var groupId = new byte[] { 0x10, 0x20, 0x30 };
+        var inviteId = "invite-relays";
+        var inviteRelays = new List<string> { "wss://group-relay.example.com" };
+
+        var invite = new PendingInvite
+        {
+            Id = inviteId,
+            SenderPublicKey = "dd".PadLeft(64, 'd'),
+            WelcomeData = new byte[] { 0x01 },
+            NostrEventId = "welcome-relay-event",
+            RelayUrls = inviteRelays
+        };
+
+        _storageMock.Setup(s => s.GetPendingInvitesAsync()).ReturnsAsync(new List<PendingInvite> { invite });
+        _mlsMock.Setup(m => m.ProcessWelcomeAsync(It.IsAny<byte[]>(), "welcome-relay-event"))
+            .ReturnsAsync(new MlsGroupInfo
+            {
+                GroupId = groupId, GroupName = "Relay Group", Epoch = 0,
+                MemberPublicKeys = new List<string> { _currentUser.PublicKeyHex }
+            });
+        _mlsMock.Setup(m => m.GetNostrGroupId(groupId)).Returns((byte[]?)null);
+        _storageMock.Setup(s => s.GetAllChatsAsync()).ReturnsAsync(new List<Chat>());
+        _storageMock.Setup(s => s.DismissWelcomeEventAsync("welcome-relay-event")).Returns(Task.CompletedTask);
+        _storageMock.Setup(s => s.DeletePendingInviteAsync(inviteId)).Returns(Task.CompletedTask);
+
+        // The group relay is not in connected list, so it should try to connect
+        _nostrMock.Setup(n => n.ConnectedRelayUrls).Returns(new List<string> { "wss://nos.lol" });
+        _nostrMock.Setup(n => n.ConnectAsync("wss://group-relay.example.com")).Returns(Task.CompletedTask);
+
+        // Act
+        var chat = await _sut.AcceptInviteAsync(inviteId);
+
+        // Assert
+        Assert.Single(chat.RelayUrls);
+        Assert.Equal("wss://group-relay.example.com", chat.RelayUrls[0]);
+
+        // Should have connected to the missing relay
+        _nostrMock.Verify(n => n.ConnectAsync("wss://group-relay.example.com"), Times.Once);
+    }
+
+    [Fact]
+    public async Task AcceptInviteAsync_SkipsConnectWhenRelayAlreadyConnected()
+    {
+        // Arrange
+        await InitializeServiceAsync();
+
+        var groupId = new byte[] { 0x10, 0x20, 0x30 };
+        var inviteId = "invite-connected";
+
+        var invite = new PendingInvite
+        {
+            Id = inviteId,
+            SenderPublicKey = "dd".PadLeft(64, 'd'),
+            WelcomeData = new byte[] { 0x01 },
+            NostrEventId = "welcome-connected",
+            RelayUrls = new List<string> { "wss://nos.lol" }
+        };
+
+        _storageMock.Setup(s => s.GetPendingInvitesAsync()).ReturnsAsync(new List<PendingInvite> { invite });
+        _mlsMock.Setup(m => m.ProcessWelcomeAsync(It.IsAny<byte[]>(), "welcome-connected"))
+            .ReturnsAsync(new MlsGroupInfo
+            {
+                GroupId = groupId, GroupName = "Connected Group", Epoch = 0,
+                MemberPublicKeys = new List<string> { _currentUser.PublicKeyHex }
+            });
+        _mlsMock.Setup(m => m.GetNostrGroupId(groupId)).Returns((byte[]?)null);
+        _storageMock.Setup(s => s.GetAllChatsAsync()).ReturnsAsync(new List<Chat>());
+        _storageMock.Setup(s => s.DismissWelcomeEventAsync("welcome-connected")).Returns(Task.CompletedTask);
+        _storageMock.Setup(s => s.DeletePendingInviteAsync(inviteId)).Returns(Task.CompletedTask);
+
+        // Relay already connected
+        _nostrMock.Setup(n => n.ConnectedRelayUrls).Returns(new List<string> { "wss://nos.lol" });
+
+        // Act
+        var chat = await _sut.AcceptInviteAsync(inviteId);
+
+        // Assert - relay saved but no new connection needed
+        Assert.Single(chat.RelayUrls);
+        _nostrMock.Verify(n => n.ConnectAsync(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateGroupAsync_SavesRelayUrlsOnChat()
+    {
+        // Arrange
+        await InitializeServiceAsync();
+
+        var groupId = new byte[] { 0xAA, 0xBB };
+        _nostrMock.Setup(n => n.ConnectedRelayUrls).Returns(new List<string> { "wss://relay.example.com" });
+        _mlsMock.Setup(m => m.CreateGroupAsync("Test Group", It.IsAny<string[]>()))
+            .ReturnsAsync(new MlsGroupInfo
+            {
+                GroupId = groupId, GroupName = "Test Group", Epoch = 0,
+                MemberPublicKeys = new List<string> { _currentUser.PublicKeyHex }
+            });
+
+        Chat? savedChat = null;
+        _storageMock.Setup(s => s.SaveChatAsync(It.IsAny<Chat>()))
+            .Callback<Chat>(c => savedChat = c)
+            .Returns(Task.CompletedTask);
+
+        // Act
+        var chat = await _sut.CreateGroupAsync("Test Group", Array.Empty<string>());
+
+        // Assert
+        Assert.NotNull(savedChat);
+        Assert.Single(savedChat!.RelayUrls);
+        Assert.Equal("wss://relay.example.com", savedChat.RelayUrls[0]);
+    }
+
+    [Fact]
+    public async Task GetOrCreateBotChatAsync_SavesRelayUrls()
+    {
+        // Arrange
+        await InitializeServiceAsync();
+
+        _storageMock.Setup(s => s.GetAllChatsAsync()).ReturnsAsync(new List<Chat>());
+        _storageMock.Setup(s => s.GetUserByPublicKeyAsync(It.IsAny<string>())).ReturnsAsync((User?)null);
+
+        Chat? savedChat = null;
+        _storageMock.Setup(s => s.SaveChatAsync(It.IsAny<Chat>()))
+            .Callback<Chat>(c => savedChat = c)
+            .Returns(Task.CompletedTask);
+
+        var botPubKey = "ff".PadLeft(64, 'f');
+        var relays = new List<string> { "wss://bot-relay.example.com" };
+
+        // Act
+        var chat = await _sut.GetOrCreateBotChatAsync(botPubKey, relays);
+
+        // Assert
+        Assert.NotNull(savedChat);
+        Assert.Single(savedChat!.RelayUrls);
+        Assert.Equal("wss://bot-relay.example.com", savedChat.RelayUrls[0]);
+        Assert.Equal(ChatType.Bot, savedChat.Type);
     }
 }

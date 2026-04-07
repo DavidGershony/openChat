@@ -16,17 +16,17 @@ namespace OpenChat.Core.Tests;
 
 /// <summary>
 /// Real-relay integration tests that exercise the full A->B group chat flow
-/// using real NostrService instances connected to a local relay (ws://localhost:7777).
+/// using real NostrService instances connected to a local relay (wss://test.thedude.cloud).
 ///
 /// These tests use the managed (C#) MLS backend only and require a running relay.
 /// They are tagged with [Trait("Category", "Integration")] so CI can exclude them.
 ///
-/// Requires: docker compose -f docker-compose.test.yml up -d  (relay on ws://localhost:7777)
+/// Requires: docker compose -f docker-compose.test.yml up -d  (relay on wss://test.thedude.cloud)
 /// </summary>
 [Trait("Category", "Integration")]
 public class RealRelayGroupChatTests : IAsyncLifetime
 {
-    private const string RelayUrl = "ws://localhost:7777";
+    private const string RelayUrl = "wss://test.thedude.cloud";
 
     private readonly ITestOutputHelper _output;
     private readonly ILogger _logger;

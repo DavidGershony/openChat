@@ -14,7 +14,7 @@ using Xunit.Abstractions;
 namespace OpenChat.Core.Tests;
 
 /// <summary>
-/// Full-stack integration tests using a real Docker relay (ws://localhost:7777),
+/// Full-stack integration tests using a real Docker relay (wss://test.thedude.cloud),
 /// real NostrService, real StorageService, real MlsService, and real MessageService.
 /// These tests prove the complete invite delivery pipeline works end-to-end.
 ///
@@ -23,7 +23,7 @@ namespace OpenChat.Core.Tests;
 [Trait("Category", "Relay")]
 public class FullStackRelayIntegrationTests : IAsyncLifetime
 {
-    private const string RelayUrl = "ws://localhost:7777";
+    private const string RelayUrl = "wss://test.thedude.cloud";
 
     private readonly ITestOutputHelper _output;
 
