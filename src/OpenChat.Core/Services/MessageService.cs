@@ -530,6 +530,7 @@ public class MessageService : IMessageService, IDisposable
             MlsGroupId = groupInfo.GroupId,
             MlsEpoch = groupInfo.Epoch,
             ParticipantPublicKeys = new List<string> { _currentUser.PublicKeyHex },
+            RelayUrls = relayUrls.ToList(),
             CreatedAt = DateTime.UtcNow,
             LastActivityAt = DateTime.UtcNow
         };
@@ -996,6 +997,11 @@ public class MessageService : IMessageService, IDisposable
         var eTag = nostrEvent.Tags.FirstOrDefault(t => t.Count > 1 && t[0] == "e");
         var keyPackageEventId = eTag?[1];
 
+        // Extract relay URLs from relays tag (MIP-02)
+        var relaysTag = nostrEvent.Tags.FirstOrDefault(t => t.Count > 1 && t[0] == "relays");
+        var relayUrls = relaysTag?.Skip(1).Where(u => u.StartsWith("wss://") || u.StartsWith("ws://")).ToList()
+            ?? new List<string>();
+
         // Fetch and cache sender profile
         string? senderDisplayName = null;
         try
@@ -1017,8 +1023,13 @@ public class MessageService : IMessageService, IDisposable
             KeyPackageEventId = keyPackageEventId,
             NostrEventId = nostrEvent.EventId,
             ReceivedAt = DateTime.UtcNow,
-            SenderDisplayName = senderDisplayName
+            SenderDisplayName = senderDisplayName,
+            RelayUrls = relayUrls
         };
+
+        if (relayUrls.Count > 0)
+            _logger.LogInformation("HandleWelcome: extracted {Count} relay(s) from welcome: {Relays}",
+                relayUrls.Count, string.Join(", ", relayUrls));
 
         await _storageService.SavePendingInviteAsync(invite);
         _logger.LogInformation("Saved pending invite {InviteId} from {Sender}", invite.Id, nostrEvent.PublicKey[..Math.Min(16, nostrEvent.PublicKey.Length)]);
@@ -1312,10 +1323,33 @@ public class MessageService : IMessageService, IDisposable
             NostrGroupId = nostrGroupId,
             MlsEpoch = groupInfo.Epoch,
             ParticipantPublicKeys = groupInfo.MemberPublicKeys,
+            RelayUrls = invite.RelayUrls,
             WelcomeNostrEventId = invite.NostrEventId,
             CreatedAt = DateTime.UtcNow,
             LastActivityAt = DateTime.UtcNow
         };
+
+        // Ensure at least one of the group's relays is connected
+        if (invite.RelayUrls.Count > 0)
+        {
+            var connectedUrls = _nostrService.ConnectedRelayUrls;
+            var hasOverlap = invite.RelayUrls.Any(r =>
+                connectedUrls.Any(c => string.Equals(c.TrimEnd('/'), r.TrimEnd('/'), StringComparison.OrdinalIgnoreCase)));
+
+            if (!hasOverlap)
+            {
+                _logger.LogInformation("AcceptInvite: no overlap with connected relays, connecting to group relay {Relay}",
+                    invite.RelayUrls[0]);
+                try
+                {
+                    await _nostrService.ConnectAsync(invite.RelayUrls[0]);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "AcceptInvite: failed to connect to group relay {Relay}", invite.RelayUrls[0]);
+                }
+            }
+        }
 
         await _storageService.SaveChatAsync(chat);
         await _storageService.DismissWelcomeEventAsync(invite.NostrEventId);

@@ -292,6 +292,15 @@ public class StorageService : IStorageService
             }
             catch (SqliteException) { /* Column already exists */ }
 
+            // Migration: add RelayUrlsJson column to PendingInvites for welcome relay list
+            try
+            {
+                var migrate = connection.CreateCommand();
+                migrate.CommandText = "ALTER TABLE PendingInvites ADD COLUMN RelayUrlsJson TEXT";
+                await migrate.ExecuteNonQueryAsync();
+            }
+            catch (SqliteException) { /* Column already exists */ }
+
             _initialized = true;
             _logger.LogInformation("Database schema initialized successfully");
         }
@@ -1048,9 +1057,9 @@ public class StorageService : IStorageService
         var command = connection.CreateCommand();
         command.CommandText = @"
             INSERT OR IGNORE INTO PendingInvites
-            (Id, SenderPublicKey, GroupId, WelcomeData, KeyPackageEventId, NostrEventId, ReceivedAt, SenderDisplayName)
+            (Id, SenderPublicKey, GroupId, WelcomeData, KeyPackageEventId, NostrEventId, ReceivedAt, SenderDisplayName, RelayUrlsJson)
             VALUES
-            (@Id, @SenderPublicKey, @GroupId, @WelcomeData, @KeyPackageEventId, @NostrEventId, @ReceivedAt, @SenderDisplayName)";
+            (@Id, @SenderPublicKey, @GroupId, @WelcomeData, @KeyPackageEventId, @NostrEventId, @ReceivedAt, @SenderDisplayName, @RelayUrlsJson)";
 
         command.Parameters.AddWithValue("@Id", invite.Id);
         command.Parameters.AddWithValue("@SenderPublicKey", invite.SenderPublicKey);
@@ -1060,6 +1069,8 @@ public class StorageService : IStorageService
         command.Parameters.AddWithValue("@NostrEventId", invite.NostrEventId);
         command.Parameters.AddWithValue("@ReceivedAt", invite.ReceivedAt.ToString("O"));
         command.Parameters.AddWithValue("@SenderDisplayName", invite.SenderDisplayName ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@RelayUrlsJson",
+            invite.RelayUrls.Count > 0 ? System.Text.Json.JsonSerializer.Serialize(invite.RelayUrls) : (object)DBNull.Value);
 
         await command.ExecuteNonQueryAsync();
     }
@@ -1106,7 +1117,7 @@ public class StorageService : IStorageService
 
     private static PendingInvite ReadPendingInvite(SqliteDataReader reader)
     {
-        return new PendingInvite
+        var invite = new PendingInvite
         {
             Id = reader.GetString(reader.GetOrdinal("Id")),
             SenderPublicKey = reader.GetString(reader.GetOrdinal("SenderPublicKey")),
@@ -1117,6 +1128,20 @@ public class StorageService : IStorageService
             ReceivedAt = ParseDateTime(reader.GetString(reader.GetOrdinal("ReceivedAt"))),
             SenderDisplayName = reader.IsDBNull(reader.GetOrdinal("SenderDisplayName")) ? null : reader.GetString(reader.GetOrdinal("SenderDisplayName"))
         };
+
+        // RelayUrlsJson column may not exist in older databases before migration
+        try
+        {
+            var relayOrd = reader.GetOrdinal("RelayUrlsJson");
+            if (!reader.IsDBNull(relayOrd))
+            {
+                var json = reader.GetString(relayOrd);
+                invite.RelayUrls = System.Text.Json.JsonSerializer.Deserialize<List<string>>(json) ?? new();
+            }
+        }
+        catch (ArgumentOutOfRangeException) { /* Column doesn't exist yet */ }
+
+        return invite;
     }
 
     private User ReadUser(SqliteDataReader reader)

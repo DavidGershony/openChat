@@ -10,4 +10,9 @@ public class PendingInvite
     public string NostrEventId { get; set; } = string.Empty;
     public DateTime ReceivedAt { get; set; } = DateTime.UtcNow;
     public string? SenderDisplayName { get; set; }
+    /// <summary>
+    /// Relay URLs from the welcome event's "relays" tag.
+    /// Used to set Chat.RelayUrls when the invite is accepted.
+    /// </summary>
+    public List<string> RelayUrls { get; set; } = new();
 }

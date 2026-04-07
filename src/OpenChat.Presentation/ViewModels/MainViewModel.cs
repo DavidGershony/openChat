@@ -573,7 +573,23 @@ public class MainViewModel : ViewModelBase
                 subscriptionTasks.Add(_nostrService.SubscribeToGroupMessagesAsync(groupIds, since));
             }
 
-            // 4b. Connect bot-specific relays (receive-only, excluded from group broadcasts)
+            // 4b. Ensure group chat relays are connected (normal relays, not bot-only)
+            var groupRelayUrls = chats
+                .Where(c => c.Type == ChatType.Group && c.RelayUrls.Count > 0)
+                .SelectMany(c => c.RelayUrls)
+                .Distinct()
+                .Where(url => !_nostrService.ConnectedRelayUrls.Any(c =>
+                    string.Equals(c.TrimEnd('/'), url.TrimEnd('/'), StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+
+            if (groupRelayUrls.Count > 0)
+            {
+                _logger.LogInformation("Connecting to {Count} missing group chat relay(s): {Relays}",
+                    groupRelayUrls.Count, string.Join(", ", groupRelayUrls));
+                subscriptionTasks.Add(_nostrService.ConnectAsync(groupRelayUrls));
+            }
+
+            // 4c. Connect bot-specific relays (receive-only, excluded from group broadcasts)
             var botRelayUrls = chats
                 .Where(c => c.Type == ChatType.Bot && c.RelayUrls.Count > 0)
                 .SelectMany(c => c.RelayUrls)
