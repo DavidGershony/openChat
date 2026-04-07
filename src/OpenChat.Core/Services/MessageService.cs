@@ -100,14 +100,39 @@ public class MessageService : IMessageService, IDisposable
             senderLookup[key] = await _storageService.GetUserByPublicKeyAsync(key);
         }
 
+        // Build a lookup of loaded messages so reply resolution can avoid extra DB queries
+        var messageList = messages.ToList();
+        var messageLookup = messageList.ToDictionary(m => m.Id);
+
         var unknownKeys = new List<string>();
-        foreach (var message in messages)
+        foreach (var message in messageList)
         {
             message.Sender = senderLookup.GetValueOrDefault(message.SenderPublicKey);
             message.IsFromCurrentUser = message.SenderPublicKey == _currentUser?.PublicKeyHex;
             if (message.Sender == null && !message.IsFromCurrentUser)
             {
                 unknownKeys.Add(message.SenderPublicKey);
+            }
+
+            // Resolve ReplyToMessage so the UI can show the reply quote
+            if (!string.IsNullOrEmpty(message.ReplyToMessageId) && message.ReplyToMessage == null)
+            {
+                // Try the in-memory batch first, fall back to DB
+                if (messageLookup.TryGetValue(message.ReplyToMessageId, out var replyTarget))
+                {
+                    message.ReplyToMessage = replyTarget;
+                }
+                else
+                {
+                    message.ReplyToMessage = await _storageService.GetMessageAsync(message.ReplyToMessageId);
+                }
+
+                // Resolve the reply target's sender for display
+                if (message.ReplyToMessage != null && message.ReplyToMessage.Sender == null)
+                {
+                    message.ReplyToMessage.Sender = senderLookup.GetValueOrDefault(message.ReplyToMessage.SenderPublicKey)
+                        ?? await _storageService.GetUserByPublicKeyAsync(message.ReplyToMessage.SenderPublicKey);
+                }
             }
         }
 
@@ -130,7 +155,7 @@ public class MessageService : IMessageService, IDisposable
             });
         }
 
-        return messages;
+        return messageList;
     }
 
     public async Task<Message> SendMessageAsync(string chatId, string content)

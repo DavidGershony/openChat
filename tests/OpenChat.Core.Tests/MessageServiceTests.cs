@@ -1003,6 +1003,60 @@ public class MessageServiceTests : IDisposable
         )), Times.Once);
     }
 
+    // ─── Reply resolution ─────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetMessagesAsync_WithReplyToMessageId_PopulatesReplyToMessage()
+    {
+        // Arrange
+        await InitializeServiceAsync();
+
+        var senderPubKey = "cc".PadLeft(64, 'c');
+        var originalMessage = new Message
+        {
+            Id = "msg-original",
+            ChatId = "chat-1",
+            SenderPublicKey = senderPubKey,
+            Content = "Original message",
+            Type = MessageType.Text,
+            Timestamp = DateTime.UtcNow.AddMinutes(-5),
+            Status = MessageStatus.Delivered,
+            Reactions = new Dictionary<string, List<string>>()
+        };
+
+        var replyMessage = new Message
+        {
+            Id = "msg-reply",
+            ChatId = "chat-1",
+            SenderPublicKey = _currentUser.PublicKeyHex,
+            Content = "This is a reply",
+            Type = MessageType.Text,
+            ReplyToMessageId = "msg-original",
+            // ReplyToMessage is NOT set — simulates loading from DB
+            Timestamp = DateTime.UtcNow,
+            Status = MessageStatus.Sent,
+            Reactions = new Dictionary<string, List<string>>()
+        };
+
+        _storageMock.Setup(s => s.GetMessagesForChatAsync("chat-1", 50, 0))
+            .ReturnsAsync(new List<Message> { originalMessage, replyMessage });
+        _storageMock.Setup(s => s.GetMessageAsync("msg-original"))
+            .ReturnsAsync(originalMessage);
+        _storageMock.Setup(s => s.GetUserByPublicKeyAsync(senderPubKey))
+            .ReturnsAsync(new User { PublicKeyHex = senderPubKey, DisplayName = "Sender", Npub = "npub1sender" });
+        _storageMock.Setup(s => s.GetUserByPublicKeyAsync(_currentUser.PublicKeyHex))
+            .ReturnsAsync(_currentUser);
+
+        // Act
+        var messages = (await _sut.GetMessagesAsync("chat-1")).ToList();
+
+        // Assert - the reply message should have ReplyToMessage populated
+        var reply = messages.First(m => m.Id == "msg-reply");
+        Assert.NotNull(reply.ReplyToMessage);
+        Assert.Equal("Original message", reply.ReplyToMessage!.Content);
+        Assert.Equal("msg-original", reply.ReplyToMessage.Id);
+    }
+
     [Fact]
     public async Task HandleGroupMessage_ImageImeta_CreatesImageMessage()
     {
