@@ -275,6 +275,9 @@ public class ExternalSignerService : IExternalSigner, IDisposable
     {
         _logger.LogInformation("Generating nostrconnect URI and listening on relay: {Relay}", relayUrl);
 
+        // Reset connection state so Amber's connect ack is recognized (not cached as "replayed")
+        IsConnected = false;
+
         var uri = GenerateConnectionUri(relayUrl);
         _relayUrl = relayUrl;
 
