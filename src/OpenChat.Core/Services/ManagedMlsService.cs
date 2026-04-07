@@ -579,6 +579,12 @@ public class ManagedMlsService : IMlsService
                                 }
                             }
 
+                            // NIP-22 "q" tag — used by White Noise and other clients for replies/quotes
+                            if (tagName == "q" && replyToRumorEventId == null)
+                            {
+                                replyToRumorEventId = tag[1].GetString();
+                            }
+
                             // Parse imeta tags for image metadata (MIP-04)
                             if (tagName == "imeta")
                             {
