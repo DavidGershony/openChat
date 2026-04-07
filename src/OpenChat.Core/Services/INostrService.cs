@@ -196,13 +196,14 @@ public interface INostrService
     Task<string> Nip44DecryptAsync(string ciphertext, string senderPubKey);
 
     /// <summary>
-    /// Publish a NIP-59 gift-wrapped event to all connected relays.
+    /// Publish a NIP-59 gift-wrapped event.
     /// Used for NIP-17 DMs (kind 14 rumor) and other gift-wrapped protocols.
     /// </summary>
+    /// <param name="targetRelayUrls">When provided, only send to these relay URLs (must be connected). When null, broadcast to all connected relays.</param>
     Task<string> PublishGiftWrapAsync(
         int rumorKind, string content, List<List<string>> rumorTags,
         string? senderPrivateKeyHex, string senderPublicKeyHex,
-        string recipientPublicKeyHex);
+        string recipientPublicKeyHex, List<string>? targetRelayUrls = null);
 }
 
 public class NostrConnectionStatus

@@ -1144,7 +1144,7 @@ public class NostrService : INostrService, IDisposable
     public async Task<string> PublishGiftWrapAsync(
         int rumorKind, string content, List<List<string>> rumorTags,
         string? senderPrivateKeyHex, string senderPublicKeyHex,
-        string recipientPublicKeyHex)
+        string recipientPublicKeyHex, List<string>? targetRelayUrls = null)
     {
         var giftWrapMessage = await CreateGiftWrapAsync(
             kind: rumorKind,
@@ -1154,12 +1154,18 @@ public class NostrService : INostrService, IDisposable
             senderPublicKeyHex: senderPublicKeyHex,
             recipientPublicKeyHex: recipientPublicKeyHex);
 
-        _logger.LogInformation("Publishing NIP-59 gift-wrapped kind {Kind} (kind 1059) for {Recipient}",
-            rumorKind, recipientPublicKeyHex[..Math.Min(16, recipientPublicKeyHex.Length)]);
+        _logger.LogInformation("Publishing NIP-59 gift-wrapped kind {Kind} (kind 1059) for {Recipient} to {Target}",
+            rumorKind, recipientPublicKeyHex[..Math.Min(16, recipientPublicKeyHex.Length)],
+            targetRelayUrls != null ? string.Join(", ", targetRelayUrls) : "all relays");
 
         var eventBytes = Encoding.UTF8.GetBytes(giftWrapMessage.EventMessage);
         foreach (var (relayUrl, ws) in _relayConnections)
         {
+            // If target relays specified, only send to those
+            if (targetRelayUrls != null && !targetRelayUrls.Any(t =>
+                string.Equals(t.TrimEnd('/'), relayUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase)))
+                continue;
+
             if (ws.State == WebSocketState.Open)
             {
                 try

@@ -219,16 +219,19 @@ public class MessageService : IMessageService, IDisposable
                         new() { "p", botPublicKey }
                     };
 
+                    var botRelays = chat.RelayUrls.Count > 0 ? chat.RelayUrls : null;
                     message.NostrEventId = await _nostrService.PublishGiftWrapAsync(
                         rumorKind: 14,
                         content: content,
                         rumorTags: rumorTags,
                         senderPrivateKeyHex: _currentUser.PrivateKeyHex,
                         senderPublicKeyHex: _currentUser.PublicKeyHex,
-                        recipientPublicKeyHex: botPublicKey);
+                        recipientPublicKeyHex: botPublicKey,
+                        targetRelayUrls: botRelays);
 
-                    _logger.LogInformation("SendMessage: published gift-wrapped bot DM {EventId}",
-                        message.NostrEventId[..Math.Min(16, message.NostrEventId.Length)]);
+                    _logger.LogInformation("SendMessage: published gift-wrapped bot DM {EventId} to {Relays}",
+                        message.NostrEventId[..Math.Min(16, message.NostrEventId.Length)],
+                        botRelays != null ? string.Join(", ", botRelays) : "all relays");
                 }
             }
             else
@@ -471,13 +474,15 @@ public class MessageService : IMessageService, IDisposable
                         new() { "e", targetEventId, "", "reply" }
                     };
 
+                    var botRelays = chat.RelayUrls.Count > 0 ? chat.RelayUrls : null;
                     message.NostrEventId = await _nostrService.PublishGiftWrapAsync(
                         rumorKind: 14,
                         content: content,
                         rumorTags: rumorTags,
                         senderPrivateKeyHex: _currentUser.PrivateKeyHex,
                         senderPublicKeyHex: _currentUser.PublicKeyHex,
-                        recipientPublicKeyHex: botPublicKey);
+                        recipientPublicKeyHex: botPublicKey,
+                        targetRelayUrls: botRelays);
                 }
             }
 
