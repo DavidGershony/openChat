@@ -307,6 +307,12 @@ public class ChatViewModel : ViewModelBase
         }
 
         LoadMessagesAsync().ConfigureAwait(false);
+
+        // Load cached contact profile from DB so the avatar shows immediately (no relay fetch)
+        if (!IsGroup && ContactPublicKey != null)
+        {
+            _ = LoadCachedContactProfileAsync(ContactPublicKey);
+        }
         _messageService.MarkAsReadAsync(chat.Id).ConfigureAwait(false);
     }
 
@@ -339,6 +345,28 @@ public class ChatViewModel : ViewModelBase
         _currentUserPublicKeyHex = publicKeyHex;
         _logger.LogDebug("User context set for ChatViewModel (hasPrivKey={HasPrivKey}, hasPubKey={HasPubKey})",
             privateKeyHex != null, publicKeyHex != null);
+    }
+
+    private async Task LoadCachedContactProfileAsync(string publicKeyHex)
+    {
+        try
+        {
+            var user = await _storageService.GetUserByPublicKeyAsync(publicKeyHex);
+            if (user != null && !string.IsNullOrEmpty(user.AvatarUrl))
+            {
+                MetadataPicture = user.AvatarUrl;
+                MetadataDisplayName = user.DisplayName;
+                MetadataName = user.Username;
+                MetadataNpub = user.Npub;
+                MetadataAbout = user.About;
+                MetadataNip05 = user.Nip05;
+                HasMetadata = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Failed to load cached profile for {PubKey}", publicKeyHex[..Math.Min(16, publicKeyHex.Length)]);
+        }
     }
 
     public async Task LoadContactMetadataAsync()
