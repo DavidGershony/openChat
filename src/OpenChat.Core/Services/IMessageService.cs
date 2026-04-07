@@ -92,7 +92,9 @@ public interface IMessageService
     /// <summary>
     /// Create or get a bot chat (NIP-17 DMs) with a bot by public key.
     /// </summary>
-    Task<Chat> GetOrCreateBotChatAsync(string botPublicKey);
+    /// <param name="botPublicKey">The bot's hex public key.</param>
+    /// <param name="relayUrls">Optional relay URLs to associate with this chat for targeted message delivery.</param>
+    Task<Chat> GetOrCreateBotChatAsync(string botPublicKey, List<string>? relayUrls = null);
 
     /// <summary>
     /// Add a member to a group.

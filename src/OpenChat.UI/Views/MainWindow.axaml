@@ -752,6 +752,66 @@
                                        Classes="muted" FontSize="11" TextWrapping="Wrap" />
                         </StackPanel>
 
+                        <!-- Relay Selection -->
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Relay" Classes="secondary" FontSize="13" />
+
+                            <!-- Radio buttons -->
+                            <RadioButton Content="Find user relay (NIP-65)"
+                                         IsChecked="{Binding BotRelayModeNip65}"
+                                         GroupName="BotRelay" />
+                            <RadioButton Content="Select from connected relays"
+                                         IsChecked="{Binding BotRelayModeList}"
+                                         GroupName="BotRelay" />
+                            <RadioButton Content="Add relay manually"
+                                         IsChecked="{Binding BotRelayModeManual}"
+                                         GroupName="BotRelay" />
+
+                            <!-- NIP-65 panel -->
+                            <StackPanel Spacing="4" IsVisible="{Binding BotRelayModeNip65}">
+                                <Button Classes="secondary" Content="Look up relays"
+                                        Command="{Binding LookupBotNip65Command}"
+                                        Padding="12,4" FontSize="12"
+                                        HorizontalAlignment="Left" />
+                                <ProgressBar IsIndeterminate="True" Height="2"
+                                             IsVisible="{Binding IsFetchingNip65}"
+                                             Foreground="{DynamicResource NostrPurpleBrush}" />
+                                <TextBlock Text="{Binding Nip65Status}"
+                                           FontSize="12" TextWrapping="Wrap"
+                                           IsVisible="{Binding Nip65Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                <ItemsControl ItemsSource="{Binding BotNip65Relays}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <CheckBox Content="{Binding Url}" IsChecked="{Binding IsChecked}"
+                                                      FontSize="12" Margin="0,1" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+
+                            <!-- Select from list panel -->
+                            <StackPanel Spacing="4" IsVisible="{Binding BotRelayModeList}">
+                                <ItemsControl ItemsSource="{Binding BotAvailableRelays}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <CheckBox Content="{Binding Url}" IsChecked="{Binding IsChecked}"
+                                                      FontSize="12" Margin="0,1" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock Text="No relays connected."
+                                           Classes="muted" FontSize="12"
+                                           IsVisible="{Binding !BotAvailableRelays.Count}" />
+                            </StackPanel>
+
+                            <!-- Manual relay panel -->
+                            <StackPanel Spacing="4" IsVisible="{Binding BotRelayModeManual}">
+                                <TextBox Text="{Binding BotManualRelay}"
+                                         Watermark="wss://relay.example.com"
+                                         AcceptsReturn="False" />
+                            </StackPanel>
+                        </StackPanel>
+
                         <!-- Error Message -->
                         <TextBlock Text="{Binding AddBotError}"
                                    Foreground="{DynamicResource StatusErrorBrush}"

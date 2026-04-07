@@ -76,6 +76,16 @@ public class ChatListViewModel : ViewModelBase
     [Reactive] public string BotNpub { get; set; } = string.Empty;
     [Reactive] public string? AddBotError { get; set; }
 
+    // Relay selection for bot chat
+    [Reactive] public bool BotRelayModeNip65 { get; set; } = true;
+    [Reactive] public bool BotRelayModeList { get; set; }
+    [Reactive] public bool BotRelayModeManual { get; set; }
+    [Reactive] public string BotManualRelay { get; set; } = string.Empty;
+    [Reactive] public bool IsFetchingNip65 { get; set; }
+    [Reactive] public string? Nip65Status { get; set; }
+    public ObservableCollection<RelayCheckItem> BotAvailableRelays { get; } = new();
+    public ObservableCollection<RelayCheckItem> BotNip65Relays { get; } = new();
+
     // Delete Chat Dialog
     [Reactive] public bool ShowDeleteChatDialog { get; set; }
     [Reactive] public ChatItemViewModel? ChatToDelete { get; set; }
@@ -109,6 +119,7 @@ public class ChatListViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> AddBotCommand { get; }
     public ReactiveCommand<Unit, Unit> CreateBotChatCommand { get; }
     public ReactiveCommand<Unit, Unit> CancelAddBotCommand { get; }
+    public ReactiveCommand<Unit, Unit> LookupBotNip65Command { get; }
 
     public ChatListViewModel(IMessageService messageService, IStorageService storageService, IMlsService? mlsService = null, INostrService? nostrService = null)
     {
@@ -186,6 +197,19 @@ public class ChatListViewModel : ViewModelBase
             _logger.LogInformation("Opening link device dialog");
             BotNpub = string.Empty;
             AddBotError = null;
+            BotRelayModeNip65 = true;
+            BotRelayModeList = false;
+            BotRelayModeManual = false;
+            BotManualRelay = string.Empty;
+            Nip65Status = null;
+            IsFetchingNip65 = false;
+            BotNip65Relays.Clear();
+            BotAvailableRelays.Clear();
+            if (_nostrService != null)
+            {
+                foreach (var url in _nostrService.ConnectedRelayUrls)
+                    BotAvailableRelays.Add(new RelayCheckItem(url, true));
+            }
             ShowAddBotDialog = true;
         });
 
@@ -200,6 +224,8 @@ public class ChatListViewModel : ViewModelBase
             ShowAddBotDialog = false;
             AddBotError = null;
         });
+
+        LookupBotNip65Command = ReactiveCommand.CreateFromTask(LookupBotNip65Async);
 
         DeleteChatCommand = ReactiveCommand.Create<ChatItemViewModel>(chat =>
         {
@@ -1204,6 +1230,66 @@ public class ChatListViewModel : ViewModelBase
         }
     }
 
+    private async Task LookupBotNip65Async()
+    {
+        if (string.IsNullOrWhiteSpace(BotNpub) || _nostrService == null)
+        {
+            Nip65Status = "Enter a valid npub first.";
+            return;
+        }
+
+        var input = BotNpub.Trim();
+        string hex;
+        if (input.StartsWith("npub1"))
+        {
+            hex = _nostrService.NpubToHex(input) ?? string.Empty;
+            if (string.IsNullOrEmpty(hex))
+            {
+                Nip65Status = "Invalid npub format.";
+                return;
+            }
+        }
+        else if (input.Length == 64 && System.Text.RegularExpressions.Regex.IsMatch(input, "^[0-9a-fA-F]+$"))
+        {
+            hex = input.ToLowerInvariant();
+        }
+        else
+        {
+            Nip65Status = "Enter a valid npub or hex key.";
+            return;
+        }
+
+        IsFetchingNip65 = true;
+        Nip65Status = null;
+        BotNip65Relays.Clear();
+
+        try
+        {
+            var relays = await _nostrService.FetchRelayListAsync(hex);
+            if (relays.Count == 0)
+            {
+                Nip65Status = "No NIP-65 relays found for this user.";
+                return;
+            }
+
+            foreach (var relay in relays)
+                BotNip65Relays.Add(new RelayCheckItem(relay.Url, true));
+
+            Nip65Status = $"Found {relays.Count} relay(s).";
+            _logger.LogInformation("NIP-65 lookup found {Count} relays for {PubKey}",
+                relays.Count, hex[..Math.Min(16, hex.Length)]);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "NIP-65 lookup failed for {PubKey}", hex[..Math.Min(16, hex.Length)]);
+            Nip65Status = $"Lookup failed: {ex.Message}";
+        }
+        finally
+        {
+            IsFetchingNip65 = false;
+        }
+    }
+
     private async Task CreateBotChatAsync()
     {
         if (string.IsNullOrWhiteSpace(BotNpub))
@@ -1236,6 +1322,37 @@ public class ChatListViewModel : ViewModelBase
                 return;
             }
 
+            // Collect relay URLs based on selected mode
+            var relayUrls = new List<string>();
+            if (BotRelayModeNip65)
+            {
+                relayUrls.AddRange(BotNip65Relays.Where(r => r.IsChecked).Select(r => r.Url));
+                if (relayUrls.Count == 0)
+                {
+                    AddBotError = "No NIP-65 relays found. Click 'Look up relays' first.";
+                    return;
+                }
+            }
+            else if (BotRelayModeList)
+            {
+                relayUrls.AddRange(BotAvailableRelays.Where(r => r.IsChecked).Select(r => r.Url));
+                if (relayUrls.Count == 0)
+                {
+                    AddBotError = "Select at least one relay.";
+                    return;
+                }
+            }
+            else if (BotRelayModeManual)
+            {
+                var manual = BotManualRelay.Trim();
+                if (string.IsNullOrEmpty(manual) || (!manual.StartsWith("wss://") && !manual.StartsWith("ws://")))
+                {
+                    AddBotError = "Enter a valid relay URL (wss://...)";
+                    return;
+                }
+                relayUrls.Add(manual);
+            }
+
             // Try to fetch profile for name resolution
             try
             {
@@ -1246,7 +1363,7 @@ public class ChatListViewModel : ViewModelBase
                 _logger.LogDebug(ex, "Could not fetch profile, continuing with hex name");
             }
 
-            var chat = await _messageService.GetOrCreateBotChatAsync(hex);
+            var chat = await _messageService.GetOrCreateBotChatAsync(hex, relayUrls);
 
             ShowAddBotDialog = false;
             AddBotError = null;
@@ -1576,6 +1693,18 @@ public class ChatItemViewModel : ViewModelBase
         IsMuted = chat.IsMuted;
         IsGroup = chat.Type == ChatType.Group;
         IsBot = chat.Type == ChatType.Bot;
+    }
+}
+
+public class RelayCheckItem : ViewModelBase
+{
+    public string Url { get; }
+    [Reactive] public bool IsChecked { get; set; }
+
+    public RelayCheckItem(string url, bool isChecked = false)
+    {
+        Url = url;
+        IsChecked = isChecked;
     }
 }
 

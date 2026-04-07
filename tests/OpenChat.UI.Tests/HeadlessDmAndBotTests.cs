@@ -135,6 +135,10 @@ public class HeadlessDmAndBotTests : HeadlessTestBase
         Assert.True(chatListVm.ShowAddBotDialog);
 
         chatListVm.BotNpub = botPubKey;
+        // Select "Add relay manually" mode and provide a relay URL
+        chatListVm.BotRelayModeNip65 = false;
+        chatListVm.BotRelayModeManual = true;
+        chatListVm.BotManualRelay = "wss://relay.test.com";
         await chatListVm.CreateBotChatCommand.Execute();
         Dispatcher.UIThread.RunJobs();
 

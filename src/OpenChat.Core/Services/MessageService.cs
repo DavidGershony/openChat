@@ -579,7 +579,7 @@ public class MessageService : IMessageService, IDisposable
         return chat;
     }
 
-    public async Task<Chat> GetOrCreateBotChatAsync(string botPublicKey)
+    public async Task<Chat> GetOrCreateBotChatAsync(string botPublicKey, List<string>? relayUrls = null)
     {
         if (_currentUser == null)
             throw new InvalidOperationException("User not logged in");
@@ -591,7 +591,17 @@ public class MessageService : IMessageService, IDisposable
             c.ParticipantPublicKeys.Contains(botPublicKey));
 
         if (existingChat != null)
+        {
+            // Update relay URLs if provided and chat had none
+            if (relayUrls is { Count: > 0 } && existingChat.RelayUrls.Count == 0)
+            {
+                existingChat.RelayUrls = relayUrls;
+                await _storageService.SaveChatAsync(existingChat);
+                _logger.LogInformation("Updated relay URLs for existing bot chat {ChatId}: {Relays}",
+                    existingChat.Id[..Math.Min(8, existingChat.Id.Length)], string.Join(", ", relayUrls));
+            }
             return existingChat;
+        }
 
         // Get bot profile for display name
         var botUser = await _storageService.GetUserByPublicKeyAsync(botPublicKey);
@@ -603,12 +613,16 @@ public class MessageService : IMessageService, IDisposable
             Name = chatName,
             Type = ChatType.Bot,
             ParticipantPublicKeys = new List<string> { _currentUser.PublicKeyHex, botPublicKey },
+            RelayUrls = relayUrls ?? new List<string>(),
             CreatedAt = DateTime.UtcNow,
             LastActivityAt = DateTime.UtcNow
         };
 
         await _storageService.SaveChatAsync(chat);
         _chatUpdates.OnNext(chat);
+
+        _logger.LogInformation("Created bot chat {ChatId} with {RelayCount} relay(s)",
+            chat.Id[..Math.Min(8, chat.Id.Length)], chat.RelayUrls.Count);
 
         return chat;
     }
