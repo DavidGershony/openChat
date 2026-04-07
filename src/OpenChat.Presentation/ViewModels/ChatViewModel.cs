@@ -139,8 +139,21 @@ public class ChatViewModel : ViewModelBase
         MessageViewModel.MlsServiceRef = mlsService;
         MessageViewModel.StorageServiceRef = storageService;
         MessageViewModel.MessageServiceRef = messageService;
-        MessageViewModel.MediaCacheGet = id => _mediaCache.TryGetValue(id, out var bytes) ? bytes : null;
-        MessageViewModel.MediaCacheSet = (id, bytes) => _mediaCache[id] = bytes;
+
+        // Disk-backed media cache: check memory first, then disk
+        var diskCache = new MediaCacheService();
+        MessageViewModel.MediaCacheGet = (id) =>
+        {
+            if (_mediaCache.TryGetValue(id, out var bytes)) return bytes;
+            var diskBytes = diskCache.GetCached(id);
+            if (diskBytes != null) _mediaCache[id] = diskBytes;
+            return diskBytes;
+        };
+        MessageViewModel.MediaCacheSet = (id, bytes) =>
+        {
+            _mediaCache[id] = bytes;
+            diskCache.Save(id, bytes);
+        };
 
         var canSend = this.WhenAnyValue(
             x => x.MessageText,
@@ -1201,7 +1214,7 @@ public class MessageViewModel : ViewModelBase
         // Load MIP-04 setting
         LoadMip04Setting();
 
-        // Check cache
+        // Check cache (memory + disk)
         if ((IsImage || IsAudio) && MediaCacheGet != null)
         {
             var cached = MediaCacheGet(Id);
@@ -1210,6 +1223,12 @@ public class MessageViewModel : ViewModelBase
                 DecryptedMediaBytes = cached;
                 IsMediaLoaded = true;
             }
+        }
+
+        // Auto-download images and audio when MIP-04 is enabled and not yet cached
+        if ((IsImage || IsAudio) && !IsMediaLoaded && IsMip04Enabled && !string.IsNullOrEmpty(message.ImageUrl))
+        {
+            _ = LoadMediaAsync();
         }
 
         UpdateReactionsDisplay();
