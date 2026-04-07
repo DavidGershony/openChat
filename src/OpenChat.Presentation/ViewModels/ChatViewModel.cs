@@ -285,6 +285,7 @@ public class ChatViewModel : ViewModelBase
         // Reset metadata panel state
         ShowMetadataPanel = false;
         ContactMetadata = null;
+        ClearMetadataProperties();
 
         // Get the contact's public key for DMs and 2-participant groups
         ContactPublicKey = null;
