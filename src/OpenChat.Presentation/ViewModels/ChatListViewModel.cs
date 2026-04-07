@@ -1365,6 +1365,12 @@ public class ChatListViewModel : ViewModelBase
 
             var chat = await _messageService.GetOrCreateBotChatAsync(hex, relayUrls);
 
+            // Connect to bot-specific relays for receiving replies
+            if (relayUrls.Count > 0 && _nostrService != null)
+            {
+                await _nostrService.ConnectBotRelaysAsync(relayUrls);
+            }
+
             ShowAddBotDialog = false;
             AddBotError = null;
 

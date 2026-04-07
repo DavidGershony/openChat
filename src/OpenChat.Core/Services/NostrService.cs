@@ -34,6 +34,11 @@ public class NostrService : INostrService, IDisposable
     private readonly ConcurrentDictionary<string, byte> _recentlyProcessedEventIds = new();
     private readonly ConcurrentDictionary<string, int> _relayBackoffSeconds = new();
     private readonly ConcurrentDictionary<string, TaskCompletionSource<bool>> _pendingOkCallbacks = new();
+    // Relays connected only for bot chat DM delivery/reception — excluded from group message broadcasts
+    private readonly ConcurrentDictionary<string, byte> _botOnlyRelays = new();
+
+    private bool IsBotOnlyRelay(string relayUrl)
+        => _botOnlyRelays.ContainsKey(relayUrl.TrimEnd('/'));
     private const int MaxBackoffSeconds = 60;
     private const int RateLimitBackoffSeconds = 60;
     private DateTimeOffset? _groupMessagesSince;
@@ -78,7 +83,29 @@ public class NostrService : INostrService, IDisposable
         var relayList = relayUrls.ToList();
         _logger.LogInformation("Connecting to {Count} relays: {Relays}", relayList.Count, string.Join(", ", relayList));
 
+        // Promote any bot-only relays to normal if they appear in the user's relay list
+        foreach (var url in relayList)
+            _botOnlyRelays.TryRemove(url.TrimEnd('/'), out _);
+
         var connectionTasks = relayList.Select(ConnectToRelayAsync);
+        await Task.WhenAll(connectionTasks);
+    }
+
+    public async Task ConnectBotRelaysAsync(IEnumerable<string> relayUrls)
+    {
+        var newRelays = relayUrls
+            .Where(url => !_relayConnections.ContainsKey(url) &&
+                          !_relayConnections.Keys.Any(k => string.Equals(k.TrimEnd('/'), url.TrimEnd('/'), StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
+        if (newRelays.Count == 0) return;
+
+        _logger.LogInformation("Connecting to {Count} bot-only relays: {Relays}", newRelays.Count, string.Join(", ", newRelays));
+
+        foreach (var url in newRelays)
+            _botOnlyRelays.TryAdd(url.TrimEnd('/'), 0);
+
+        var connectionTasks = newRelays.Select(ConnectToRelayAsync);
         await Task.WhenAll(connectionTasks);
     }
 
@@ -983,9 +1010,10 @@ public class NostrService : INostrService, IDisposable
 
         _logger.LogDebug("Sending Group subscription REQ: {Message}", reqMessage);
 
-        // Send to all connected relays
+        // Send to all connected relays (skip bot-only relays — group subs don't belong there)
         foreach (var (relayUrl, ws) in _relayConnections)
         {
+            if (IsBotOnlyRelay(relayUrl)) continue;
             if (ws.State == WebSocketState.Open)
             {
                 try
@@ -1116,10 +1144,11 @@ public class NostrService : INostrService, IDisposable
         _logger.LogInformation("Publishing NIP-59 gift-wrapped Welcome (kind 1059) for {Recipient}",
             recipientPublicKey[..Math.Min(16, recipientPublicKey.Length)]);
 
-        // Publish the kind 1059 gift wrap to all relays
+        // Publish the kind 1059 gift wrap to all relays (skip bot-only — MLS welcomes don't belong there)
         var eventBytes = Encoding.UTF8.GetBytes(giftWrapMessage.EventMessage);
         foreach (var (relayUrl, ws) in _relayConnections)
         {
+            if (IsBotOnlyRelay(relayUrl)) continue;
             if (ws.State == WebSocketState.Open)
             {
                 try
@@ -1516,6 +1545,7 @@ public class NostrService : INostrService, IDisposable
 
         foreach (var (relayUrl, ws) in _relayConnections)
         {
+            if (IsBotOnlyRelay(relayUrl)) continue;
             try
             {
                 if (ws.State == System.Net.WebSockets.WebSocketState.Open)
@@ -2584,10 +2614,11 @@ public class NostrService : INostrService, IDisposable
         var eventBytes = Encoding.UTF8.GetBytes(eventMessage);
         _logger.LogDebug("Publishing event {EventId} to relays", eventId);
 
-        // Send to all connected relays
+        // Send to all connected relays (skip bot-only relays)
         var publishTasks = new List<Task>();
         foreach (var (relayUrl, ws) in _relayConnections)
         {
+            if (IsBotOnlyRelay(relayUrl)) continue;
             if (ws.State == WebSocketState.Open)
             {
                 publishTasks.Add(SendToRelayAsync(relayUrl, ws, eventBytes));

@@ -33,6 +33,13 @@ public interface INostrService
     Task ConnectAsync(IEnumerable<string> relayUrls);
 
     /// <summary>
+    /// Connect to relay(s) for bot chat DM delivery/reception only.
+    /// These relays receive welcome/gift-wrap subscriptions but are excluded
+    /// from group message, key package, and commit broadcasts.
+    /// </summary>
+    Task ConnectBotRelaysAsync(IEnumerable<string> relayUrls);
+
+    /// <summary>
     /// Disconnect from all relays.
     /// </summary>
     Task DisconnectAsync();

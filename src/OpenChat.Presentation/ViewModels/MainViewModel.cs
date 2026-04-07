@@ -573,6 +573,19 @@ public class MainViewModel : ViewModelBase
                 subscriptionTasks.Add(_nostrService.SubscribeToGroupMessagesAsync(groupIds, since));
             }
 
+            // 4b. Connect bot-specific relays (receive-only, excluded from group broadcasts)
+            var botRelayUrls = chats
+                .Where(c => c.Type == ChatType.Bot && c.RelayUrls.Count > 0)
+                .SelectMany(c => c.RelayUrls)
+                .Distinct()
+                .ToList();
+
+            if (botRelayUrls.Count > 0)
+            {
+                _logger.LogInformation("Connecting to {Count} bot-specific relays", botRelayUrls.Count);
+                subscriptionTasks.Add(_nostrService.ConnectBotRelaysAsync(botRelayUrls));
+            }
+
             await Task.WhenAll(subscriptionTasks);
 
             // 5. KeyPackage check + profile metadata in parallel (non-blocking)
