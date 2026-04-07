@@ -560,11 +560,6 @@ public class ManagedMlsService : IMlsService
                     // Parse tags from the rumor event
                     if (doc.RootElement.TryGetProperty("tags", out var tagsProp) && tagsProp.ValueKind == System.Text.Json.JsonValueKind.Array)
                     {
-                        // Log all tags for debugging interop with other clients
-                        var tagSummary = string.Join(", ", tagsProp.EnumerateArray()
-                            .Select(t => "[" + string.Join(",", Enumerable.Range(0, t.GetArrayLength()).Select(i => t[i].GetString())) + "]"));
-                        _logger.LogDebug("DecryptMessage: rumor tags: {Tags}", tagSummary);
-
                         foreach (var tag in tagsProp.EnumerateArray())
                         {
                             if (tag.GetArrayLength() < 2) continue;
@@ -578,23 +573,10 @@ public class ManagedMlsService : IMlsService
                                 {
                                     replyToRumorEventId = tag[1].GetString();
                                 }
-                                else if (rumorKind == 7)
+                                else
                                 {
-                                    // Only treat unmarked "e" tags as reaction targets for kind 7
                                     reactionTargetEventId = tag[1].GetString();
                                 }
-                                // For kind 9 (regular message), unmarked "e" tags with no marker
-                                // are likely replies (deprecated NIP-10 positional format)
-                                else if (rumorKind == 9 && replyToRumorEventId == null)
-                                {
-                                    replyToRumorEventId = tag[1].GetString();
-                                }
-                            }
-
-                            // NIP-22 "q" tags are also used for replies/quotes
-                            if (tagName == "q" && replyToRumorEventId == null)
-                            {
-                                replyToRumorEventId = tag[1].GetString();
                             }
 
                             // Parse imeta tags for image metadata (MIP-04)
