@@ -104,8 +104,6 @@ public class User
             return DisplayName;
         if (!string.IsNullOrEmpty(Username))
             return $"@{Username}";
-        if (!string.IsNullOrEmpty(Npub))
-            return $"{Npub[..12]}...";
-        return "Unknown";
+        return "Anonymous";
     }
 }

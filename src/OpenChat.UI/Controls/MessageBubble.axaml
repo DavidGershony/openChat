@@ -260,11 +260,22 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Text Content (for non-image/non-audio messages) -->
-                <TextBlock Text="{Binding Content}"
-                           Foreground="{DynamicResource BubbleReceivedTextBrush}"
-                           TextWrapping="Wrap" FontSize="14"
-                           IsVisible="{Binding IsTextMessage}" />
+                <!-- Text Content + inline timestamp -->
+                <WrapPanel IsVisible="{Binding IsTextMessage}">
+                    <TextBlock Text="{Binding Content}"
+                               Foreground="{DynamicResource BubbleReceivedTextBrush}"
+                               TextWrapping="Wrap" FontSize="14" />
+                    <TextBlock Text="{Binding Timestamp, StringFormat={}{0:HH:mm}}"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               FontSize="11" VerticalAlignment="Bottom"
+                               Margin="8,0,0,0" />
+                </WrapPanel>
+
+                <!-- Timestamp for media messages (not inline) -->
+                <TextBlock Text="{Binding Timestamp, StringFormat={}{0:HH:mm}}"
+                           Foreground="{DynamicResource TextMutedBrush}"
+                           FontSize="11" HorizontalAlignment="Right"
+                           IsVisible="{Binding !IsTextMessage}" />
 
                 <!-- Emoji reaction picker + reply (hover) -->
                 <StackPanel Orientation="Horizontal" Spacing="2"
@@ -287,11 +298,6 @@
                     <Button Content="🔥" Classes="icon" Padding="4,2" FontSize="14"
                             Command="{Binding ReactCommand}" CommandParameter="🔥" />
                 </StackPanel>
-
-                <!-- Timestamp -->
-                <TextBlock Text="{Binding Timestamp, StringFormat={}{0:HH:mm}}"
-                           Foreground="{DynamicResource TextMutedBrush}"
-                           FontSize="11" HorizontalAlignment="Right" />
 
                 <!-- Reactions -->
                 <Border IsVisible="{Binding HasReactions}"
@@ -524,11 +530,22 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Text Content (for non-image/non-audio messages) -->
-                <TextBlock Text="{Binding Content}"
-                           Foreground="{DynamicResource BubbleSentTextBrush}"
-                           TextWrapping="Wrap" FontSize="14"
-                           IsVisible="{Binding IsTextMessage}" />
+                <!-- Text Content + inline timestamp -->
+                <WrapPanel IsVisible="{Binding IsTextMessage}">
+                    <TextBlock Text="{Binding Content}"
+                               Foreground="{DynamicResource BubbleSentTextBrush}"
+                               TextWrapping="Wrap" FontSize="14" />
+                    <TextBlock Text="{Binding Timestamp, StringFormat={}{0:HH:mm}}"
+                               Foreground="{DynamicResource NostrPurpleAccentBrush}"
+                               FontSize="11" VerticalAlignment="Bottom" Opacity="0.8"
+                               Margin="8,0,0,0" />
+                </WrapPanel>
+
+                <!-- Timestamp for media messages (not inline) -->
+                <TextBlock Text="{Binding Timestamp, StringFormat={}{0:HH:mm}}"
+                           Foreground="{DynamicResource NostrPurpleAccentBrush}"
+                           FontSize="11" HorizontalAlignment="Right" Opacity="0.8"
+                           IsVisible="{Binding !IsTextMessage}" />
 
                 <!-- Emoji reaction picker + reply (hover) -->
                 <StackPanel Orientation="Horizontal" Spacing="2"
@@ -551,11 +568,6 @@
                     <Button Content="🔥" Classes="icon" Padding="4,2" FontSize="14"
                             Command="{Binding ReactCommand}" CommandParameter="🔥" />
                 </StackPanel>
-
-                <!-- Timestamp -->
-                <TextBlock Text="{Binding Timestamp, StringFormat={}{0:HH:mm}}"
-                           Foreground="{DynamicResource NostrPurpleAccentBrush}"
-                           FontSize="11" HorizontalAlignment="Right" Opacity="0.8" />
 
                 <!-- Reactions -->
                 <Border IsVisible="{Binding HasReactions}"

@@ -281,10 +281,9 @@ public class MainViewModel : ViewModelBase
 
         try
         {
-        // Show the npub immediately so user knows which identity is connected
-        HeaderDisplayName = CurrentUser.Npub != null && CurrentUser.Npub.Length > 16
-            ? CurrentUser.Npub[..16] + "..."
-            : CurrentUser.Npub ?? "OpenChat";
+        HeaderDisplayName = !string.IsNullOrEmpty(CurrentUser.DisplayName)
+            ? CurrentUser.DisplayName
+            : "OpenChat";
 
         // Show spinners immediately while everything initializes
         ChatListViewModel.IsLoading = true;

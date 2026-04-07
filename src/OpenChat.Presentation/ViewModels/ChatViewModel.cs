@@ -720,7 +720,7 @@ public class ChatViewModel : ViewModelBase
     {
         ReplyingToMessage = message;
         ReplyPreviewText = message.Content?.Length > 100 ? message.Content[..100] + "..." : message.Content;
-        ReplyPreviewSender = message.Sender?.DisplayName ?? message.SenderPublicKey[..Math.Min(12, message.SenderPublicKey.Length)] + "...";
+        ReplyPreviewSender = message.Sender?.DisplayName ?? "Anonymous";
         _logger.LogDebug("Reply set to message {MessageId} from {Sender}", message.Id, ReplyPreviewSender);
     }
 
@@ -1162,7 +1162,7 @@ public class MessageViewModel : ViewModelBase
         Message = message;
         Id = message.Id;
         SenderPublicKey = message.SenderPublicKey;
-        SenderName = message.Sender?.GetDisplayNameOrNpub() ?? message.SenderPublicKey[..12] + "...";
+        SenderName = message.Sender?.GetDisplayNameOrNpub() ?? "Anonymous";
         SenderAvatarUrl = message.Sender?.AvatarUrl;
         Content = StripNostrMentions(message.Content);
         Timestamp = message.Timestamp;
@@ -1174,7 +1174,7 @@ public class MessageViewModel : ViewModelBase
         if (HasReplyTo)
         {
             var reply = message.ReplyToMessage!;
-            ReplyToSenderName = reply.Sender?.GetDisplayNameOrNpub() ?? reply.SenderPublicKey[..Math.Min(12, reply.SenderPublicKey.Length)] + "...";
+            ReplyToSenderName = reply.Sender?.GetDisplayNameOrNpub() ?? "Anonymous";
             var replyText = StripNostrMentions(reply.Content);
             ReplyToContent = replyText?.Length > 80 ? replyText[..80] + "..." : replyText;
         }

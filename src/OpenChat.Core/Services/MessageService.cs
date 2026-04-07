@@ -567,7 +567,7 @@ public class MessageService : IMessageService, IDisposable
 
         // Get recipient user info
         var recipient = await _storageService.GetUserByPublicKeyAsync(recipientPublicKey);
-        var chatName = recipient?.GetDisplayNameOrNpub() ?? $"{recipientPublicKey[..12]}...";
+        var chatName = recipient?.GetDisplayNameOrNpub() ?? "Anonymous";
 
         var chat = new Chat
         {
@@ -611,7 +611,7 @@ public class MessageService : IMessageService, IDisposable
 
         // Get bot profile for display name
         var botUser = await _storageService.GetUserByPublicKeyAsync(botPublicKey);
-        var chatName = botUser?.GetDisplayNameOrNpub() ?? $"{botPublicKey[..12]}...";
+        var chatName = botUser?.GetDisplayNameOrNpub() ?? "Anonymous";
 
         var chat = new Chat
         {
@@ -1309,7 +1309,7 @@ public class MessageService : IMessageService, IDisposable
             ? groupInfo.GroupName
             : !string.IsNullOrWhiteSpace(invite.SenderDisplayName)
                 ? $"Chat with {invite.SenderDisplayName}"
-                : $"Group {invite.SenderPublicKey[..8]}";
+                : "Group Chat";
 
         // Get the NostrGroupId (from 0xF2EE extension) for relay subscriptions and h-tag routing
         var nostrGroupId = _mlsService.GetNostrGroupId(groupInfo.GroupId);

@@ -1744,9 +1744,7 @@ public class PendingInviteItemViewModel : ViewModelBase
 
         SenderName = !string.IsNullOrEmpty(invite.SenderDisplayName)
             ? invite.SenderDisplayName
-            : invite.SenderPublicKey.Length > 12
-                ? $"{invite.SenderPublicKey[..12]}..."
-                : invite.SenderPublicKey;
+            : "Anonymous";
 
         SenderInitial = !string.IsNullOrEmpty(invite.SenderDisplayName)
             ? invite.SenderDisplayName[..1].ToUpperInvariant()
