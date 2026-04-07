@@ -352,6 +352,8 @@ public class ChatViewModel : ViewModelBase
         try
         {
             var user = await _storageService.GetUserByPublicKeyAsync(publicKeyHex);
+            _logger.LogDebug("LoadCachedProfile: user={Found}, avatarUrl={Avatar}, displayName={Name}",
+                user != null, user?.AvatarUrl?[..Math.Min(30, user?.AvatarUrl?.Length ?? 0)], user?.DisplayName);
             if (user != null && !string.IsNullOrEmpty(user.AvatarUrl))
             {
                 MetadataPicture = user.AvatarUrl;
