@@ -55,8 +55,15 @@ public static class ProfileConfiguration
     /// <summary>
     /// Root data directory, independent of active profile. Always %LOCALAPPDATA%\OpenChat\.
     /// Used for the user registry file (last_user.json).
+    /// Override with <see cref="SetRootDataDirectory"/> in tests to avoid clobbering real user data.
     /// </summary>
-    public static string RootDataDirectory { get; } = GetDefaultDataDirectory();
+    public static string RootDataDirectory { get; private set; } = GetDefaultDataDirectory();
+
+    /// <summary>
+    /// Overrides the root data directory. Use in tests to isolate last_user.json
+    /// from the real app data directory.
+    /// </summary>
+    public static void SetRootDataDirectory(string path) => RootDataDirectory = path;
 
     /// <summary>
     /// Full path to the SQLite database file.

@@ -1,6 +1,7 @@
 using System.Reactive.Concurrency;
 using System.Reactive.Linq;
 using Moq;
+using OpenChat.Core.Configuration;
 using OpenChat.Core.Models;
 using OpenChat.Core.Services;
 using OpenChat.Presentation.Services;
@@ -19,14 +20,29 @@ namespace OpenChat.UI.Tests;
 public class ShellViewModelLogoutTests : IDisposable
 {
     private readonly List<string> _dbPaths = new();
+    private readonly string _originalRootDir = ProfileConfiguration.RootDataDirectory;
+    private readonly string _tempRootDir;
+
+    public ShellViewModelLogoutTests()
+    {
+        // Redirect RootDataDirectory to a temp folder so tests don't delete
+        // the real last_user.json from the app's data directory
+        _tempRootDir = Path.Combine(Path.GetTempPath(), $"openchat_test_root_{Guid.NewGuid()}");
+        Directory.CreateDirectory(_tempRootDir);
+        ProfileConfiguration.SetRootDataDirectory(_tempRootDir);
+    }
 
     public void Dispose()
     {
+        // Restore original root directory
+        ProfileConfiguration.SetRootDataDirectory(_originalRootDir);
+
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         GC.Collect();
         GC.WaitForPendingFinalizers();
         foreach (var path in _dbPaths)
             try { File.Delete(path); } catch { }
+        try { Directory.Delete(_tempRootDir, true); } catch { }
     }
 
     [Fact]
