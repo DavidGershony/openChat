@@ -1,128 +1,101 @@
-# Task: Replace raw ClientWebSocket with Websocket.Client library
+# Task: Extract NostrRelayConnection wrapper around ClientWebSocket
 
 ## Status: Not started
 
+## Decision log
+
+**2026-04-08**: Originally planned to adopt `Websocket.Client` by Marfusios, but the library
+has unresolved critical issues (memory leak #124 during prolonged reconnect, deadlock on Stop #139)
+and has not been updated since Sep 2025. Both issues are especially bad for a multi-relay Nostr app.
+
+**New plan**: Write a thin `NostrRelayConnection` wrapper (~200-300 lines) around .NET 9's
+built-in `ClientWebSocket`. No third-party dependency. .NET 9's `KeepAliveTimeout` gives us
+dead-connection detection for free.
+
+This task also unblocks security fix H2 (subscription filter validation) — the wrapper's
+reconnect handler needs centralized subscription tracking, which is exactly what H2 needs.
+
 ## Context
 
-The current `NostrService` (~2,600 lines) hand-rolls all WebSocket handling: connection setup,
+The current `NostrService` (~2,800 lines) hand-rolls all WebSocket handling: connection setup,
 frame reassembly, listener tasks, and reconnection. This works but has real problems:
 
 - **No auto-reconnect** — a dropped relay connection stays dead until manual `ReconnectRelayAsync()`
 - **Fire-and-forget listener tasks** — `_ = ListenToRelayAsync(...)` with no crash recovery
-- **TOCTOU race on sends** — `if (ws.State == Open) { SendAsync() }` can throw if state changes between check and send
+- **TOCTOU race on sends** — `if (ws.State == Open) { SendAsync() }` can throw if state changes
 - **No send timeout** — `CancellationToken.None` on all sends, can hang indefinitely
-- **Silent failures** — send errors logged and swallowed, caller never knows
-
-The original plan was to integrate `Blockcore.Nostr.Client` (a Nostr protocol library), but analysis
-showed that **none of the .NET Nostr libraries implement NIP-42, NIP-46, NIP-59, or NIP-65** — all of
-which our NostrService already handles. Wrapping a Nostr library would mean reimplementing most of
-our protocol logic on top of it.
-
-The real value is in the **underlying WebSocket client**: `Websocket.Client` by Marfusios (MIT, 756
-GitHub stars, used in production by multiple projects).
+- **11 ad-hoc subscription sites** — no central tracking of what's subscribed, making reconnection
+  fragile and H2 filter validation impossible
 
 ## Goal
 
-Replace `System.Net.WebSockets.ClientWebSocket` with `Websocket.Client` in NostrService for
-connection management only. Keep all NIP/Marmot protocol logic (~1,100+ lines) untouched.
+Extract a `NostrRelayConnection` class that encapsulates one relay connection with:
+- Thread-safe sends (SemaphoreSlim)
+- Auto-reconnect with exponential backoff
+- .NET 9 KeepAliveInterval + KeepAliveTimeout for dead-connection detection
+- Receive loop pumping into `IObservable<string>` (fits existing Rx/ReactiveUI stack)
+- Centralized subscription tracking: `RegisterSubscription(subId, filter)` / `UnregisterSubscription(subId)`
+- Auto re-subscribe on reconnect from the tracked filter set
+- H2 filter validation: incoming EVENT checked against registered subscription ID
 
-## What Websocket.Client gives us
+## What NostrRelayConnection provides
 
-| Feature | Current code | With Websocket.Client |
+| Feature | Current code | With wrapper |
 |---|---|---|
-| Auto-reconnect | None | Built-in, configurable delays |
-| Disconnect detection | Listener exits silently | `DisconnectionHappened` observable with reason |
-| Reconnect notification | None | `ReconnectionHappened` observable |
-| Send model | Direct to socket (race condition) | Channel-based queue, thread-safe |
-| Frame reassembly | Manual loop + MemoryStream | Built-in with RecyclableMemoryStream |
-| Message stream | Fire-and-forget task → Subject.OnNext() | Native IObservable<ResponseMessage> |
-| Close handling | Check in receive loop | Automatic detection + reconnect |
-
-## What to watch out for
-
-1. **Inactivity timeout** — defaults to 1 minute, triggers reconnect on quiet connections.
-   Nostr relays can be quiet between messages. Must raise `ReconnectTimeout` or implement
-   keep-alive pings to avoid unnecessary reconnections.
-
-2. **Buffer size** — hardcoded 4KB chunks (our code uses 64KB). Reassembly still works
-   correctly, just more iterations for large MLS Welcome events. Not a real problem.
-
-3. **Re-subscribe on reconnect** — each reconnect creates a new `ClientWebSocket` instance.
-   Must re-send all active subscriptions (Welcome + Group message filters) in the
-   `ReconnectionHappened` handler. We already have `ResendSubscriptionsToRelayAsync()` for this.
-
-4. **Library health** — 58 open GitHub issues including reconnection memory leaks (#124)
-   and deadlocks on Stop() (#139). Works in production but not heavily maintained.
-   Last commit: Sep 2025.
-
-## Package
-
-```xml
-<PackageReference Include="Websocket.Client" Version="5.3.0" />
-```
-
-Dependencies it brings: `System.Reactive` (already used via ReactiveUI),
-`Microsoft.IO.RecyclableMemoryStream`, `Microsoft.Extensions.Logging.Abstractions`.
+| Auto-reconnect | None | Built-in, exponential backoff |
+| Dead connection | Not detected | .NET 9 KeepAliveTimeout |
+| Send model | Direct to socket (race) | SemaphoreSlim-guarded, with timeout |
+| Frame reassembly | Manual loop + MemoryStream | Same loop, encapsulated |
+| Message stream | Fire-and-forget task → Subject | IObservable<string> from receive loop |
+| Subscription tracking | None (11 ad-hoc sites) | ConcurrentDictionary<subId, filter> |
+| Reconnect re-subscribe | Reconstructs from scattered state | Replays tracked subscriptions |
+| H2 filter validation | Not implemented | Check EVENT subId against tracked filters |
 
 ## Scope of changes
 
-### Replace (~377 lines of WebSocket plumbing)
+### New class: `NostrRelayConnection` (~200-300 lines)
+- Constructor takes relay URL, creates ClientWebSocket with KeepAlive config
+- `ConnectAsync()` — connect + start receive loop
+- `SendAsync(string message)` — SemaphoreSlim-guarded send with timeout
+- `SubscribeAsync(string subId, object filter)` — send REQ, track in dictionary
+- `UnsubscribeAsync(string subId)` — send CLOSE, remove from dictionary
+- `Messages: IObservable<string>` — message stream
+- `ConnectionStatus: IObservable<bool>` — connected/disconnected
+- Auto-reconnect loop with backoff, re-sends all tracked subscriptions on reconnect
+- `ValidateEventSubscription(string subId, int eventKind)` — H2 check
 
-| Current code | Replace with |
-|---|---|
-| `ConcurrentDictionary<string, ClientWebSocket> _relayConnections` | `ConcurrentDictionary<string, WebsocketClient> _relayConnections` |
-| `ConnectToRelayAsync()` — manual socket create, connect, fire-and-forget listener | Create `WebsocketClient`, configure timeouts, subscribe to observables, `Start()` |
-| `ListenToRelayAsync()` — manual receive loop | `client.MessageReceived.Subscribe(msg => ProcessRelayMessageAsync(...))` |
-| `ReceiveFullMessageAsync()` — manual frame accumulation | Removed (library handles it) |
-| `DisconnectSingleRelayAsync()` — manual close + cleanup | `client.Stop()` + `Dispose()` |
-| `ResendSubscriptionsToRelayAsync()` — called manually | Wire into `client.ReconnectionHappened.Subscribe(...)` |
-| Direct `ws.SendAsync()` with state check | `client.Send(message)` (queued, thread-safe) |
+### Refactor NostrService (~377 lines replaced)
+- Replace `ConcurrentDictionary<string, ClientWebSocket> _relayConnections` with `<string, NostrRelayConnection>`
+- Replace all 11 inline REQ sites with `connection.SubscribeAsync(subId, filter)`
+- Remove `ListenToRelayAsync`, `ReceiveFullMessageAsync` (moved into wrapper)
+- Remove manual reconnect logic (wrapper handles it)
+- Add H2 validation in `ProcessRelayMessageAsync`
 
 ### Keep untouched (~1,100+ lines of protocol logic)
-
 - `ProcessRelayMessageAsync()` — event routing, OK/AUTH/NOTICE handling
 - `HandleAuthChallengeAsync()` — NIP-42
 - `CreateGiftWrapAsync()` / `UnwrapGiftWrapAsync()` — NIP-59
-- `Nip44EncryptAsync()` / `Nip44DecryptAsync()` — NIP-44
-- All publish methods — event serialization, signing, relay broadcast
-- All fetch methods — KeyPackages, metadata, relay lists
-- All subscription filter construction
+- All publish methods, all NIP implementations
 - Key management, signature verification, event parsing
-
-### Rx integration
-
-The current code uses hand-rolled Rx: fire-and-forget tasks that call `Subject<T>.OnNext()`.
-With Websocket.Client, the message stream is a native `IObservable<ResponseMessage>` that
-pipes directly into the existing Rx chain. This fits naturally with the ReactiveUI stack
-already used throughout the app.
 
 ## Implementation order
 
-1. Add `Websocket.Client` NuGet package
-2. Replace connection setup (`ConnectToRelayAsync`) — create `WebsocketClient` per relay
-3. Wire `MessageReceived` → `ProcessRelayMessageAsync` (existing method, no changes)
-4. Wire `ReconnectionHappened` → `ResendSubscriptionsToRelayAsync` (existing method)
-5. Wire `DisconnectionHappened` → connection status observable (existing `_connectionStatus`)
-6. Replace send calls — `ws.SendAsync()` → `client.Send()`
-7. Remove `ListenToRelayAsync`, `ReceiveFullMessageAsync` (dead code after migration)
-8. Test: connect, subscribe, receive events, publish, reconnect after drop, large messages
+1. Create `NostrRelayConnection` class with connect, send, receive, auto-reconnect
+2. Add subscription tracking (register/unregister/replay on reconnect)
+3. Replace `ConnectToRelayAsync` to create `NostrRelayConnection` per relay
+4. Replace all 11 REQ sites with `connection.SubscribeAsync()`
+5. Wire `Messages` observable → `ProcessRelayMessageAsync` (existing method)
+6. Wire `ConnectionStatus` → existing `_connectionStatus` subject
+7. Add H2 filter validation on incoming EVENTs
+8. Remove dead code: `ListenToRelayAsync`, `ReceiveFullMessageAsync`, manual reconnect
+9. Test: connect, subscribe, receive events, publish, reconnect after drop, large messages
 
-## Not in scope
+## Why not Websocket.Client
 
-- No changes to INostrService interface
-- No changes to NIP implementations (42, 44, 46, 59, 65)
-- No changes to Marmot event handling (kinds 443, 444, 445)
-- No Blockcore.Nostr.Client or NNostr.Client integration
-- No changes to ExternalSignerService
-
-## Pre-requisite
-
-Before starting implementation, check the Websocket.Client GitHub repo (https://github.com/Marfusios/websocket-client)
-for current maintenance status: last commit date, open issues (especially #124 memory leaks and #139 deadlocks
-on Stop()), and whether these have been resolved. If the library is unmaintained or has unresolved critical
-issues, evaluate alternatives before proceeding.
-
-## Estimated effort
-
-~1-2 days. Most time spent on testing reconnection behavior and verifying large MLS messages
-reassemble correctly through the 4KB chunk path.
+- Memory leak during prolonged reconnect (GitHub #124, still open)
+- Deadlock on Stop() (GitHub #139, still open)
+- Last commit Sep 2025, low-frequency maintenance
+- Both issues are especially problematic for multi-relay Nostr apps that frequently
+  connect/disconnect/reconnect
+- .NET 9 ClientWebSocket + KeepAliveTimeout covers the main gap (dead-connection detection)
+  that originally motivated the library dependency
