@@ -1,7 +1,7 @@
 # M3 - Add Rate Limiting for Relay Event Processing
 
 **Severity**: MEDIUM
-**Status**: TODO
+**Status**: COMPLETED
 
 ## Context
 

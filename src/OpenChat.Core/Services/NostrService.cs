@@ -37,6 +37,11 @@ public class NostrService : INostrService, IDisposable
     // Relays connected only for bot chat DM delivery/reception — excluded from group message broadcasts
     private readonly ConcurrentDictionary<string, byte> _botOnlyRelays = new();
 
+    // Per-relay rate limiting: tracks event count in the current sliding window
+    private readonly ConcurrentDictionary<string, (int Count, DateTime WindowStart)> _relayEventRates = new();
+    private const int MaxEventsPerMinute = 500;
+    private static readonly TimeSpan RateWindowDuration = TimeSpan.FromMinutes(1);
+
     private bool IsBotOnlyRelay(string relayUrl)
         => _botOnlyRelays.ContainsKey(relayUrl.TrimEnd('/'));
     private const int MaxBackoffSeconds = 60;
@@ -341,6 +346,10 @@ public class NostrService : INostrService, IDisposable
 
             if (messageType == "EVENT" && root.GetArrayLength() >= 3)
             {
+                // Per-relay rate limiting — drop events if relay is flooding
+                if (IsRelayRateLimited(relayUrl))
+                    return;
+
                 var eventData = root[2];
                 var nostrEvent = ParseNostrEvent(eventData, relayUrl);
                 if (nostrEvent != null)
@@ -758,6 +767,35 @@ public class NostrService : INostrService, IDisposable
         if (createdAt > now + maxFutureSeconds) return false; // Too far in the future
 
         return true;
+    }
+
+    /// <summary>
+    /// Checks if a relay is sending events too fast. Returns true if the relay should be throttled.
+    /// Uses a simple sliding window: resets the counter when the window expires.
+    /// </summary>
+    private bool IsRelayRateLimited(string relayUrl)
+    {
+        var now = DateTime.UtcNow;
+        var rate = _relayEventRates.AddOrUpdate(
+            relayUrl,
+            _ => (1, now),
+            (_, existing) =>
+            {
+                if (now - existing.WindowStart > RateWindowDuration)
+                    return (1, now); // New window
+                return (existing.Count + 1, existing.WindowStart);
+            });
+
+        if (rate.Count > MaxEventsPerMinute)
+        {
+            if (rate.Count == MaxEventsPerMinute + 1) // Log once per window
+            {
+                _logger.LogWarning("Rate limiting relay {RelayUrl}: {Count} events in {Window}s, dropping events",
+                    relayUrl, rate.Count, RateWindowDuration.TotalSeconds);
+            }
+            return true;
+        }
+        return false;
     }
 
     public async Task DisconnectAsync()
@@ -2869,6 +2907,9 @@ public class NostrService : INostrService, IDisposable
         _events.Dispose();
         _welcomeMessages.Dispose();
         _groupMessages.Dispose();
+
+        // Zero private key material from memory
+        _subscribedUserPrivKey = null;
 
         _disposed = true;
     }

@@ -76,9 +76,22 @@ public static class Mip04MediaCrypto
 
     /// <summary>
     /// Encrypts a media file using ChaCha20-Poly1305 with MIP-04 AAD construction.
-    /// The caller must provide a random 12-byte nonce.
+    /// Generates a cryptographically random 12-byte nonce internally to prevent reuse.
+    /// Returns (ciphertext, nonce).
     /// </summary>
-    public static byte[] EncryptMediaFile(byte[] plaintext, byte[] fileKey, string sha256Hex,
+    public static (byte[] Ciphertext, byte[] Nonce) EncryptMediaFile(byte[] plaintext, byte[] fileKey,
+        string sha256Hex, string mimeType, string filename)
+    {
+        var nonce = RandomNumberGenerator.GetBytes(NonceLength);
+        var ciphertext = EncryptMediaFileWithNonce(plaintext, fileKey, sha256Hex, mimeType, filename, nonce);
+        return (ciphertext, nonce);
+    }
+
+    /// <summary>
+    /// Encrypts a media file using ChaCha20-Poly1305 with MIP-04 AAD construction
+    /// and a caller-provided nonce. Prefer the overload without nonce parameter.
+    /// </summary>
+    internal static byte[] EncryptMediaFileWithNonce(byte[] plaintext, byte[] fileKey, string sha256Hex,
         string mimeType, string filename, byte[] nonce)
     {
         ArgumentNullException.ThrowIfNull(plaintext);

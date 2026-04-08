@@ -830,8 +830,7 @@ public class ChatViewModel : ViewModelBase
             var mediaKey = Mip04MediaCrypto.DeriveMediaEncryptionKey(
                 _mlsService.GetMediaExporterSecret(_currentChat.MlsGroupId!),
                 sha256Hex, mimeType, fileName);
-            var nonce = System.Security.Cryptography.RandomNumberGenerator.GetBytes(12);
-            var encrypted = Mip04MediaCrypto.EncryptMediaFile(fileData, mediaKey, sha256Hex, mimeType, fileName, nonce);
+            var (encrypted, nonce) = Mip04MediaCrypto.EncryptMediaFile(fileData, mediaKey, sha256Hex, mimeType, fileName);
 
             // Upload to Blossom
             if (MediaUploadService == null)
@@ -967,9 +966,8 @@ public class ChatViewModel : ViewModelBase
             var mediaKey = Mip04MediaCrypto.DeriveMediaEncryptionKey(
                 _mlsService.GetMediaExporterSecret(_currentChat.MlsGroupId!),
                 sha256Hex, "audio/opus", "voice.opus");
-            var nonce = System.Security.Cryptography.RandomNumberGenerator.GetBytes(12);
-            var encrypted = Mip04MediaCrypto.EncryptMediaFile(
-                opusBytes, mediaKey, sha256Hex, "audio/opus", "voice.opus", nonce);
+            var (encrypted, nonce) = Mip04MediaCrypto.EncryptMediaFile(
+                opusBytes, mediaKey, sha256Hex, "audio/opus", "voice.opus");
 
             // Upload to Blossom
             if (MediaUploadService == null)

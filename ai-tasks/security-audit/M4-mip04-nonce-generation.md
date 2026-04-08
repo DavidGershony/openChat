@@ -1,7 +1,7 @@
 # M4 - Generate MIP-04 Nonce Internally Instead of Accepting from Caller
 
 **Severity**: MEDIUM
-**Status**: TODO
+**Status**: COMPLETED
 
 ## Context
 

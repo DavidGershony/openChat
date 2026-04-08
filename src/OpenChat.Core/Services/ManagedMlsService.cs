@@ -149,6 +149,17 @@ public class ManagedMlsService : IMlsService
             _mdk = null;
             _publicKeyHex = null;
             _privateKeyHex = null;
+
+            // Zero sensitive key material before releasing references
+            if (_identity != null) CryptographicOperations.ZeroMemory(_identity);
+            if (_signingPrivateKey != null) CryptographicOperations.ZeroMemory(_signingPrivateKey);
+            if (_signingPublicKey != null) CryptographicOperations.ZeroMemory(_signingPublicKey);
+            foreach (var kp in _storedKeyPackages)
+            {
+                CryptographicOperations.ZeroMemory(kp.InitPrivateKey);
+                CryptographicOperations.ZeroMemory(kp.HpkePrivateKey);
+            }
+
             _identity = null;
             _signingPrivateKey = null;
             _signingPublicKey = null;
