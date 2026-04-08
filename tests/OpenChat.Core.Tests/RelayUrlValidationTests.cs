@@ -1,4 +1,5 @@
 using System.Net;
+using OpenChat.Core.Configuration;
 using OpenChat.Core.Services;
 using Xunit;
 
@@ -13,7 +14,6 @@ public class RelayUrlValidationTests
 
     [Theory]
     [InlineData("wss://relay.example.com")]
-    [InlineData("ws://relay.example.com")]
     [InlineData("wss://relay.damus.io")]
     public async Task ValidRelayUrl_Accepted(string url)
     {
@@ -21,6 +21,23 @@ public class RelayUrlValidationTests
         // null or DNS resolution failure — both acceptable for valid scheme+format
         Assert.True(result == null || result.StartsWith("Cannot resolve hostname"),
             $"Expected null or DNS error, got: {result}");
+    }
+
+    [Fact]
+    public async Task WsRelayUrl_RejectedWithoutLocalRelaysFlag()
+    {
+        var prev = ProfileConfiguration.AllowLocalRelays;
+        ProfileConfiguration.SetAllowLocalRelays(false);
+        try
+        {
+            var result = await NostrService.ValidateRelayUrlAsync("ws://relay.example.com");
+            Assert.NotNull(result);
+            Assert.Contains("wss://", result);
+        }
+        finally
+        {
+            ProfileConfiguration.SetAllowLocalRelays(prev);
+        }
     }
 
     [Theory]
@@ -116,7 +133,7 @@ public class RelayUrlValidationTests
     [Fact]
     public async Task RelayUrl_Localhost_Rejected()
     {
-        var result = await NostrService.ValidateRelayUrlAsync("ws://localhost:7777");
+        var result = await NostrService.ValidateRelayUrlAsync("wss://localhost:7777");
         Assert.NotNull(result);
         Assert.Contains("private", result, StringComparison.OrdinalIgnoreCase);
     }
@@ -132,7 +149,7 @@ public class RelayUrlValidationTests
     [Fact]
     public async Task RelayUrl_LoopbackIp_Rejected()
     {
-        var result = await NostrService.ValidateRelayUrlAsync("ws://127.0.0.1:8080");
+        var result = await NostrService.ValidateRelayUrlAsync("wss://127.0.0.1:8080");
         Assert.NotNull(result);
         Assert.Contains("private", result, StringComparison.OrdinalIgnoreCase);
     }

@@ -657,6 +657,19 @@ public class NostrService : INostrService, IDisposable
                 return null;
             }
 
+            // Replay attack prevention: reject events with stale or future timestamps.
+            // Exempt gift wraps (kind 1059 — randomized timestamps by NIP-59 design)
+            // and replaceable events (kind 0, 3, 10002 — historical by nature).
+            bool isGiftWrap = kind == 1059;
+            bool isReplaceable = kind == 0 || kind == 3 || (kind >= 10000 && kind < 20000);
+            if (!IsTimestampAcceptable(createdAt, isGiftWrap, isReplaceable))
+            {
+                _logger.LogDebug(
+                    "Rejected event with stale/future timestamp from {RelayUrl}: id={EventId}, kind={Kind}, created_at={CreatedAt}",
+                    relayUrl, id[..Math.Min(16, id.Length)], kind, createdAt);
+                return null;
+            }
+
             return new NostrEventReceived
             {
                 Kind = kind,
@@ -720,6 +733,31 @@ public class NostrService : INostrService, IDisposable
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// Checks whether an event timestamp is within acceptable bounds.
+    /// Prevents replay attacks from malicious relays sending stale events.
+    /// </summary>
+    /// <param name="createdAt">Unix timestamp from the event.</param>
+    /// <param name="isGiftWrap">True for kind 1059 events (randomized timestamps per NIP-59).</param>
+    /// <param name="isReplaceableEvent">True for kind 0, 3, 10000-19999 (historical by nature).</param>
+    internal static bool IsTimestampAcceptable(long createdAt, bool isGiftWrap = false, bool isReplaceableEvent = false)
+    {
+        // Gift wraps use randomized timestamps (±2.5 days per NIP-59) — skip validation
+        if (isGiftWrap) return true;
+
+        // Replaceable events (metadata, contacts, relay lists) are historical — skip validation
+        if (isReplaceableEvent) return true;
+
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        const long maxPastSeconds = 15 * 60;   // 15 minutes
+        const long maxFutureSeconds = 5 * 60;  // 5 minutes
+
+        if (createdAt < now - maxPastSeconds) return false;  // Too old
+        if (createdAt > now + maxFutureSeconds) return false; // Too far in the future
+
+        return true;
     }
 
     public async Task DisconnectAsync()
@@ -2747,6 +2785,9 @@ public class NostrService : INostrService, IDisposable
     {
         if (!Uri.TryCreate(relayUrl, UriKind.Absolute, out var uri))
             return "Invalid URL format.";
+
+        if (uri.Scheme == "ws" && !ProfileConfiguration.AllowLocalRelays)
+            return "Relay URL must use wss:// (TLS required). Use --allow-local-relays for unencrypted ws:// connections.";
 
         if (uri.Scheme != "wss" && uri.Scheme != "ws")
             return $"Relay URL must use ws:// or wss:// scheme, got: {uri.Scheme}://";

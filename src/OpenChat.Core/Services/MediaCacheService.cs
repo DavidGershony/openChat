@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using OpenChat.Core.Configuration;
 using OpenChat.Core.Logging;
@@ -10,6 +11,7 @@ namespace OpenChat.Core.Services;
 /// </summary>
 public class MediaCacheService
 {
+    private static readonly Regex ValidNostrEventId = new(@"^[a-f0-9]{64}$", RegexOptions.Compiled);
     private readonly ILogger<MediaCacheService> _logger = LoggingConfiguration.CreateLogger<MediaCacheService>();
     private readonly string _cacheDir;
 
@@ -19,10 +21,23 @@ public class MediaCacheService
     }
 
     /// <summary>
+    /// Validates that a messageId is a 64-character lowercase hex string (Nostr event ID format).
+    /// Prevents path traversal attacks via crafted IDs.
+    /// </summary>
+    public static bool IsValidMessageId(string messageId)
+        => !string.IsNullOrEmpty(messageId) && ValidNostrEventId.IsMatch(messageId);
+
+    /// <summary>
     /// Returns the cached decrypted bytes for a message, or null if not cached.
     /// </summary>
     public byte[]? GetCached(string messageId, string? mimeType = null)
     {
+        if (!IsValidMessageId(messageId))
+        {
+            _logger.LogWarning("MediaCache rejected invalid messageId: {MessageId}", messageId?[..Math.Min(16, messageId?.Length ?? 0)] ?? "null");
+            return null;
+        }
+
         var path = GetCachePath(messageId, mimeType);
         if (!File.Exists(path)) return null;
 
@@ -44,6 +59,12 @@ public class MediaCacheService
     /// </summary>
     public void Save(string messageId, byte[] decryptedBytes, string? mimeType = null)
     {
+        if (!IsValidMessageId(messageId))
+        {
+            _logger.LogWarning("MediaCache rejected save with invalid messageId: {MessageId}", messageId?[..Math.Min(16, messageId?.Length ?? 0)] ?? "null");
+            return;
+        }
+
         try
         {
             Directory.CreateDirectory(_cacheDir);
@@ -61,7 +82,7 @@ public class MediaCacheService
     /// Checks whether cached media exists for a message.
     /// </summary>
     public bool HasCached(string messageId, string? mimeType = null)
-        => File.Exists(GetCachePath(messageId, mimeType));
+        => IsValidMessageId(messageId) && File.Exists(GetCachePath(messageId, mimeType));
 
     private string GetCachePath(string messageId, string? mimeType)
     {
@@ -76,6 +97,12 @@ public class MediaCacheService
             "audio/mpeg" => ".mp3",
             _ => ".bin"
         };
-        return Path.Combine(_cacheDir, $"{messageId}{ext}");
+        var path = Path.GetFullPath(Path.Combine(_cacheDir, $"{messageId}{ext}"));
+
+        // Defense-in-depth: ensure resolved path stays within cache directory
+        if (!path.StartsWith(Path.GetFullPath(_cacheDir), StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException($"Path traversal detected in media cache: {messageId}");
+
+        return path;
     }
 }

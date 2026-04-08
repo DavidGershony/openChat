@@ -24,6 +24,23 @@ public class MarmotWrapper : IDisposable
     /// </summary>
     public bool IsUsingNativeClient => _client != IntPtr.Zero;
 
+    /// <summary>
+    /// Maximum buffer size accepted from native code (100 MB).
+    /// Prevents allocation of absurdly large arrays from a buggy or compromised native DLL.
+    /// </summary>
+    private const int MaxNativeBufferSize = 100_000_000;
+
+    /// <summary>
+    /// Validates a buffer length returned by the native DLL before using it for allocation.
+    /// </summary>
+    internal static void ValidateNativeBufferLength(int length, string operation)
+    {
+        if (length < 0)
+            throw new MarmotException($"Native DLL returned negative buffer length ({length}) for {operation}");
+        if (length > MaxNativeBufferSize)
+            throw new MarmotException($"Native DLL returned oversized buffer length ({length}) for {operation}. Max: {MaxNativeBufferSize}");
+    }
+
     public MarmotWrapper()
     {
         _logger = LoggingConfiguration.CreateLogger<MarmotWrapper>();
@@ -97,6 +114,7 @@ public class MarmotWrapper : IDisposable
 
             try
             {
+                ValidateNativeBufferLength(length, "GenerateKeyPackage");
                 var data = new byte[length];
                 Marshal.Copy(ptr, data, 0, length);
 
@@ -164,6 +182,7 @@ public class MarmotWrapper : IDisposable
 
             try
             {
+                ValidateNativeBufferLength(groupIdLength, "CreateGroup");
                 var groupId = new byte[groupIdLength];
                 Marshal.Copy(ptr, groupId, 0, groupIdLength);
                 return (groupId, epoch);
@@ -217,6 +236,7 @@ public class MarmotWrapper : IDisposable
 
                 try
                 {
+                    ValidateNativeBufferLength(responseLength, "AddMember");
                     var responseData = new byte[responseLength];
                     Marshal.Copy(ptr, responseData, 0, responseLength);
 
@@ -331,6 +351,7 @@ public class MarmotWrapper : IDisposable
 
                 try
                 {
+                    ValidateNativeBufferLength(groupIdLength, "ProcessWelcome");
                     var groupId = new byte[groupIdLength];
                     Marshal.Copy(ptr, groupId, 0, groupIdLength);
 
@@ -378,6 +399,7 @@ public class MarmotWrapper : IDisposable
 
                 try
                 {
+                    ValidateNativeBufferLength(ciphertextLength, "EncryptMessage");
                     var ciphertext = new byte[ciphertextLength];
                     Marshal.Copy(ptr, ciphertext, 0, ciphertextLength);
                     return ciphertext;
@@ -494,6 +516,7 @@ public class MarmotWrapper : IDisposable
 
                 try
                 {
+                    ValidateNativeBufferLength(commitLength, "UpdateKeys");
                     var commitData = new byte[commitLength];
                     Marshal.Copy(ptr, commitData, 0, commitLength);
                     return commitData;
@@ -534,6 +557,7 @@ public class MarmotWrapper : IDisposable
 
                 try
                 {
+                    ValidateNativeBufferLength(commitLength, "RemoveMember");
                     var commitData = new byte[commitLength];
                     Marshal.Copy(ptr, commitData, 0, commitLength);
                     return commitData;
@@ -617,6 +641,7 @@ public class MarmotWrapper : IDisposable
 
                 try
                 {
+                    ValidateNativeBufferLength(stateLength, "ExportGroupState");
                     var state = new byte[stateLength];
                     Marshal.Copy(ptr, state, 0, stateLength);
                     return state;
