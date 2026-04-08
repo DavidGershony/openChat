@@ -19,31 +19,32 @@ public class AvaloniaLauncher : IPlatformLauncher
         "https"
     };
 
-    public void OpenUrl(string url)
+    /// <summary>
+    /// Validates a URL for safe launching. Returns the sanitized absolute URI if valid, null if blocked.
+    /// </summary>
+    internal static string? ValidateUrl(string? url)
     {
         if (string.IsNullOrWhiteSpace(url))
-            return;
+            return null;
 
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || !AllowedUrlSchemes.Contains(uri.Scheme))
         {
             _logger.LogWarning("Blocked OpenUrl with disallowed scheme or invalid URL: {Scheme}",
                 Uri.TryCreate(url, UriKind.Absolute, out var parsed) ? parsed.Scheme : "invalid");
-            return;
+            return null;
         }
 
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = uri.AbsoluteUri,
-            UseShellExecute = true
-        });
+        return uri.AbsoluteUri;
     }
 
-    public void OpenFolder(string path)
+    /// <summary>
+    /// Validates a folder path for safe launching. Returns the resolved path if valid, null if blocked.
+    /// </summary>
+    internal static string? ValidateFolderPath(string? path)
     {
         if (string.IsNullOrWhiteSpace(path))
-            return;
+            return null;
 
-        // Resolve to full path and verify it's within known app directories
         var fullPath = Path.GetFullPath(path);
         var dataDir = Path.GetFullPath(ProfileConfiguration.DataDirectory);
         var rootDir = Path.GetFullPath(ProfileConfiguration.RootDataDirectory);
@@ -52,14 +53,36 @@ public class AvaloniaLauncher : IPlatformLauncher
             !fullPath.StartsWith(rootDir, StringComparison.OrdinalIgnoreCase))
         {
             _logger.LogWarning("Blocked OpenFolder outside app directories: {Path}", fullPath);
-            return;
+            return null;
         }
 
-        if (Directory.Exists(fullPath))
+        return fullPath;
+    }
+
+    public void OpenUrl(string url)
+    {
+        var validatedUrl = ValidateUrl(url);
+        if (validatedUrl == null)
+            return;
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = validatedUrl,
+            UseShellExecute = true
+        });
+    }
+
+    public void OpenFolder(string path)
+    {
+        var validatedPath = ValidateFolderPath(path);
+        if (validatedPath == null)
+            return;
+
+        if (Directory.Exists(validatedPath))
         {
             Process.Start(new ProcessStartInfo
             {
-                FileName = fullPath,
+                FileName = validatedPath,
                 UseShellExecute = true
             });
         }

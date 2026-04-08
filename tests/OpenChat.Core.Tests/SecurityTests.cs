@@ -13,19 +13,17 @@ namespace OpenChat.Core.Tests;
 /// </summary>
 public class SecurityTests
 {
-    #region C1 — Platform Launcher Hardening
+    #region C1 — Platform Launcher Hardening (tests use static validators, never Process.Start)
 
     [Theory]
     [InlineData("https://example.com")]
     [InlineData("https://relay.damus.io")]
     [InlineData("HTTPS://EXAMPLE.COM")]
-    public void C1_OpenUrl_AllowsHttps(string url)
+    public void C1_ValidateUrl_AllowsHttps(string url)
     {
-        // Should not throw — we can't easily assert Process.Start was called without mocking,
-        // but we verify it doesn't throw or block valid URLs.
-        var launcher = new AvaloniaLauncher();
-        var ex = Record.Exception(() => launcher.OpenUrl(url));
-        Assert.Null(ex);
+        var result = AvaloniaLauncher.ValidateUrl(url);
+        Assert.NotNull(result);
+        Assert.StartsWith("https://", result, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]
@@ -37,44 +35,41 @@ public class SecurityTests
     [InlineData("")]
     [InlineData("   ")]
     [InlineData("not-a-url")]
-    public void C1_OpenUrl_BlocksDangerousInput(string url)
+    public void C1_ValidateUrl_BlocksDangerousInput(string url)
     {
-        var launcher = new AvaloniaLauncher();
-        // Should silently block — no exception, no Process.Start
-        var ex = Record.Exception(() => launcher.OpenUrl(url));
-        Assert.Null(ex);
+        var result = AvaloniaLauncher.ValidateUrl(url);
+        Assert.Null(result);
     }
 
     [Fact]
-    public void C1_OpenFolder_BlocksPathTraversal()
+    public void C1_ValidateFolderPath_BlocksPathTraversal()
     {
-        var launcher = new AvaloniaLauncher();
-        // Attempt to traverse out of app directories
-        var ex = Record.Exception(() => launcher.OpenFolder("C:\\Windows\\System32"));
-        Assert.Null(ex); // Should silently block, not throw
-
-        ex = Record.Exception(() => launcher.OpenFolder("..\\..\\..\\Windows"));
-        Assert.Null(ex);
+        Assert.Null(AvaloniaLauncher.ValidateFolderPath("C:\\Windows\\System32"));
+        Assert.Null(AvaloniaLauncher.ValidateFolderPath("..\\..\\..\\Windows"));
     }
 
     [Fact]
-    public void C1_OpenFolder_AllowsAppDirectory()
+    public void C1_ValidateFolderPath_AllowsAppDirectory()
     {
-        var launcher = new AvaloniaLauncher();
-        // Log directory is within app data — should not throw
         var logDir = ProfileConfiguration.LogDirectory;
-        var ex = Record.Exception(() => launcher.OpenFolder(logDir));
-        Assert.Null(ex);
+        var result = AvaloniaLauncher.ValidateFolderPath(logDir);
+        Assert.NotNull(result);
     }
 
     [Fact]
-    public void C1_OpenFolder_BlocksEmptyAndNull()
+    public void C1_ValidateUrl_BlocksEmptyAndWhitespace()
     {
-        var launcher = new AvaloniaLauncher();
-        var ex = Record.Exception(() => launcher.OpenUrl(""));
-        Assert.Null(ex);
-        ex = Record.Exception(() => launcher.OpenUrl("   "));
-        Assert.Null(ex);
+        Assert.Null(AvaloniaLauncher.ValidateUrl(""));
+        Assert.Null(AvaloniaLauncher.ValidateUrl("   "));
+        Assert.Null(AvaloniaLauncher.ValidateUrl(null));
+    }
+
+    [Fact]
+    public void C1_ValidateFolderPath_BlocksEmptyAndWhitespace()
+    {
+        Assert.Null(AvaloniaLauncher.ValidateFolderPath(""));
+        Assert.Null(AvaloniaLauncher.ValidateFolderPath("   "));
+        Assert.Null(AvaloniaLauncher.ValidateFolderPath(null));
     }
 
     #endregion
