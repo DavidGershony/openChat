@@ -1,17 +1,19 @@
-# M2 - Encrypt or Auto-Expire Media Cache
+# M2 - Media Cache At-Rest Encryption
 
 **Severity**: MEDIUM
-**Status**: TODO
+**Status**: CLOSED — Accepted risk (industry standard)
 
-## Context
+## Decision (2026-04-08)
 
-Decrypted MIP-04 media (images, audio) is written as plaintext files to `{AppData}/media/`. These files persist indefinitely with no encryption and no expiry. Anyone with access to the user's profile directory can read all decrypted media.
+Storing decrypted media as plaintext files on disk is standard behavior across all major
+messengers (WhatsApp, Signal, Telegram). None encrypt cached media at the application level.
+OS-level full-disk encryption (BitLocker, LUKS, Android FBE) is the appropriate layer.
 
-## Files
-- `src/OpenChat.Core/Services/MediaCacheService.cs`
+Blossom servers have limited retention, so re-downloading is not always possible — caching
+decrypted media locally is necessary for a good UX.
 
-## Tasks
-- [ ] Option A: Encrypt cached files using the same ISecureStorage mechanism used for DB fields
-- [ ] Option B (simpler): Implement cache expiry -- delete files older than N days on startup
-- [ ] Add a cache size limit (e.g. 500MB) with LRU eviction
-- [ ] Log cache cleanup stats at Info level on startup
+## Future Feature Ideas (not security fixes)
+- **Per-file encrypt-at-rest**: Lock icon on images — user opts in to store that file encrypted
+  locally using ISecureStorage. Default remains plaintext (industry standard).
+- **Delete from local cache**: Allow users to remove specific cached media from disk.
+- **Cache TTL**: See `ai-tasks/media-cache-ttl-settings.md` for configurable expiry.
