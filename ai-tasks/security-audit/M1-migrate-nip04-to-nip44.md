@@ -1,7 +1,7 @@
 # M1 - Migrate NIP-46 Signer Communication from NIP-04 to NIP-44
 
 **Severity**: MEDIUM
-**Status**: TODO
+**Status**: COMPLETED
 
 ## Context
 

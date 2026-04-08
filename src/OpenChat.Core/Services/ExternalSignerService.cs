@@ -487,8 +487,8 @@ public class ExternalSignerService : IExternalSigner, IDisposable
 
         var requestJson = JsonSerializer.Serialize(request);
 
-        // Encrypt the request using NIP-44 (simplified - using NIP-04 style for now)
-        var encryptedContent = EncryptNip04(requestJson, _localPrivateKeyHex, _remotePubKey);
+        // Encrypt the request using NIP-44 (AEAD — replaces deprecated NIP-04 AES-CBC)
+        var encryptedContent = EncryptNip44(requestJson, _localPrivateKeyHex, _remotePubKey);
 
         // Create and sign the event
         var createdAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -647,7 +647,7 @@ public class ExternalSignerService : IExternalSigner, IDisposable
         try
         {
             var responseJson = JsonSerializer.Serialize(new { id = requestId, result });
-            var encryptedContent = EncryptNip04(responseJson, _localPrivateKeyHex, recipientPubKey);
+            var encryptedContent = EncryptNip44(responseJson, _localPrivateKeyHex, recipientPubKey);
 
             var createdAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             var tags = new[] { new[] { "p", recipientPubKey } };
@@ -1000,6 +1000,13 @@ public class ExternalSignerService : IExternalSigner, IDisposable
         var decrypted = decryptor.TransformFinalBlock(encryptedData, 0, encryptedData.Length);
 
         return Encoding.UTF8.GetString(decrypted);
+    }
+
+    private static string EncryptNip44(string plaintext, string privateKeyHex, string pubKeyHex)
+    {
+        var conversationKey = Nip44Encryption.DeriveConversationKey(
+            Convert.FromHexString(privateKeyHex), Convert.FromHexString(pubKeyHex));
+        return Nip44Encryption.Encrypt(plaintext, conversationKey);
     }
 
     private static string DecryptNip44(string base64Payload, string privateKeyHex, string pubKeyHex)

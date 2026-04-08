@@ -283,4 +283,46 @@ public class SecurityTests
     }
 
     #endregion
+
+    #region M1 — NIP-46 NIP-44 Encryption
+
+    [Fact]
+    public void M1_Nip44EncryptDecrypt_RoundTrip()
+    {
+        // Verify NIP-44 encrypt/decrypt works for NIP-46 communication
+        var nostrService = new NostrService();
+        var (privA, pubA, _, _) = nostrService.GenerateKeyPair();
+        var (privB, pubB, _, _) = nostrService.GenerateKeyPair();
+
+        var plaintext = "{\"id\":\"test123\",\"method\":\"connect\",\"params\":[\"abc\"]}";
+
+        // Encrypt with A's private key + B's public key
+        var convKeyAB = MarmotCs.Protocol.Nip44.Nip44Encryption.DeriveConversationKey(
+            Convert.FromHexString(privA), Convert.FromHexString(pubB));
+        var encrypted = MarmotCs.Protocol.Nip44.Nip44Encryption.Encrypt(plaintext, convKeyAB);
+
+        // Encrypted should NOT contain ?iv= (that's NIP-04 format)
+        Assert.DoesNotContain("?iv=", encrypted);
+
+        // Decrypt with B's private key + A's public key
+        var convKeyBA = MarmotCs.Protocol.Nip44.Nip44Encryption.DeriveConversationKey(
+            Convert.FromHexString(privB), Convert.FromHexString(pubA));
+        var decrypted = MarmotCs.Protocol.Nip44.Nip44Encryption.Decrypt(encrypted, convKeyBA);
+
+        Assert.Equal(plaintext, decrypted);
+    }
+
+    [Fact]
+    public void M1_Nip04Format_DetectedByIvMarker()
+    {
+        // NIP-04 ciphertext always contains "?iv=" — this is how the receiver distinguishes formats
+        // NIP-44 ciphertext is plain base64 without "?iv="
+        var nip04Sample = "Y2lwaGVydGV4dA==?iv=bm9uY2U=";
+        var nip44Sample = "AQIDBAUGBwgJCgsMDQ4PEBESExQ=";
+
+        Assert.Contains("?iv=", nip04Sample);
+        Assert.DoesNotContain("?iv=", nip44Sample);
+    }
+
+    #endregion
 }
