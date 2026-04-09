@@ -6,6 +6,7 @@ using Fragment = AndroidX.Fragment.App.Fragment;
 using Google.Android.Material.BottomNavigation;
 using OpenChat.Android.Fragments;
 using OpenChat.Android.Services;
+using OpenChat.Android.Services.Bridge;
 using OpenChat.Core.Configuration;
 using OpenChat.Core.Logging;
 using OpenChat.Core.Services;
@@ -21,6 +22,7 @@ public class MainActivity : AppCompatActivity, IActivatableView
 {
     // Static so services survive Activity.Recreate() (theme change)
     private static ShellViewModel? _shellViewModel;
+    private static BridgeHttpService? _bridgeService;
     private static bool _servicesInitialized;
     private CompositeDisposable _disposables = new();
 
@@ -65,6 +67,20 @@ public class MainActivity : AppCompatActivity, IActivatableView
             // Create ShellViewModel (manages login → service creation → MainViewModel lifecycle)
             _shellViewModel = new ShellViewModel(nostrService, secureStorage, clipboard, qrCodeGenerator, launcher);
             _shellViewModel.MlsServiceFactory = storage => new ManagedMlsService(storage);
+
+            // Wire watch pairing delegates so SettingsViewModel can drive the bridge
+            SettingsViewModel.OnGeneratePairingCode = () =>
+            {
+                _bridgeService ??= new BridgeHttpService();
+                return _bridgeService.AuthService?.GeneratePairingCode() ?? "000000";
+            };
+            SettingsViewModel.OnUnpairWatch = async () =>
+            {
+                if (_bridgeService?.AuthService != null)
+                    await _bridgeService.AuthService.UnpairAsync();
+            };
+            SettingsViewModel.OnCheckWatchPaired = () => _bridgeService?.AuthService?.HasActiveToken == true;
+
             _servicesInitialized = true;
         }
 
@@ -80,6 +96,36 @@ public class MainActivity : AppCompatActivity, IActivatableView
                 else
                 {
                     ShowFragment(new LoginFragment(_shellViewModel), "login");
+                }
+            })
+            .DisposeWith(_disposables);
+
+        // Start/stop watch bridge on login/logout
+        _shellViewModel.WhenAnyValue(x => x.IsLoggedIn, x => x.MainViewModel)
+            .Subscribe(tuple =>
+            {
+                var (isLoggedIn, mainVm) = tuple;
+                if (isLoggedIn && mainVm != null)
+                {
+                    _bridgeService ??= new BridgeHttpService();
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            var messageService = mainVm.GetMessageService();
+                            var storageService = mainVm.GetStorageService();
+                            var npub = mainVm.CurrentUser?.Npub;
+                            await _bridgeService.StartAsync(messageService, storageService, npub);
+                        }
+                        catch (Exception ex)
+                        {
+                            global::Android.Util.Log.Error("OpenChat", $"Watch bridge start failed: {ex.Message}");
+                        }
+                    });
+                }
+                else
+                {
+                    _bridgeService?.Stop();
                 }
             })
             .DisposeWith(_disposables);

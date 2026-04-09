@@ -216,6 +216,24 @@ public class SettingsFragment : Fragment
                 ViewModel.BlossomServerUrl = blossomInput.Text!.Trim();
         };
 
+        // Watch pairing views
+        var pairingCodeContainer = view.FindViewById<LinearLayout>(Resource.Id.pairing_code_container)!;
+        var pairingCodeText = view.FindViewById<TextView>(Resource.Id.pairing_code_text)!;
+        var pairingCountdownText = view.FindViewById<TextView>(Resource.Id.pairing_countdown_text)!;
+        var watchPairingStatus = view.FindViewById<TextView>(Resource.Id.watch_pairing_status)!;
+        var pairWatchButton = view.FindViewById<MaterialButton>(Resource.Id.pair_watch_button)!;
+        var unpairWatchButton = view.FindViewById<MaterialButton>(Resource.Id.unpair_watch_button)!;
+
+        pairWatchButton.Click += (s, e) =>
+        {
+            ViewModel.GeneratePairingCodeCommand.Execute().Subscribe().DisposeWith(_disposables);
+        };
+
+        unpairWatchButton.Click += (s, e) =>
+        {
+            ViewModel.UnpairWatchCommand.Execute().Subscribe().DisposeWith(_disposables);
+        };
+
         // View Logs
         viewLogsButton.Click += (s, e) =>
         {
@@ -361,6 +379,45 @@ public class SettingsFragment : Fragment
             {
                 if (mip04Toggle.Checked != enabled)
                     mip04Toggle.Checked = enabled;
+            })
+            .DisposeWith(_disposables);
+
+        // Watch pairing bindings
+        ViewModel.WhenAnyValue(x => x.IsPairingCodeVisible)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(visible =>
+            {
+                pairingCodeContainer.Visibility = visible ? ViewStates.Visible : ViewStates.Gone;
+                pairWatchButton.Enabled = !visible;
+                pairWatchButton.Text = visible ? "Generating..." : "Pair Watch";
+            })
+            .DisposeWith(_disposables);
+
+        ViewModel.WhenAnyValue(x => x.PairingCode)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(code => pairingCodeText.Text = code ?? "")
+            .DisposeWith(_disposables);
+
+        ViewModel.WhenAnyValue(x => x.PairingCountdown)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(seconds => pairingCountdownText.Text = seconds > 0 ? $"Expires in {seconds}s" : "")
+            .DisposeWith(_disposables);
+
+        ViewModel.WhenAnyValue(x => x.WatchPairingStatus)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(status =>
+            {
+                watchPairingStatus.Text = status ?? "";
+                watchPairingStatus.Visibility = string.IsNullOrEmpty(status) ? ViewStates.Gone : ViewStates.Visible;
+            })
+            .DisposeWith(_disposables);
+
+        ViewModel.WhenAnyValue(x => x.IsWatchPaired)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(paired =>
+            {
+                pairWatchButton.Visibility = paired ? ViewStates.Gone : ViewStates.Visible;
+                unpairWatchButton.Visibility = paired ? ViewStates.Visible : ViewStates.Gone;
             })
             .DisposeWith(_disposables);
 

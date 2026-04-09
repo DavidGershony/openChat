@@ -58,6 +58,16 @@ public class MainViewModel : ViewModelBase
     public ChatViewModel ChatViewModel { get; }
     public SettingsViewModel SettingsViewModel { get; }
 
+    /// <summary>
+    /// Exposes the message service for the watch bridge.
+    /// </summary>
+    public IMessageService GetMessageService() => _messageService;
+
+    /// <summary>
+    /// Exposes the storage service for the watch bridge.
+    /// </summary>
+    public IStorageService GetStorageService() => _storageService;
+
     public ReactiveCommand<Unit, Unit> ShowSettingsCommand { get; }
     public ReactiveCommand<Unit, Unit> ShowChatsCommand { get; }
     public ReactiveCommand<Unit, Unit> LogoutCommand { get; }

@@ -410,6 +410,101 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- Watch Pairing Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                app:cardCornerRadius="12dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Smartwatch"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Pair a Fitbit or Wear OS watch to receive notifications and send quick replies"
+                        android:textSize="13sp"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:layout_marginTop="4dp" />
+
+                    <!-- Pairing code display (hidden by default) -->
+                    <LinearLayout
+                        android:id="@+id/pairing_code_container"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:gravity="center_horizontal"
+                        android:layout_marginTop="16dp"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Enter this code in the Fitbit app"
+                            android:textSize="13sp"
+                            android:textColor="?attr/colorOnSurfaceVariant" />
+
+                        <TextView
+                            android:id="@+id/pairing_code_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="36sp"
+                            android:textStyle="bold"
+                            android:fontFamily="monospace"
+                            android:letterSpacing="0.3"
+                            android:layout_marginTop="8dp" />
+
+                        <TextView
+                            android:id="@+id/pairing_countdown_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="13sp"
+                            android:textColor="?attr/colorOnSurfaceVariant"
+                            android:layout_marginTop="4dp" />
+                    </LinearLayout>
+
+                    <!-- Status text -->
+                    <TextView
+                        android:id="@+id/watch_pairing_status"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="13sp"
+                        android:layout_marginTop="8dp"
+                        android:visibility="gone" />
+
+                    <!-- Pair button (shown when unpaired) -->
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/pair_watch_button"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Pair Watch"
+                        android:layout_marginTop="12dp"
+                        style="@style/Widget.Material3.Button.OutlinedButton" />
+
+                    <!-- Unpair button (shown when paired) -->
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/unpair_watch_button"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Unpair Watch"
+                        android:textColor="@color/status_error"
+                        android:layout_marginTop="4dp"
+                        android:visibility="gone"
+                        style="@style/Widget.Material3.Button.TextButton" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- Developer Card -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
