@@ -34,6 +34,10 @@ public class MainViewModel : ViewModelBase
 
     // Relay statuses
     public ObservableCollection<RelayStatusViewModel> RelayStatuses { get; } = new();
+    [Reactive] public bool IsRelayListExpanded { get; set; }
+    [Reactive] public int ConnectedRelayCount { get; set; }
+    [Reactive] public int TotalRelayCount { get; set; }
+    [Reactive] public string RelayCountText { get; set; } = "Relays: 0/0";
 
     // My Profile Dialog
     [Reactive] public bool ShowMyProfileDialog { get; set; }
@@ -67,6 +71,7 @@ public class MainViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> CopyNsecCommand { get; }
     public ReactiveCommand<Unit, Unit> ReconnectCommand { get; }
     public ReactiveCommand<RelayStatusViewModel, Unit> ReconnectRelayCommand { get; }
+    public ReactiveCommand<Unit, Unit> ToggleRelayListCommand { get; }
 
     public MainViewModel(IMessageService messageService, INostrService nostrService, IStorageService storageService, IMlsService mlsService,
         IPlatformClipboard clipboard, IQrCodeGenerator qrCodeGenerator, IPlatformLauncher launcher,
@@ -227,6 +232,11 @@ public class MainViewModel : ViewModelBase
             }
         });
 
+        ToggleRelayListCommand = ReactiveCommand.Create(() =>
+        {
+            IsRelayListExpanded = !IsRelayListExpanded;
+        });
+
         // Subscribe to chat selection
         ChatListViewModel.WhenAnyValue(x => x.SelectedChat)
             .Where(chat => chat != null)
@@ -261,6 +271,7 @@ public class MainViewModel : ViewModelBase
                     });
                 }
                 IsConnected = RelayStatuses.Any(r => r.IsConnected);
+                UpdateRelayCounts();
 
                 // Sync to SettingsViewModel relays
                 var settingsRelay = SettingsViewModel.Relays.FirstOrDefault(r => r.Url == status.RelayUrl);
@@ -475,6 +486,14 @@ public class MainViewModel : ViewModelBase
         }
 
         IsConnected = RelayStatuses.Any(r => r.IsConnected);
+        UpdateRelayCounts();
+    }
+
+    private void UpdateRelayCounts()
+    {
+        ConnectedRelayCount = RelayStatuses.Count(r => r.IsConnected);
+        TotalRelayCount = RelayStatuses.Count;
+        RelayCountText = $"Relays: {ConnectedRelayCount}/{TotalRelayCount}";
     }
 
     /// <summary>

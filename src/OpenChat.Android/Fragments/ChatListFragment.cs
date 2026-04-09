@@ -61,10 +61,22 @@ public class ChatListFragment : Fragment
             .Subscribe(name => toolbar.Title = name ?? "OpenChat")
             .DisposeWith(_disposables);
 
+        // Show relay count as toolbar subtitle
+        toolbar.Subtitle = _mainViewModel.RelayCountText;
+        _mainViewModel.WhenAnyValue(x => x.RelayCountText)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(text => toolbar.Subtitle = text)
+            .DisposeWith(_disposables);
+
         // Set up toolbar menu (use Java listener for reliable click handling)
         toolbar.SetOnMenuItemClickListener(new ActionMenuItemClickListener(item =>
         {
-            if (item?.ItemId == Resource.Id.action_my_profile)
+            if (item?.ItemId == Resource.Id.action_reconnect_all)
+            {
+                _mainViewModel.ReconnectCommand.Execute().Subscribe();
+                return true;
+            }
+            else if (item?.ItemId == Resource.Id.action_my_profile)
             {
                 ShowMyProfileDialog();
                 return true;

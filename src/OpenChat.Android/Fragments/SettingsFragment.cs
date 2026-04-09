@@ -8,6 +8,7 @@ using AndroidX.Core.Content;
 using AndroidX.RecyclerView.Widget;
 using Google.Android.Material.AppBar;
 using Google.Android.Material.Button;
+using Google.Android.Material.Card;
 using Google.Android.Material.Dialog;
 using Google.Android.Material.MaterialSwitch;
 using Google.Android.Material.TextField;
@@ -52,6 +53,7 @@ public class SettingsFragment : Fragment
         var usernameInput = view.FindViewById<TextInputEditText>(Resource.Id.username_input)!;
         var aboutInput = view.FindViewById<TextInputEditText>(Resource.Id.about_input)!;
         var saveProfileButton = view.FindViewById<MaterialButton>(Resource.Id.save_profile_button)!;
+        var profileCard = view.FindViewById<MaterialCardView>(Resource.Id.profile_card)!;
         var npubText = view.FindViewById<TextView>(Resource.Id.npub_text)!;
         var copyNpubButton = view.FindViewById<ImageButton>(Resource.Id.copy_npub_button)!;
 
@@ -245,6 +247,15 @@ public class SettingsFragment : Fragment
         };
 
         // === Bindings ===
+
+        // Hide profile card when using external signer
+        ViewModel.WhenAnyValue(x => x.CanEditProfile)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(canEdit =>
+            {
+                profileCard.Visibility = canEdit ? ViewStates.Visible : ViewStates.Gone;
+            })
+            .DisposeWith(_disposables);
 
         // Profile fields
         ViewModel.WhenAnyValue(x => x.DisplayName)

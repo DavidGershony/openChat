@@ -1409,8 +1409,7 @@ public class MessageViewModel : ViewModelBase
                     _logger.LogInformation("LoadMedia: decoded audio for message {Id} ({Size} bytes Opus → {PcmSize} bytes PCM, {Duration}s)",
                         Id, decrypted.Length, pcm.Length, totalSeconds);
 
-                    // Auto-play on first load
-                    await PlayAudioAsync();
+                    // Audio is decoded and ready — user taps play to start
                 }
                 catch (Exception ex)
                 {

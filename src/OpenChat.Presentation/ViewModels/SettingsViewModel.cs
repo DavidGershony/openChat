@@ -50,6 +50,9 @@ public class SettingsViewModel : ViewModelBase
     // Relay list publish
     [Reactive] public string? PublishRelayListStatus { get; set; }
 
+    // Profile editing (hidden when using external signer — no private key to sign kind 0)
+    [Reactive] public bool CanEditProfile { get; set; }
+
     // Profile publish confirmation
     [Reactive] public bool ShowPublishConfirmation { get; set; }
     [Reactive] public bool IsPublishingProfile { get; set; }
@@ -220,6 +223,7 @@ public class SettingsViewModel : ViewModelBase
         {
             PublicKeyHex = user.PublicKeyHex;
             PrivateKeyHex = user.PrivateKeyHex;
+            CanEditProfile = !string.IsNullOrEmpty(user.PrivateKeyHex);
             Npub = user.Npub;
             DisplayName = user.DisplayName;
             Username = user.Username;

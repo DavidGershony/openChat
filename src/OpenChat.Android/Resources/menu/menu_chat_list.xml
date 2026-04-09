@@ -3,6 +3,11 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
+        android:id="@+id/action_reconnect_all"
+        android:title="Reconnect All Relays"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/action_my_profile"
         android:title="My Profile"
         android:icon="@android:drawable/ic_menu_my_calendar"

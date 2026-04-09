@@ -24,8 +24,8 @@
     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
         <StackPanel Spacing="24" Margin="24">
 
-            <!-- Profile Section -->
-            <Border Classes="card">
+            <!-- Profile Section (hidden when using external signer) -->
+            <Border Classes="card" IsVisible="{Binding CanEditProfile}">
                 <StackPanel Spacing="16">
                     <TextBlock Text="Profile" FontWeight="SemiBold" FontSize="16" />
 
