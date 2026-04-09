@@ -1,0 +1,172 @@
+/* OpenChat Fitbit Watch App Styles */
+/* Versa 4: 336x336px square display */
+
+/* === Screens === */
+.app-root {
+  fill: #1a1a2e;
+}
+
+.screen {
+  width: 100%;
+  height: 100%;
+}
+
+/* === Header === */
+.header-bg {
+  fill: #7C3AED;
+}
+
+.header-title {
+  font-size: 22;
+  fill: white;
+  font-family: System-Bold;
+}
+
+.back-btn {
+  font-size: 24;
+  fill: white;
+  font-family: System-Bold;
+}
+
+/* === Chat List === */
+.chat-item {
+  height: 64;
+}
+
+.chat-item-bg {
+  fill: #1a1a2e;
+}
+
+.chat-name-text {
+  font-size: 18;
+  fill: #e0e0e0;
+  font-family: System-Bold;
+  text-length: 22;
+  text-overflow: ellipsis;
+}
+
+.chat-preview-text {
+  font-size: 14;
+  fill: #888888;
+  font-family: System-Regular;
+  text-length: 30;
+  text-overflow: ellipsis;
+}
+
+.chat-time-text {
+  font-size: 12;
+  fill: #666666;
+  font-family: System-Light;
+}
+
+/* === Unread Badge === */
+.unread-badge-bg {
+  fill: #7C3AED;
+  rx: 11;
+  ry: 11;
+}
+
+.unread-badge-text {
+  font-size: 14;
+  fill: white;
+  font-family: System-Bold;
+}
+
+/* === Messages === */
+.message-item {
+  height: 72;
+}
+
+.message-bg {
+  fill: #1a1a2e;
+}
+
+.msg-sender-text {
+  font-size: 14;
+  fill: #7C3AED;
+  font-family: System-Bold;
+  text-length: 20;
+  text-overflow: ellipsis;
+}
+
+.msg-content-text {
+  font-size: 16;
+  fill: #e0e0e0;
+  font-family: System-Regular;
+  text-length: 60;
+  text-overflow: ellipsis;
+}
+
+.msg-time-text {
+  font-size: 11;
+  fill: #666666;
+  font-family: System-Light;
+}
+
+/* Own messages - slightly different background */
+.message-own-bg {
+  fill: #2a1a4e;
+}
+
+/* === Reply Bar === */
+.reply-bar-bg {
+  fill: #2a2a4e;
+}
+
+.reply-btn-text {
+  font-size: 20;
+  fill: #7C3AED;
+  font-family: System-Bold;
+}
+
+/* === Quick Reply List === */
+.reply-item {
+  height: 52;
+}
+
+.reply-item-bg {
+  fill: #1a1a2e;
+}
+
+.reply-item-text {
+  font-size: 20;
+  fill: #e0e0e0;
+  font-family: System-Regular;
+}
+
+/* === Empty / Loading States === */
+.empty-text {
+  font-size: 18;
+  fill: #666666;
+  font-family: System-Regular;
+}
+
+.loading-text {
+  font-size: 18;
+  fill: #888888;
+  font-family: System-Regular;
+}
+
+/* === Notification Toast === */
+.toast-bg {
+  fill: #7C3AED;
+  rx: 8;
+  ry: 8;
+  opacity: 0.95;
+}
+
+.toast-sender {
+  font-size: 14;
+  fill: white;
+  font-family: System-Bold;
+  text-length: 28;
+  text-overflow: ellipsis;
+}
+
+.toast-content {
+  font-size: 14;
+  fill: #e0e0e0;
+  font-family: System-Regular;
+  text-length: 32;
+  text-overflow: ellipsis;
+}

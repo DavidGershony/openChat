@@ -9,9 +9,9 @@ Add Fitbit Versa 4 support to OpenChat via a phone-proxied bridge architecture. 
 - [x] **Phase 1: MainActivity Integration** — Bridge starts on login, stops on logout. Added `GetMessageService()`/`GetStorageService()` to MainViewModel.
 - [x] **Phase 1: Build & Test** — Compiles cleanly, 210/210 unit tests pass (10 pre-existing Rust MLS failures unrelated).
 - [x] **Phase 2: Pairing Flow** — Added watch pairing properties/commands to SettingsViewModel, Smartwatch card to settings layout, reactive bindings in SettingsFragment, platform delegates wired in MainActivity.
-- [ ] **Phase 3: Fitbit Companion App** — Create `fitbit/companion/index.js`. Connects to bridge via fetch(), relays data to watch via Fitbit Messaging API.
-- [ ] **Phase 4: Fitbit Watch App** — Create `fitbit/app/` with chat list, message list, and quick reply picker screens (JS + SVG).
+- [x] **Phase 3: Fitbit Companion App** — Created `fitbit/companion/index.js` with bridge connection, SSE/polling, watch relay. Settings page `fitbit/settings/index.jsx` for pairing.
+- [x] **Phase 4: Fitbit Watch App** — Created `fitbit/app/` with 3 screens: chat list, message list, quick reply picker. SVG layout + CSS + JS.
 - [ ] **Phase 5: End-to-end Testing** — Test on Versa 4: see chats, read messages, send quick reply.
 
 ## Status
-IN PROGRESS — Phase 1 + Phase 2 complete
+IN PROGRESS — Phase 1-4 complete, ready for device testing
