@@ -300,8 +300,11 @@ public class ChatViewModel : ViewModelBase
         ChatAvatarUrl = chat.AvatarUrl;
         IsGroup = chat.Type == ChatType.Group;
         ParticipantCount = chat.ParticipantPublicKeys.Count;
+        // Admin check: if admin list exists, check membership; if empty (legacy group), allow all
         IsCurrentUserAdmin = IsGroup && _currentUserPublicKeyHex != null &&
-            chat.AdminPublicKeys.Contains(_currentUserPublicKeyHex.ToLowerInvariant());
+            (chat.AdminPublicKeys.Count == 0 ||
+             chat.AdminPublicKeys.Contains(_currentUserPublicKeyHex.ToLowerInvariant()));
+        GroupMembers.Clear();
         HasChat = true;
 
         // Load MIP-04 setting for attach/mic button visibility
