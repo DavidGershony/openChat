@@ -112,6 +112,12 @@ public interface IMlsService
     byte[]? GetNostrGroupId(byte[] groupId);
 
     /// <summary>
+    /// Returns the admin public keys (as lowercase hex strings) from the 0xF2EE extension for a group.
+    /// Returns an empty list if the extension is missing or has no admins.
+    /// </summary>
+    List<string> GetAdminPubkeys(byte[] groupId);
+
+    /// <summary>
     /// Get the number of KeyPackages for which we have private key material stored locally.
     /// </summary>
     int GetStoredKeyPackageCount();

@@ -301,6 +301,24 @@ public class StorageService : IStorageService
             }
             catch (SqliteException) { /* Column already exists */ }
 
+            // Migration: add Role column to ChatParticipants for admin tracking (MIP-01)
+            try
+            {
+                var migrate = connection.CreateCommand();
+                migrate.CommandText = "ALTER TABLE ChatParticipants ADD COLUMN Role TEXT NOT NULL DEFAULT 'member'";
+                await migrate.ExecuteNonQueryAsync();
+            }
+            catch (SqliteException) { /* Column already exists */ }
+
+            // Migration: add CreatorPublicKey column to Chats for group ownership
+            try
+            {
+                var migrate = connection.CreateCommand();
+                migrate.CommandText = "ALTER TABLE Chats ADD COLUMN CreatorPublicKey TEXT";
+                await migrate.ExecuteNonQueryAsync();
+            }
+            catch (SqliteException) { /* Column already exists */ }
+
             _initialized = true;
             _logger.LogInformation("Database schema initialized successfully");
         }
@@ -450,7 +468,9 @@ public class StorageService : IStorageService
         if (await reader.ReadAsync())
         {
             var chat = ReadChat(reader);
-            chat.ParticipantPublicKeys = await GetChatParticipantsAsync(connection, chatId);
+            var (participants, admins) = await GetChatParticipantsAndAdminsAsync(connection, chatId);
+            chat.ParticipantPublicKeys = participants;
+            chat.AdminPublicKeys = admins;
             chat.RelayUrls = await GetChatRelaysAsync(connection, chatId);
             return chat;
         }
@@ -472,7 +492,9 @@ public class StorageService : IStorageService
         while (await reader.ReadAsync())
         {
             var chat = ReadChat(reader);
-            chat.ParticipantPublicKeys = await GetChatParticipantsAsync(connection, chat.Id);
+            var (participants, admins) = await GetChatParticipantsAndAdminsAsync(connection, chat.Id);
+            chat.ParticipantPublicKeys = participants;
+            chat.AdminPublicKeys = admins;
             chat.RelayUrls = await GetChatRelaysAsync(connection, chat.Id);
             chats.Add(chat);
         }
@@ -488,9 +510,9 @@ public class StorageService : IStorageService
         var command = connection.CreateCommand();
         command.CommandText = @"
             INSERT OR REPLACE INTO Chats
-            (Id, Name, Type, MlsGroupId, NostrGroupId, MlsEpoch, AvatarUrl, Description, UnreadCount, CreatedAt, LastActivityAt, IsMuted, IsPinned, IsArchived, WelcomeNostrEventId)
+            (Id, Name, Type, MlsGroupId, NostrGroupId, MlsEpoch, AvatarUrl, Description, UnreadCount, CreatedAt, LastActivityAt, IsMuted, IsPinned, IsArchived, WelcomeNostrEventId, CreatorPublicKey)
             VALUES
-            (@Id, @Name, @Type, @MlsGroupId, @NostrGroupId, @MlsEpoch, @AvatarUrl, @Description, @UnreadCount, @CreatedAt, @LastActivityAt, @IsMuted, @IsPinned, @IsArchived, @WelcomeNostrEventId)";
+            (@Id, @Name, @Type, @MlsGroupId, @NostrGroupId, @MlsEpoch, @AvatarUrl, @Description, @UnreadCount, @CreatedAt, @LastActivityAt, @IsMuted, @IsPinned, @IsArchived, @WelcomeNostrEventId, @CreatorPublicKey)";
 
         command.Parameters.AddWithValue("@Id", chat.Id);
         command.Parameters.AddWithValue("@Name", chat.Name);
@@ -507,6 +529,7 @@ public class StorageService : IStorageService
         command.Parameters.AddWithValue("@IsPinned", chat.IsPinned ? 1 : 0);
         command.Parameters.AddWithValue("@IsArchived", chat.IsArchived ? 1 : 0);
         command.Parameters.AddWithValue("@WelcomeNostrEventId", chat.WelcomeNostrEventId ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@CreatorPublicKey", chat.CreatorPublicKey ?? (object)DBNull.Value);
 
         await command.ExecuteNonQueryAsync();
 
@@ -522,10 +545,12 @@ public class StorageService : IStorageService
 
             foreach (var publicKey in chat.ParticipantPublicKeys)
             {
+                var role = chat.AdminPublicKeys.Contains(publicKey.ToLowerInvariant()) ? "admin" : "member";
                 var insertParticipant = connection.CreateCommand();
-                insertParticipant.CommandText = "INSERT INTO ChatParticipants (ChatId, PublicKeyHex) VALUES (@ChatId, @PublicKeyHex)";
+                insertParticipant.CommandText = "INSERT INTO ChatParticipants (ChatId, PublicKeyHex, Role) VALUES (@ChatId, @PublicKeyHex, @Role)";
                 insertParticipant.Parameters.AddWithValue("@ChatId", chat.Id);
                 insertParticipant.Parameters.AddWithValue("@PublicKeyHex", publicKey.ToLowerInvariant());
+                insertParticipant.Parameters.AddWithValue("@Role", role);
                 await insertParticipant.ExecuteNonQueryAsync();
             }
         }
@@ -1216,6 +1241,15 @@ public class StorageService : IStorageService
         }
         catch (ArgumentOutOfRangeException) { /* Column doesn't exist yet */ }
 
+        // CreatorPublicKey column may not exist in older databases before migration
+        string? creatorPublicKey = null;
+        try
+        {
+            var creatorOrdinal = reader.GetOrdinal("CreatorPublicKey");
+            creatorPublicKey = reader.IsDBNull(creatorOrdinal) ? null : reader.GetString(creatorOrdinal);
+        }
+        catch (ArgumentOutOfRangeException) { /* Column doesn't exist yet */ }
+
         return new Chat
         {
             Id = reader.GetString(reader.GetOrdinal("Id")),
@@ -1232,7 +1266,8 @@ public class StorageService : IStorageService
             IsMuted = reader.GetInt32(reader.GetOrdinal("IsMuted")) == 1,
             IsPinned = reader.GetInt32(reader.GetOrdinal("IsPinned")) == 1,
             IsArchived = reader.GetInt32(reader.GetOrdinal("IsArchived")) == 1,
-            WelcomeNostrEventId = reader.IsDBNull(welcomeOrdinal) ? null : reader.GetString(welcomeOrdinal)
+            WelcomeNostrEventId = reader.IsDBNull(welcomeOrdinal) ? null : reader.GetString(welcomeOrdinal),
+            CreatorPublicKey = creatorPublicKey
         };
     }
 
@@ -1332,21 +1367,30 @@ public class StorageService : IStorageService
         return kp;
     }
 
-    private static async Task<List<string>> GetChatParticipantsAsync(SqliteConnection connection, string chatId)
+    private static async Task<(List<string> participants, List<string> admins)> GetChatParticipantsAndAdminsAsync(SqliteConnection connection, string chatId)
     {
         var participants = new List<string>();
+        var admins = new List<string>();
 
         var command = connection.CreateCommand();
-        command.CommandText = "SELECT PublicKeyHex FROM ChatParticipants WHERE ChatId = @ChatId";
+        command.CommandText = "SELECT PublicKeyHex, Role FROM ChatParticipants WHERE ChatId = @ChatId";
         command.Parameters.AddWithValue("@ChatId", chatId);
 
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
-            participants.Add(reader.GetString(0));
+            var pubkey = reader.GetString(0);
+            participants.Add(pubkey);
+            try
+            {
+                var role = reader.GetString(1);
+                if (role == "admin")
+                    admins.Add(pubkey);
+            }
+            catch (InvalidCastException) { /* Role column not yet populated */ }
         }
 
-        return participants;
+        return (participants, admins);
     }
 
     private static async Task<List<string>> GetChatRelaysAsync(SqliteConnection connection, string chatId)

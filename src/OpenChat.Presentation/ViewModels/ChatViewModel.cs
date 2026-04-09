@@ -497,7 +497,8 @@ public class ChatViewModel : ViewModelBase
                 {
                     PublicKeyHex = pubKeyHex,
                     DisplayName = $"{pubKeyHex[..12]}...",
-                    IsCurrentUser = pubKeyHex == _currentUserPublicKeyHex
+                    IsCurrentUser = pubKeyHex == _currentUserPublicKeyHex,
+                    IsAdmin = _currentChat.AdminPublicKeys.Contains(pubKeyHex.ToLowerInvariant())
                 };
                 GroupMembers.Add(member);
 

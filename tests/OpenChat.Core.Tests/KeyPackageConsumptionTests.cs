@@ -76,6 +76,8 @@ public class KeyPackageConsumptionTests
             });
         mlsMock.Setup(m => m.GetNostrGroupId(It.IsAny<byte[]>()))
             .Returns(new byte[] { 0xDD, 0xEE, 0xFF, 0x00, 0x11, 0x22, 0x33, 0x44 });
+        mlsMock.Setup(m => m.GetAdminPubkeys(It.IsAny<byte[]>()))
+            .Returns(new List<string>());
         mlsMock.Setup(m => m.GenerateKeyPackageAsync())
             .ReturnsAsync(KeyPackage.Create("e9b03d7d" + new string('0', 56), new byte[] { 0x01 }));
 

@@ -522,6 +522,11 @@ public class MessageService : IMessageService, IDisposable
         _logger.LogInformation("CreateGroup: MLS group created {GroupId}, epoch={Epoch}",
             groupIdHex[..Math.Min(16, groupIdHex.Length)], groupInfo.Epoch);
 
+        // Extract admin pubkeys from 0xF2EE extension; fall back to creator
+        var adminPubkeys = _mlsService.GetAdminPubkeys(groupInfo.GroupId);
+        if (adminPubkeys.Count == 0)
+            adminPubkeys = new List<string> { _currentUser.PublicKeyHex.ToLowerInvariant() };
+
         var chat = new Chat
         {
             Id = Guid.NewGuid().ToString(),
@@ -530,6 +535,8 @@ public class MessageService : IMessageService, IDisposable
             MlsGroupId = groupInfo.GroupId,
             MlsEpoch = groupInfo.Epoch,
             ParticipantPublicKeys = new List<string> { _currentUser.PublicKeyHex },
+            AdminPublicKeys = adminPubkeys,
+            CreatorPublicKey = _currentUser.PublicKeyHex,
             RelayUrls = relayUrls.ToList(),
             CreatedAt = DateTime.UtcNow,
             LastActivityAt = DateTime.UtcNow
@@ -1314,6 +1321,12 @@ public class MessageService : IMessageService, IDisposable
         // Get the NostrGroupId (from 0xF2EE extension) for relay subscriptions and h-tag routing
         var nostrGroupId = _mlsService.GetNostrGroupId(groupInfo.GroupId);
 
+        // Extract admin pubkeys from 0xF2EE extension; fall back to invite sender
+        var adminPubkeys = _mlsService.GetAdminPubkeys(groupInfo.GroupId);
+        var creatorPubkey = adminPubkeys.Count > 0 ? adminPubkeys[0] : invite.SenderPublicKey;
+        if (adminPubkeys.Count == 0 && !string.IsNullOrEmpty(creatorPubkey))
+            adminPubkeys = new List<string> { creatorPubkey.ToLowerInvariant() };
+
         var chat = new Chat
         {
             Id = Guid.NewGuid().ToString(),
@@ -1323,6 +1336,8 @@ public class MessageService : IMessageService, IDisposable
             NostrGroupId = nostrGroupId,
             MlsEpoch = groupInfo.Epoch,
             ParticipantPublicKeys = groupInfo.MemberPublicKeys,
+            AdminPublicKeys = adminPubkeys,
+            CreatorPublicKey = creatorPubkey,
             RelayUrls = invite.RelayUrls,
             WelcomeNostrEventId = invite.NostrEventId,
             CreatedAt = DateTime.UtcNow,

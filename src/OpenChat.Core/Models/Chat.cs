@@ -93,6 +93,16 @@ public class Chat
     /// Used by group reset to un-dismiss the welcome and allow re-joining.
     /// </summary>
     public string? WelcomeNostrEventId { get; set; }
+
+    /// <summary>
+    /// Public key of the group creator (from MIP-01 AdminPubkeys at creation time).
+    /// </summary>
+    public string? CreatorPublicKey { get; set; }
+
+    /// <summary>
+    /// Public keys of group admins (from MIP-01 0xF2EE extension).
+    /// </summary>
+    public List<string> AdminPublicKeys { get; set; } = new();
 }
 
 public enum ChatType

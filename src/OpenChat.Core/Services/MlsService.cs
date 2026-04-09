@@ -306,6 +306,12 @@ public class MlsService : IMlsService
         return null;
     }
 
+    public List<string> GetAdminPubkeys(byte[] groupId)
+    {
+        // Rust MDK doesn't expose group extensions to C# — return empty.
+        return new List<string>();
+    }
+
     public int GetStoredKeyPackageCount()
     {
         // Rust MDK stores KeyPackages internally in MdkMemoryStorage.

@@ -890,6 +890,19 @@ public class ManagedMlsService : IMlsService
         return nostrGroupId;
     }
 
+    /// <summary>
+    /// Returns the admin public keys (as hex strings) from the 0xF2EE extension for a group.
+    /// Requires MarmotCs.Core NuGet with GetNostrGroupData support. Until then, returns empty
+    /// and the caller falls back to using the creator pubkey as admin.
+    /// </summary>
+    public List<string> GetAdminPubkeys(byte[] groupId)
+    {
+        // TODO: Call _mdk.GetNostrGroupData(groupId) once MarmotCs.Core NuGet is updated
+        // to expose the full NostrGroupData including AdminPubkeys.
+        // For now, admin assignment is handled by the caller (MessageService sets creator as admin).
+        return new List<string>();
+    }
+
     // TODO: DIAGNOSTIC ONLY — remove after cross-impl epoch divergence is resolved
     /// <summary>
     /// Get the MIP-03 exporter secret for a group (for diagnostic/comparison purposes).

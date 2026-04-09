@@ -41,6 +41,7 @@ public class MessageServiceTests : IDisposable
         _storageMock.Setup(s => s.SaveChatAsync(It.IsAny<Chat>())).Returns(Task.CompletedTask);
 
         _mlsMock.Setup(m => m.InitializeAsync(It.IsAny<string>(), It.IsAny<string>())).Returns(Task.CompletedTask);
+        _mlsMock.Setup(m => m.GetAdminPubkeys(It.IsAny<byte[]>())).Returns(new List<string>());
 
         _sut = new MessageService(_storageMock.Object, _nostrMock.Object, _mlsMock.Object);
     }

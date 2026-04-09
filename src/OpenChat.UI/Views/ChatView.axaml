@@ -415,6 +415,11 @@
                                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                                     <TextBlock Text="{Binding DisplayName}" FontSize="13"
                                                                TextTrimming="CharacterEllipsis" />
+                                                    <Border Background="{DynamicResource NostrPurpleBrush}"
+                                                            CornerRadius="3" Padding="4,1"
+                                                            IsVisible="{Binding IsAdmin}">
+                                                        <TextBlock Text="Admin" FontSize="9" Foreground="White" />
+                                                    </Border>
                                                     <TextBlock Text="(you)" Classes="muted" FontSize="11"
                                                                VerticalAlignment="Center"
                                                                IsVisible="{Binding IsCurrentUser}" />
