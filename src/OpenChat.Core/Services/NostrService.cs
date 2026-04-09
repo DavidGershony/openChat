@@ -28,11 +28,12 @@ public class NostrService : INostrService, IDisposable
     private readonly Subject<MarmotGroupMessageEvent> _groupMessages = new();
     private readonly ConcurrentDictionary<string, IDisposable> _subscriptions = new();
     private readonly ConcurrentDictionary<string, byte> _connectedRelays = new();
-    private readonly ConcurrentDictionary<string, ClientWebSocket> _relayConnections = new();
-    private readonly ConcurrentDictionary<string, CancellationTokenSource> _relayListeners = new();
+    private readonly ConcurrentDictionary<string, NostrRelayConnection> _relayConnections = new();
+    private readonly ConcurrentDictionary<string, IDisposable> _relayMessageSubscriptions = new();
     private readonly ConcurrentDictionary<string, byte> _subscribedGroupIds = new();
     private readonly ConcurrentDictionary<string, byte> _recentlyProcessedEventIds = new();
-    private readonly ConcurrentDictionary<string, int> _relayBackoffSeconds = new();
+    private readonly ILogger<NostrRelayConnection> _connectionLogger = LoggingConfiguration.CreateLogger<NostrRelayConnection>();
+    private readonly NostrConnectionProvider _connectionProvider = new();
     private readonly ConcurrentDictionary<string, TaskCompletionSource<bool>> _pendingOkCallbacks = new();
     // Relays connected only for bot chat DM delivery/reception — excluded from group message broadcasts
     private readonly ConcurrentDictionary<string, byte> _botOnlyRelays = new();
@@ -44,7 +45,6 @@ public class NostrService : INostrService, IDisposable
 
     private bool IsBotOnlyRelay(string relayUrl)
         => _botOnlyRelays.ContainsKey(relayUrl.TrimEnd('/'));
-    private const int MaxBackoffSeconds = 60;
     private const int RateLimitBackoffSeconds = 60;
     private DateTimeOffset? _groupMessagesSince;
     private DateTimeOffset? _welcomeMessagesSince;
@@ -143,17 +143,47 @@ public class NostrService : INostrService, IDisposable
                 }
             }
 
-            var ws = new ClientWebSocket();
-            var cts = new CancellationTokenSource();
-            cts.CancelAfter(TimeSpan.FromSeconds(10));
+            var connection = new NostrRelayConnection(relayUrl, _connectionLogger);
+            await connection.ConnectAsync();
 
-            await ws.ConnectAsync(new Uri(relayUrl), cts.Token);
-            cts.CancelAfter(Timeout.InfiniteTimeSpan); // Connected — remove timeout for listener
-
-            _relayConnections[relayUrl] = ws;
-            _relayListeners[relayUrl] = cts;
+            _relayConnections[relayUrl] = connection;
+            _connectionProvider.RegisterConnection(relayUrl, connection);
             _connectedRelays.TryAdd(relayUrl, 0);
 
+            // Wire message stream → ProcessRelayMessageAsync
+            var msgSub = connection.Messages.Subscribe(async message =>
+            {
+                try
+                {
+                    await ProcessRelayMessageAsync(relayUrl, message);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error processing message from {RelayUrl}", relayUrl);
+                }
+            });
+
+            // Forward connection status
+            var statusSub = connection.ConnectionStatus.Subscribe(status =>
+            {
+                _connectionStatus.OnNext(status);
+
+                if (status.IsConnected)
+                {
+                    _connectedRelays.TryAdd(relayUrl, 0);
+                }
+                else
+                {
+                    _connectedRelays.TryRemove(relayUrl, out _);
+                }
+            });
+
+            // Store combined subscription for cleanup
+            var combinedSub = new System.Reactive.Disposables.CompositeDisposable(msgSub, statusSub);
+            _relayMessageSubscriptions[relayUrl] = combinedSub;
+
+            // Emit connected status now that the subscription is wired
+            // (the initial status from ConnectAsync fires before the subscription is set up)
             _connectionStatus.OnNext(new NostrConnectionStatus
             {
                 RelayUrl = relayUrl,
@@ -162,20 +192,13 @@ public class NostrService : INostrService, IDisposable
 
             _logger.LogInformation("Successfully connected to relay: {RelayUrl}", relayUrl);
 
-            // Reset backoff on successful connection
-            _relayBackoffSeconds.TryRemove(relayUrl, out _);
-
-            // Start listening for events in background
-            _ = ListenToRelayAsync(relayUrl, ws, cts.Token);
-
-            // Re-send any active subscriptions to this relay
-            await ResendSubscriptionsToRelayAsync(relayUrl, ws);
+            // Register active subscriptions on this new connection
+            await RegisterActiveSubscriptionsAsync(connection);
         }
         catch (WebSocketException ex) when (ex.Message.Contains("429"))
         {
             _logger.LogWarning("Rate-limited by relay {RelayUrl} (HTTP 429), backing off {Seconds}s",
                 relayUrl, RateLimitBackoffSeconds);
-            _relayBackoffSeconds[relayUrl] = RateLimitBackoffSeconds;
             _connectionStatus.OnNext(new NostrConnectionStatus
             {
                 RelayUrl = relayUrl,
@@ -196,15 +219,15 @@ public class NostrService : INostrService, IDisposable
     }
 
     /// <summary>
-    /// Re-sends all active subscriptions (welcomes + group messages) to a newly connected relay.
-    /// This ensures subscriptions survive reconnections and app restarts.
+    /// Registers all active subscriptions (welcomes + group messages) on a newly connected relay.
+    /// The connection auto-replays these on reconnect, so this is only needed for the initial registration.
     /// </summary>
-    private async Task ResendSubscriptionsToRelayAsync(string relayUrl, ClientWebSocket ws)
+    private async Task RegisterActiveSubscriptionsAsync(NostrRelayConnection connection)
     {
         try
         {
-            // Re-subscribe to Welcome messages (kind 1059 gift wrap)
-            if (!string.IsNullOrEmpty(_subscribedUserPubKey) && ws.State == WebSocketState.Open)
+            // Register Welcome subscription (kind 1059 gift wrap)
+            if (!string.IsNullOrEmpty(_subscribedUserPubKey) && connection.IsConnected)
             {
                 var subId = $"welcome_{Guid.NewGuid():N}"[..16];
                 var filter = new Dictionary<string, object>
@@ -217,15 +240,19 @@ public class NostrService : INostrService, IDisposable
                 // A 'since' filter would miss new events whose random timestamp is before
                 // the disconnect time. Rely on in-memory + DB deduplication instead.
 
-                var reqMessage = JsonSerializer.Serialize(new object[] { "REQ", subId, filter });
-                var reqBytes = Encoding.UTF8.GetBytes(reqMessage);
-                await ws.SendAsync(new ArraySegment<byte>(reqBytes), WebSocketMessageType.Text, true, CancellationToken.None);
-                _logger.LogInformation("Re-sent Welcome subscription to {RelayUrl} (no since — NIP-59 randomized timestamps)",
-                    relayUrl);
+                var filterJson = JsonSerializer.Serialize(filter);
+                await connection.RegisterSubscriptionAsync(subId, filterJson);
+
+                // Track in provider for H2 filter validation
+                var parsedFilter = ParsedFilter.FromJson(filterJson);
+                _connectionProvider.TrackSubscription(subId, parsedFilter, new[] { connection.RelayUrl });
+
+                _logger.LogInformation("Registered Welcome subscription on {RelayUrl} (no since — NIP-59 randomized timestamps)",
+                    connection.RelayUrl);
             }
 
-            // Re-subscribe to Group messages (kind 445)
-            if (_subscribedGroupIds.Count > 0 && ws.State == WebSocketState.Open)
+            // Register Group subscription (kind 445)
+            if (_subscribedGroupIds.Count > 0 && connection.IsConnected)
             {
                 var subId = $"group_{Guid.NewGuid():N}"[..16];
                 var filter = new Dictionary<string, object>
@@ -239,16 +266,20 @@ public class NostrService : INostrService, IDisposable
                     filter["since"] = _groupMessagesSince.Value.ToUnixTimeSeconds();
                 }
 
-                var reqMessage = JsonSerializer.Serialize(new object[] { "REQ", subId, filter });
-                var reqBytes = Encoding.UTF8.GetBytes(reqMessage);
-                await ws.SendAsync(new ArraySegment<byte>(reqBytes), WebSocketMessageType.Text, true, CancellationToken.None);
-                _logger.LogInformation("Re-sent Group subscription ({Count} groups) to {RelayUrl}",
-                    _subscribedGroupIds.Count, relayUrl);
+                var filterJson = JsonSerializer.Serialize(filter);
+                await connection.RegisterSubscriptionAsync(subId, filterJson);
+
+                // Track in provider for H2 filter validation
+                var parsedFilter = ParsedFilter.FromJson(filterJson);
+                _connectionProvider.TrackSubscription(subId, parsedFilter, new[] { connection.RelayUrl });
+
+                _logger.LogInformation("Registered Group subscription ({Count} groups) on {RelayUrl}",
+                    _subscribedGroupIds.Count, connection.RelayUrl);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to re-send subscriptions to {RelayUrl}", relayUrl);
+            _logger.LogWarning(ex, "Failed to register subscriptions on {RelayUrl}", connection.RelayUrl);
         }
     }
 
@@ -272,65 +303,6 @@ public class NostrService : INostrService, IDisposable
         return (result.MessageType, Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length));
     }
 
-    private async Task ListenToRelayAsync(string relayUrl, ClientWebSocket ws, CancellationToken ct)
-    {
-        var buffer = new byte[65536];
-        var wasCancelled = false;
-
-        try
-        {
-            while (ws.State == WebSocketState.Open && !ct.IsCancellationRequested)
-            {
-                var msg = await ReceiveFullMessageAsync(ws, buffer, ct);
-                if (msg == null || msg.Value.Type == WebSocketMessageType.Close)
-                {
-                    _logger.LogInformation("Relay {RelayUrl} closed connection", relayUrl);
-                    break;
-                }
-
-                await ProcessRelayMessageAsync(relayUrl, msg.Value.Text);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            _logger.LogDebug("Relay listener cancelled for {RelayUrl}", relayUrl);
-            wasCancelled = true;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error listening to relay {RelayUrl}", relayUrl);
-        }
-        finally
-        {
-            _connectionStatus.OnNext(new NostrConnectionStatus
-            {
-                RelayUrl = relayUrl,
-                IsConnected = false
-            });
-        }
-
-        // Auto-reconnect with exponential backoff (unless deliberately cancelled)
-        if (!wasCancelled && !_disposed)
-        {
-            var backoff = _relayBackoffSeconds.GetOrAdd(relayUrl, 1);
-            _logger.LogInformation("Auto-reconnecting to {RelayUrl} in {Seconds}s", relayUrl, backoff);
-
-            try
-            {
-                await Task.Delay(TimeSpan.FromSeconds(backoff), CancellationToken.None);
-            }
-            catch (TaskCanceledException) { return; }
-
-            // Increase backoff for next failure (exponential: 1, 2, 4, 8, 16, 32, 60)
-            _relayBackoffSeconds[relayUrl] = Math.Min(backoff * 2, MaxBackoffSeconds);
-
-            if (!_disposed)
-            {
-                await DisconnectSingleRelayAsync(relayUrl);
-                await ConnectToRelayAsync(relayUrl);
-            }
-        }
-    }
 
     private async Task ProcessRelayMessageAsync(string relayUrl, string message)
     {
@@ -350,10 +322,19 @@ public class NostrService : INostrService, IDisposable
                 if (IsRelayRateLimited(relayUrl))
                     return;
 
+                var subId = root[1].GetString();
                 var eventData = root[2];
                 var nostrEvent = ParseNostrEvent(eventData, relayUrl);
                 if (nostrEvent != null)
                 {
+                    // H2: Validate event against subscription filter — drop events that don't
+                    // match the filter for their subscription ID (defends against malicious relays
+                    // pushing arbitrary events)
+                    if (!string.IsNullOrEmpty(subId) && !_connectionProvider.ValidateEvent(subId, nostrEvent))
+                    {
+                        return;
+                    }
+
                     // Deduplicate events across relays — skip if already processed
                     if (!string.IsNullOrEmpty(nostrEvent.EventId) &&
                         !_recentlyProcessedEventIds.TryAdd(nostrEvent.EventId, 0))
@@ -450,7 +431,7 @@ public class NostrService : INostrService, IDisposable
     {
         try
         {
-            if (!_relayConnections.TryGetValue(relayUrl, out var ws) || ws.State != WebSocketState.Open)
+            if (!_relayConnections.TryGetValue(relayUrl, out var connection) || !connection.IsConnected)
             {
                 _logger.LogWarning("NIP-42: cannot respond to AUTH — no open connection to {RelayUrl}", relayUrl);
                 return;
@@ -508,7 +489,7 @@ public class NostrService : INostrService, IDisposable
             }
 
             var bytes = Encoding.UTF8.GetBytes(authEventMessage);
-            await ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
+            await connection.SendAsync(bytes);
             _logger.LogInformation("NIP-42: sent AUTH response to {RelayUrl}", relayUrl);
         }
         catch (Exception ex)
@@ -805,42 +786,32 @@ public class NostrService : INostrService, IDisposable
         // Save timestamp so reconnect subscriptions use 'since' filter
         _welcomeMessagesSince = DateTimeOffset.UtcNow;
 
-        // Cancel all listeners
-        foreach (var (relayUrl, cts) in _relayListeners)
+        // Dispose Rx subscriptions
+        foreach (var (_, sub) in _relayMessageSubscriptions)
         {
-            try
-            {
-                cts.Cancel();
-                cts.Dispose();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Error cancelling listener for {RelayUrl}", relayUrl);
-            }
+            sub.Dispose();
         }
-        _relayListeners.Clear();
+        _relayMessageSubscriptions.Clear();
 
-        // Close all WebSocket connections
-        foreach (var (relayUrl, ws) in _relayConnections)
+        // Dispose all relay connections (handles cancel, close, cleanup)
+        foreach (var (relayUrl, connection) in _relayConnections)
         {
             try
             {
-                if (ws.State == WebSocketState.Open)
-                {
-                    await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Disconnecting", CancellationToken.None);
-                }
-                ws.Dispose();
-
-                _connectionStatus.OnNext(new NostrConnectionStatus
-                {
-                    RelayUrl = relayUrl,
-                    IsConnected = false
-                });
+                await connection.DisposeAsync();
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Error closing connection to {RelayUrl}", relayUrl);
+                _logger.LogWarning(ex, "Error disposing connection to {RelayUrl}", relayUrl);
             }
+
+            // Emit disconnected status explicitly — the Rx forwarding subscription
+            // was already disposed above, so the connection's own status event is lost
+            _connectionStatus.OnNext(new NostrConnectionStatus
+            {
+                RelayUrl = relayUrl,
+                IsConnected = false
+            });
         }
         _relayConnections.Clear();
         _connectedRelays.Clear();
@@ -852,7 +823,6 @@ public class NostrService : INostrService, IDisposable
     public async Task ReconnectRelayAsync(string relayUrl)
     {
         _logger.LogInformation("Reconnecting to relay: {RelayUrl}", relayUrl);
-        _relayBackoffSeconds.TryRemove(relayUrl, out _);
         await DisconnectSingleRelayAsync(relayUrl);
         await ConnectToRelayAsync(relayUrl);
     }
@@ -874,20 +844,21 @@ public class NostrService : INostrService, IDisposable
         // Track disconnect time so reconnect subscriptions use 'since' filter
         _welcomeMessagesSince = DateTimeOffset.UtcNow;
 
-        if (_relayListeners.TryRemove(relayUrl, out var cts))
+        if (_relayMessageSubscriptions.TryRemove(relayUrl, out var sub))
         {
-            cts.Cancel();
-            cts.Dispose();
+            sub.Dispose();
         }
-        if (_relayConnections.TryRemove(relayUrl, out var ws))
+        _connectionProvider.UnregisterConnection(relayUrl);
+        if (_relayConnections.TryRemove(relayUrl, out var connection))
         {
             try
             {
-                if (ws.State == WebSocketState.Open)
-                    await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Disconnecting", CancellationToken.None);
-                ws.Dispose();
+                await connection.DisposeAsync();
             }
-            catch { }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error disposing connection to {RelayUrl}", relayUrl);
+            }
         }
         _connectedRelays.TryRemove(relayUrl, out _);
     }
@@ -1003,34 +974,26 @@ public class NostrService : INostrService, IDisposable
         _subscribedUserPubKey = publicKeyHex;
         _subscribedUserPrivKey = privateKeyHex;
 
-        // Subscribe to NIP-59 Gift Wrap (kind 1059) where p-tag matches our pubkey
-        var subId = $"welcome_{Guid.NewGuid():N}"[..16];
-
         var filter = new Dictionary<string, object>
         {
             { "kinds", new[] { 1059 } },
             { "#p", new[] { publicKeyHex } }
         };
 
-        var reqMessage = JsonSerializer.Serialize(new object[] { "REQ", subId, filter });
-        var reqBytes = Encoding.UTF8.GetBytes(reqMessage);
+        var filterJson = JsonSerializer.Serialize(filter);
+        _logger.LogDebug("Sending Welcome subscription filter: {Filter}", filterJson);
 
-        _logger.LogDebug("Sending Welcome subscription REQ: {Message}", reqMessage);
+        var parsedFilter = ParsedFilter.FromJson(filterJson);
 
-        // Send to all connected relays
-        foreach (var (relayUrl, ws) in _relayConnections)
+        // Register on all connected relays (each connection tracks for auto-replay on reconnect)
+        foreach (var (relayUrl, connection) in _relayConnections)
         {
-            if (ws.State == WebSocketState.Open)
+            if (connection.IsConnected)
             {
-                try
-                {
-                    await ws.SendAsync(new ArraySegment<byte>(reqBytes), WebSocketMessageType.Text, true, CancellationToken.None);
-                    _logger.LogDebug("Sent Welcome subscription to {RelayUrl}", relayUrl);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to send Welcome subscription to {RelayUrl}", relayUrl);
-                }
+                var subId = $"welcome_{Guid.NewGuid():N}"[..16];
+                await connection.RegisterSubscriptionAsync(subId, filterJson);
+                _connectionProvider.TrackSubscription(subId, parsedFilter, new[] { relayUrl });
+                _logger.LogDebug("Registered Welcome subscription on {RelayUrl}", relayUrl);
             }
         }
     }
@@ -1066,10 +1029,6 @@ public class NostrService : INostrService, IDisposable
             _groupMessagesSince = since;
         }
 
-        // Build REQ for kind 445 events with h-tags matching our groups (MIP-03 uses 'h' tag)
-        var subId = $"group_{Guid.NewGuid():N}"[..16];
-
-        // Create filter: {"kinds": [445], "#h": [groupId1, groupId2, ...]}
         var filter = new Dictionary<string, object>
         {
             { "kinds", new[] { 445 } },
@@ -1081,26 +1040,21 @@ public class NostrService : INostrService, IDisposable
             filter["since"] = since.Value.ToUnixTimeSeconds();
         }
 
-        var reqMessage = JsonSerializer.Serialize(new object[] { "REQ", subId, filter });
-        var reqBytes = Encoding.UTF8.GetBytes(reqMessage);
+        var filterJson = JsonSerializer.Serialize(filter);
+        _logger.LogDebug("Sending Group subscription filter: {Filter}", filterJson);
 
-        _logger.LogDebug("Sending Group subscription REQ: {Message}", reqMessage);
+        var parsedFilter = ParsedFilter.FromJson(filterJson);
 
-        // Send to all connected relays (skip bot-only relays — group subs don't belong there)
-        foreach (var (relayUrl, ws) in _relayConnections)
+        // Register on all connected relays (skip bot-only relays — group subs don't belong there)
+        foreach (var (relayUrl, connection) in _relayConnections)
         {
             if (IsBotOnlyRelay(relayUrl)) continue;
-            if (ws.State == WebSocketState.Open)
+            if (connection.IsConnected)
             {
-                try
-                {
-                    await ws.SendAsync(new ArraySegment<byte>(reqBytes), WebSocketMessageType.Text, true, CancellationToken.None);
-                    _logger.LogDebug("Sent Group subscription to {RelayUrl}", relayUrl);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to send Group subscription to {RelayUrl}", relayUrl);
-                }
+                var subId = $"group_{Guid.NewGuid():N}"[..16];
+                await connection.RegisterSubscriptionAsync(subId, filterJson);
+                _connectionProvider.TrackSubscription(subId, parsedFilter, new[] { relayUrl });
+                _logger.LogDebug("Registered Group subscription on {RelayUrl}", relayUrl);
             }
         }
     }
@@ -1222,14 +1176,14 @@ public class NostrService : INostrService, IDisposable
 
         // Publish the kind 1059 gift wrap to all relays (skip bot-only — MLS welcomes don't belong there)
         var eventBytes = Encoding.UTF8.GetBytes(giftWrapMessage.EventMessage);
-        foreach (var (relayUrl, ws) in _relayConnections)
+        foreach (var (relayUrl, connection) in _relayConnections)
         {
             if (IsBotOnlyRelay(relayUrl)) continue;
-            if (ws.State == WebSocketState.Open)
+            if (connection.IsConnected)
             {
                 try
                 {
-                    await ws.SendAsync(new ArraySegment<byte>(eventBytes), WebSocketMessageType.Text, true, CancellationToken.None);
+                    await connection.SendAsync(eventBytes);
                     _logger.LogDebug("Sent gift-wrapped Welcome to {RelayUrl}", relayUrl);
                 }
                 catch (Exception ex)
@@ -1268,19 +1222,18 @@ public class NostrService : INostrService, IDisposable
         // Track which target relays we've sent to so we know which ones need ad-hoc connections
         var sentToRelays = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var (relayUrl, ws) in _relayConnections)
+        foreach (var (relayUrl, connection) in _relayConnections)
         {
             // If target relays specified, only send to those
             if (targetRelayUrls != null && !targetRelayUrls.Any(t =>
                 string.Equals(t.TrimEnd('/'), relayUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase)))
                 continue;
 
-            if (ws.State == WebSocketState.Open)
+            if (connection.IsConnected)
             {
                 try
                 {
-                    await ws.SendAsync(new ArraySegment<byte>(eventBytes),
-                        WebSocketMessageType.Text, true, CancellationToken.None);
+                    await connection.SendAsync(eventBytes);
                     sentToRelays.Add(relayUrl.TrimEnd('/'));
                     _logger.LogDebug("Sent gift-wrapped kind {Kind} to {RelayUrl}", rumorKind, relayUrl);
                 }
@@ -1619,15 +1572,14 @@ public class NostrService : INostrService, IDisposable
         var eventMessage = $"[\"EVENT\",{eventJsonStr}]";
         var messageBytes = Encoding.UTF8.GetBytes(eventMessage);
 
-        foreach (var (relayUrl, ws) in _relayConnections)
+        foreach (var (relayUrl, connection) in _relayConnections)
         {
             if (IsBotOnlyRelay(relayUrl)) continue;
             try
             {
-                if (ws.State == System.Net.WebSockets.WebSocketState.Open)
+                if (connection.IsConnected)
                 {
-                    await ws.SendAsync(new ArraySegment<byte>(messageBytes),
-                        System.Net.WebSockets.WebSocketMessageType.Text, true, CancellationToken.None);
+                    await connection.SendAsync(messageBytes);
                     _logger.LogDebug("Sent pre-built event to relay {Relay}", relayUrl);
                 }
             }
@@ -2692,12 +2644,12 @@ public class NostrService : INostrService, IDisposable
 
         // Send to all connected relays (skip bot-only relays)
         var publishTasks = new List<Task>();
-        foreach (var (relayUrl, ws) in _relayConnections)
+        foreach (var (relayUrl, connection) in _relayConnections)
         {
             if (IsBotOnlyRelay(relayUrl)) continue;
-            if (ws.State == WebSocketState.Open)
+            if (connection.IsConnected)
             {
-                publishTasks.Add(SendToRelayAsync(relayUrl, ws, eventBytes));
+                publishTasks.Add(SendToRelayConnectionAsync(relayUrl, connection, eventBytes));
             }
         }
 
@@ -2707,11 +2659,11 @@ public class NostrService : INostrService, IDisposable
         return eventId;
     }
 
-    private async Task SendToRelayAsync(string relayUrl, ClientWebSocket ws, byte[] data)
+    private async Task SendToRelayConnectionAsync(string relayUrl, NostrRelayConnection connection, byte[] data)
     {
         try
         {
-            await ws.SendAsync(new ArraySegment<byte>(data), WebSocketMessageType.Text, true, CancellationToken.None);
+            await connection.SendAsync(data);
             _logger.LogDebug("Sent event to relay {RelayUrl}", relayUrl);
         }
         catch (Exception ex)
@@ -2889,19 +2841,20 @@ public class NostrService : INostrService, IDisposable
         }
         _subscriptions.Clear();
 
-        // Dispose relay connections
-        foreach (var (_, cts) in _relayListeners)
+        // Dispose Rx subscriptions and relay connections
+        foreach (var (_, sub) in _relayMessageSubscriptions)
         {
-            cts.Cancel();
-            cts.Dispose();
+            sub.Dispose();
         }
-        _relayListeners.Clear();
+        _relayMessageSubscriptions.Clear();
 
-        foreach (var (_, ws) in _relayConnections)
+        foreach (var (_, connection) in _relayConnections)
         {
-            ws.Dispose();
+            connection.DisposeAsync().AsTask().GetAwaiter().GetResult();
         }
         _relayConnections.Clear();
+
+        _connectionProvider.DisposeAsync().AsTask().GetAwaiter().GetResult();
 
         _connectionStatus.Dispose();
         _events.Dispose();
