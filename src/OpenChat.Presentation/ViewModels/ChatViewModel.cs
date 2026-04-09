@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Reactive;
+using System.Reactive.Disposables;
 using System.Text.RegularExpressions;
 using System.Reactive.Linq;
 using Microsoft.Extensions.Logging;
@@ -69,6 +70,10 @@ public class ChatViewModel : ViewModelBase
     [Reactive] public string? MetadataLud16 { get; set; }
     [Reactive] public string? MetadataNpub { get; set; }
     [Reactive] public bool HasMetadata { get; set; }
+
+    // Group member list
+    public ObservableCollection<GroupMemberViewModel> GroupMembers { get; } = new();
+    [Reactive] public bool IsLoadingMembers { get; set; }
 
     // Load older messages
     [Reactive] public bool IsLoadingOlder { get; set; }
@@ -178,6 +183,10 @@ public class ChatViewModel : ViewModelBase
             {
                 await LoadContactMetadataAsync();
             }
+            if (ShowMetadataPanel && IsGroup && GroupMembers.Count == 0)
+            {
+                await LoadGroupMembersAsync();
+            }
         });
 
         ToggleMetadataPanelCommand = ReactiveCommand.CreateFromTask(async () =>
@@ -189,6 +198,10 @@ public class ChatViewModel : ViewModelBase
             if (ShowMetadataPanel && ContactMetadata == null)
             {
                 await LoadContactMetadataAsync();
+            }
+            if (ShowMetadataPanel && IsGroup && GroupMembers.Count == 0)
+            {
+                await LoadGroupMembersAsync();
             }
         });
 
@@ -345,6 +358,7 @@ public class ChatViewModel : ViewModelBase
         ContactPublicKey = null;
         ClearMetadataProperties();
         Messages.Clear();
+        GroupMembers.Clear();
         _mediaCache.Clear();
     }
 
@@ -465,6 +479,63 @@ public class ChatViewModel : ViewModelBase
         finally
         {
             IsLoadingMetadata = false;
+        }
+    }
+
+    private async Task LoadGroupMembersAsync()
+    {
+        if (_currentChat == null || IsLoadingMembers) return;
+
+        IsLoadingMembers = true;
+        try
+        {
+            GroupMembers.Clear();
+
+            foreach (var pubKeyHex in _currentChat.ParticipantPublicKeys)
+            {
+                var member = new GroupMemberViewModel
+                {
+                    PublicKeyHex = pubKeyHex,
+                    DisplayName = $"{pubKeyHex[..12]}...",
+                    IsCurrentUser = pubKeyHex == _currentUserPublicKeyHex
+                };
+                GroupMembers.Add(member);
+
+                // Fetch metadata in background — update the member VM when it arrives
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var metadata = await _messageService.FetchAndCacheProfileAsync(pubKeyHex);
+                        if (metadata != null)
+                        {
+                            RxApp.MainThreadScheduler.Schedule(Unit.Default, (_, _) =>
+                            {
+                                member.DisplayName = metadata.GetDisplayName();
+                                member.Picture = metadata.Picture;
+                                if (!string.IsNullOrEmpty(metadata.Npub))
+                                    member.Npub = metadata.Npub;
+                                return Disposable.Empty;
+                            });
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to fetch metadata for member {PubKey}",
+                            pubKeyHex[..Math.Min(16, pubKeyHex.Length)]);
+                    }
+                });
+            }
+
+            _logger.LogInformation("Loaded {Count} group members", GroupMembers.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to load group members");
+        }
+        finally
+        {
+            IsLoadingMembers = false;
         }
     }
 
@@ -1582,4 +1653,17 @@ public class MessageViewModel : ViewModelBase
         _logger.LogWarning("ValidateImageMagicBytes: unknown MIME type {MimeType}", mimeType);
         return false;
     }
+}
+
+public class GroupMemberViewModel : ViewModelBase
+{
+    public string PublicKeyHex { get; set; } = string.Empty;
+    [Reactive] public string DisplayName { get; set; } = string.Empty;
+    [Reactive] public string? Picture { get; set; }
+    [Reactive] public string? Npub { get; set; }
+    [Reactive] public bool IsAdmin { get; set; }
+    [Reactive] public bool IsCurrentUser { get; set; }
+
+    /// <summary>Short display: first initial for avatar placeholder.</summary>
+    public string Initial => !string.IsNullOrEmpty(DisplayName) ? DisplayName[..1].ToUpperInvariant() : "?";
 }

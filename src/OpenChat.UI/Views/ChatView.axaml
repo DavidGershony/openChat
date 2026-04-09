@@ -243,8 +243,12 @@
                         BorderBrush="{DynamicResource BorderDefaultBrush}"
                         BorderThickness="0,0,0,1">
                     <Grid ColumnDefinitions="*,Auto">
-                        <TextBlock Text="Contact Info" FontSize="16" FontWeight="SemiBold"
-                                   VerticalAlignment="Center" />
+                        <Panel VerticalAlignment="Center">
+                            <TextBlock Text="Contact Info" FontSize="16" FontWeight="SemiBold"
+                                       IsVisible="{Binding !IsGroup}" />
+                            <TextBlock Text="Group Info" FontSize="16" FontWeight="SemiBold"
+                                       IsVisible="{Binding IsGroup}" />
+                        </Panel>
                         <Button Grid.Column="1" Classes="icon"
                                 Command="{Binding ToggleMetadataPanelCommand}"
                                 ToolTip.Tip="Close">
@@ -379,6 +383,50 @@
                                                Classes="secondary" FontSize="13" />
                                 </StackPanel>
                             </StackPanel>
+                        </StackPanel>
+
+                        <!-- Group Members Section -->
+                        <StackPanel Spacing="12" IsVisible="{Binding IsGroup}">
+                            <TextBlock Text="Members" Classes="muted" FontSize="12" FontWeight="SemiBold" />
+
+                            <TextBlock Text="Loading members..."
+                                       Classes="muted" FontSize="13"
+                                       IsVisible="{Binding IsLoadingMembers}" />
+
+                            <ItemsControl ItemsSource="{Binding GroupMembers}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:GroupMemberViewModel">
+                                        <Grid ColumnDefinitions="Auto,*" Margin="0,3">
+                                            <!-- Avatar -->
+                                            <Border Grid.Column="0" Width="32" Height="32" CornerRadius="16"
+                                                    Background="{DynamicResource NostrPurpleBrush}"
+                                                    Margin="0,0,10,0" ClipToBounds="True">
+                                                <Panel>
+                                                    <TextBlock Text="{Binding Initial}"
+                                                               FontSize="13" FontWeight="SemiBold" Foreground="White"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                    <Image asyncImageLoader:ImageLoader.Source="{Binding Picture}"
+                                                           Width="32" Height="32" Stretch="UniformToFill"
+                                                           IsVisible="{Binding Picture, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                                </Panel>
+                                            </Border>
+                                            <!-- Name + role -->
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <TextBlock Text="{Binding DisplayName}" FontSize="13"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Text="(you)" Classes="muted" FontSize="11"
+                                                               VerticalAlignment="Center"
+                                                               IsVisible="{Binding IsCurrentUser}" />
+                                                </StackPanel>
+                                                <TextBlock Text="{Binding Npub}" Classes="muted" FontSize="10"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           IsVisible="{Binding Npub, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                         </StackPanel>
                     </StackPanel>
                 </ScrollViewer>

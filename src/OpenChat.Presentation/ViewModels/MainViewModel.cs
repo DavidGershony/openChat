@@ -652,7 +652,15 @@ public class MainViewModel : ViewModelBase
                             MyName = metadata.Name;
                             MyPictureUrl = metadata.Picture;
                             MyAbout = metadata.About;
-                            HeaderDisplayName = metadata.GetDisplayName();
+                            // Only update header if metadata has a real name — don't downgrade
+                            // from a cached display name to a truncated npub
+                            var fetchedName = metadata.GetDisplayName();
+                            if (!string.IsNullOrEmpty(metadata.DisplayName) ||
+                                !string.IsNullOrEmpty(metadata.Name) ||
+                                !string.IsNullOrEmpty(metadata.Username))
+                            {
+                                HeaderDisplayName = fetchedName;
+                            }
                         }
                     }
                     catch (Exception ex)

@@ -497,9 +497,30 @@ public class ChatFragment : Fragment
         var participants = dialogView.FindViewById<TextView>(Resource.Id.group_info_participants)!;
         var inviteButton = dialogView.FindViewById<MaterialButton>(Resource.Id.group_invite_button)!;
         var copyLinkButton = dialogView.FindViewById<MaterialButton>(Resource.Id.group_copy_link_button)!;
+        var membersRecycler = dialogView.FindViewById<RecyclerView>(Resource.Id.group_members_recycler)!;
 
         groupName.Text = ViewModel.ChatName;
         participants.Text = $"{ViewModel.ParticipantCount} participants";
+
+        // Set up member list
+        var memberAdapter = new Adapters.GroupMemberAdapter();
+        membersRecycler.SetLayoutManager(new LinearLayoutManager(Context));
+        membersRecycler.SetAdapter(memberAdapter);
+
+        // Load members and update adapter
+        if (ViewModel.GroupMembers.Count > 0)
+        {
+            memberAdapter.UpdateItems(ViewModel.GroupMembers.ToList());
+        }
+
+        // Trigger member loading if not already loaded
+        ViewModel.ShowChatInfoCommand.Execute().Subscribe(_ =>
+        {
+            Activity?.RunOnUiThread(() =>
+            {
+                memberAdapter.UpdateItems(ViewModel.GroupMembers.ToList());
+            });
+        });
 
         var dialog = new MaterialAlertDialogBuilder(Context)
             .SetView(dialogView)!
