@@ -52,6 +52,19 @@
                 android:maxLines="1" />
 
             <TextView
+                android:id="@+id/member_admin_badge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Admin"
+                android:textSize="10sp"
+                android:textColor="@android:color/white"
+                android:background="@drawable/avatar_background"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="1dp"
+                android:layout_marginStart="6dp"
+                android:visibility="gone" />
+
+            <TextView
                 android:id="@+id/member_you_badge"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"

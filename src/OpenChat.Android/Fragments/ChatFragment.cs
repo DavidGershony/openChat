@@ -507,6 +507,9 @@ public class ChatFragment : Fragment
         membersRecycler.SetLayoutManager(new LinearLayoutManager(Context));
         membersRecycler.SetAdapter(memberAdapter);
 
+        // Hide invite button for non-admins
+        inviteButton.Visibility = ViewModel.IsCurrentUserAdmin ? ViewStates.Visible : ViewStates.Gone;
+
         // Load members and update adapter
         if (ViewModel.GroupMembers.Count > 0)
         {

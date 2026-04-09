@@ -74,6 +74,7 @@ public class ChatViewModel : ViewModelBase
     // Group member list
     public ObservableCollection<GroupMemberViewModel> GroupMembers { get; } = new();
     [Reactive] public bool IsLoadingMembers { get; set; }
+    [Reactive] public bool IsCurrentUserAdmin { get; set; }
 
     // Load older messages
     [Reactive] public bool IsLoadingOlder { get; set; }
@@ -299,6 +300,8 @@ public class ChatViewModel : ViewModelBase
         ChatAvatarUrl = chat.AvatarUrl;
         IsGroup = chat.Type == ChatType.Group;
         ParticipantCount = chat.ParticipantPublicKeys.Count;
+        IsCurrentUserAdmin = IsGroup && _currentUserPublicKeyHex != null &&
+            chat.AdminPublicKeys.Contains(_currentUserPublicKeyHex.ToLowerInvariant());
         HasChat = true;
 
         // Load MIP-04 setting for attach/mic button visibility
@@ -350,6 +353,7 @@ public class ChatViewModel : ViewModelBase
         ChatAvatarUrl = null;
         IsGroup = false;
         ParticipantCount = 0;
+        IsCurrentUserAdmin = false;
         HasChat = false;
         _fetchBoundary = null;
         CanLoadOlder = true;

@@ -37,6 +37,7 @@ public class GroupMemberAdapter : RecyclerView.Adapter
         private readonly TextView _initial;
         private readonly ImageView _avatar;
         private readonly TextView _name;
+        private readonly TextView _adminBadge;
         private readonly TextView _youBadge;
         private readonly TextView _npub;
 
@@ -45,6 +46,7 @@ public class GroupMemberAdapter : RecyclerView.Adapter
             _initial = itemView.FindViewById<TextView>(Resource.Id.member_initial)!;
             _avatar = itemView.FindViewById<ImageView>(Resource.Id.member_avatar)!;
             _name = itemView.FindViewById<TextView>(Resource.Id.member_name)!;
+            _adminBadge = itemView.FindViewById<TextView>(Resource.Id.member_admin_badge)!;
             _youBadge = itemView.FindViewById<TextView>(Resource.Id.member_you_badge)!;
             _npub = itemView.FindViewById<TextView>(Resource.Id.member_npub)!;
         }
@@ -55,6 +57,7 @@ public class GroupMemberAdapter : RecyclerView.Adapter
             _initial.Text = member.Initial;
             _initial.Visibility = string.IsNullOrEmpty(member.Picture) ? ViewStates.Visible : ViewStates.Gone;
             _avatar.Visibility = string.IsNullOrEmpty(member.Picture) ? ViewStates.Gone : ViewStates.Visible;
+            _adminBadge.Visibility = member.IsAdmin ? ViewStates.Visible : ViewStates.Gone;
             _youBadge.Visibility = member.IsCurrentUser ? ViewStates.Visible : ViewStates.Gone;
             _npub.Text = member.Npub ?? $"{member.PublicKeyHex[..12]}...";
         }
