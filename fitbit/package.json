@@ -1,0 +1,23 @@
+{
+  "fitbit": {
+    "appUUID": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "appType": "app",
+    "appDisplayName": "OpenChat",
+    "iconFile": "resources/icon.png",
+    "wipeColor": "#7C3AED",
+    "requestedPermissions": [
+      "access_internet"
+    ],
+    "buildTargets": [
+      "atlas"
+    ],
+    "i18n": {
+      "en": {
+        "name": "OpenChat"
+      }
+    }
+  },
+  "devDependencies": {
+    "@anthropic/fitbit-sdk": "^1.0.0"
+  }
+}
