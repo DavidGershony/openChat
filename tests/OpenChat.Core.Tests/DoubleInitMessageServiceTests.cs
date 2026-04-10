@@ -71,6 +71,7 @@ public class DoubleInitMessageServiceTests
             NostrGroupId = Convert.FromHexString(groupIdHex)
         };
         storageMock.Setup(s => s.GetAllChatsAsync()).ReturnsAsync(new List<Chat> { chat });
+        storageMock.Setup(s => s.GetChatByGroupIdAsync(It.IsAny<string>())).ReturnsAsync(chat);
         storageMock.Setup(s => s.GetChatAsync("chat1")).ReturnsAsync(chat);
         storageMock.Setup(s => s.SaveChatAsync(It.IsAny<Chat>())).Returns(Task.CompletedTask);
 
@@ -181,6 +182,7 @@ public class DoubleInitMessageServiceTests
             NostrGroupId = Convert.FromHexString(groupIdHex)
         };
         storageMock.Setup(s => s.GetAllChatsAsync()).ReturnsAsync(new List<Chat> { chat });
+        storageMock.Setup(s => s.GetChatByGroupIdAsync(It.IsAny<string>())).ReturnsAsync(chat);
         storageMock.Setup(s => s.SaveChatAsync(It.IsAny<Chat>())).Returns(Task.CompletedTask);
 
         var mlsMock = new Mock<IMlsService>();
@@ -203,9 +205,9 @@ public class DoubleInitMessageServiceTests
 
         // Count how many times HandleGroupMessageEventAsync fires per event
         int handlerCallCount = 0;
-        storageMock.Setup(s => s.GetAllChatsAsync())
+        storageMock.Setup(s => s.GetChatByGroupIdAsync(It.IsAny<string>()))
             .Callback(() => handlerCallCount++)
-            .ReturnsAsync(new List<Chat> { chat });
+            .ReturnsAsync(chat);
 
         eventsSubject.OnNext(new NostrEventReceived
         {

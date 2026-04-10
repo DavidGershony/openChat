@@ -892,15 +892,30 @@ public class ManagedMlsService : IMlsService
 
     /// <summary>
     /// Returns the admin public keys (as hex strings) from the 0xF2EE extension for a group.
-    /// Requires MarmotCs.Core NuGet with GetNostrGroupData support. Until then, returns empty
-    /// and the caller falls back to using the creator pubkey as admin.
     /// </summary>
     public List<string> GetAdminPubkeys(byte[] groupId)
     {
-        // TODO: Call _mdk.GetNostrGroupData(groupId) once MarmotCs.Core NuGet is updated
-        // to expose the full NostrGroupData including AdminPubkeys.
-        // For now, admin assignment is handled by the caller (MessageService sets creator as admin).
-        return new List<string>();
+        EnsureInitialized();
+        try
+        {
+            var groupData = _mdk!.GetNostrGroupData(groupId);
+            if (groupData == null || groupData.AdminPubkeys.Length == 0)
+                return new List<string>();
+
+            var admins = new List<string>();
+            for (int i = 0; i < groupData.AdminPubkeys.Length; i += 32)
+            {
+                var pubkey = new byte[32];
+                Array.Copy(groupData.AdminPubkeys, i, pubkey, 0, 32);
+                admins.Add(Convert.ToHexString(pubkey).ToLowerInvariant());
+            }
+            return admins;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to extract admin pubkeys for group");
+            return new List<string>();
+        }
     }
 
     // TODO: DIAGNOSTIC ONLY — remove after cross-impl epoch divergence is resolved

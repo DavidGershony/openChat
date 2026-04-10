@@ -39,6 +39,8 @@ public class MessageServiceTests : IDisposable
         _storageMock.Setup(s => s.GetCurrentUserAsync()).ReturnsAsync(_currentUser);
         _storageMock.Setup(s => s.SaveMessageAsync(It.IsAny<Message>())).Returns(Task.CompletedTask);
         _storageMock.Setup(s => s.SaveChatAsync(It.IsAny<Chat>())).Returns(Task.CompletedTask);
+        _storageMock.Setup(s => s.GetChatByGroupIdAsync(It.IsAny<string>())).ReturnsAsync((string _) => null as Chat);
+        _storageMock.Setup(s => s.GetArchivedChatsAsync()).ReturnsAsync(Enumerable.Empty<Chat>());
 
         _mlsMock.Setup(m => m.InitializeAsync(It.IsAny<string>(), It.IsAny<string>())).Returns(Task.CompletedTask);
         _mlsMock.Setup(m => m.GetAdminPubkeys(It.IsAny<byte[]>())).Returns(new List<string>());
@@ -79,6 +81,7 @@ public class MessageServiceTests : IDisposable
         };
 
         _storageMock.Setup(s => s.GetAllChatsAsync()).ReturnsAsync(new List<Chat> { chat });
+        _storageMock.Setup(s => s.GetChatByGroupIdAsync(It.IsAny<string>())).ReturnsAsync(chat);
         _storageMock.Setup(s => s.MessageExistsByNostrEventIdAsync(It.IsAny<string>())).ReturnsAsync(false);
         _storageMock.Setup(s => s.GetUserByPublicKeyAsync(senderPubKey)).ReturnsAsync(new User
         {
@@ -152,6 +155,7 @@ public class MessageServiceTests : IDisposable
         };
 
         _storageMock.Setup(s => s.GetAllChatsAsync()).ReturnsAsync(new List<Chat> { chat });
+        _storageMock.Setup(s => s.GetChatByGroupIdAsync(It.IsAny<string>())).ReturnsAsync(chat);
         _storageMock.Setup(s => s.MessageExistsByNostrEventIdAsync(It.IsAny<string>())).ReturnsAsync(false);
         _storageMock.Setup(s => s.GetMessageByNostrEventIdAsync(targetEventId)).ReturnsAsync(targetMessage);
 
@@ -253,6 +257,7 @@ public class MessageServiceTests : IDisposable
         };
 
         _storageMock.Setup(s => s.GetAllChatsAsync()).ReturnsAsync(new List<Chat> { chat });
+        _storageMock.Setup(s => s.GetChatByGroupIdAsync(It.IsAny<string>())).ReturnsAsync(chat);
         _storageMock.Setup(s => s.MessageExistsByNostrEventIdAsync(eventId)).ReturnsAsync(true);
 
         // Act
@@ -313,6 +318,7 @@ public class MessageServiceTests : IDisposable
         };
 
         _storageMock.Setup(s => s.GetAllChatsAsync()).ReturnsAsync(new List<Chat> { chat });
+        _storageMock.Setup(s => s.GetChatByGroupIdAsync(It.IsAny<string>())).ReturnsAsync(chat);
         _storageMock.Setup(s => s.MessageExistsByNostrEventIdAsync(It.IsAny<string>())).ReturnsAsync(false);
         _mlsMock.Setup(m => m.DecryptMessageAsync(groupId, It.IsAny<byte[]>()))
             .ThrowsAsync(new InvalidOperationException("MLS decrypt failed"));
@@ -357,6 +363,7 @@ public class MessageServiceTests : IDisposable
         };
 
         _storageMock.Setup(s => s.GetAllChatsAsync()).ReturnsAsync(new List<Chat> { chat });
+        _storageMock.Setup(s => s.GetChatByGroupIdAsync(It.IsAny<string>())).ReturnsAsync(chat);
         _storageMock.Setup(s => s.MessageExistsByNostrEventIdAsync(It.IsAny<string>())).ReturnsAsync(false);
         _mlsMock.Setup(m => m.DecryptMessageAsync(groupId, It.IsAny<byte[]>()))
             .ReturnsAsync(new MlsDecryptedMessage { IsCommit = true, SenderPublicKey = "ee".PadLeft(64, 'e') });
@@ -967,6 +974,7 @@ public class MessageServiceTests : IDisposable
         };
 
         _storageMock.Setup(s => s.GetAllChatsAsync()).ReturnsAsync(new List<Chat> { chat });
+        _storageMock.Setup(s => s.GetChatByGroupIdAsync(It.IsAny<string>())).ReturnsAsync(chat);
         _storageMock.Setup(s => s.MessageExistsByNostrEventIdAsync(It.IsAny<string>())).ReturnsAsync(false);
         _storageMock.Setup(s => s.GetUserByPublicKeyAsync(senderPubKey)).ReturnsAsync((User?)null);
         _nostrMock.Setup(n => n.FetchUserMetadataAsync(senderPubKey)).ReturnsAsync((UserMetadata?)null);
@@ -1076,6 +1084,7 @@ public class MessageServiceTests : IDisposable
         };
 
         _storageMock.Setup(s => s.GetAllChatsAsync()).ReturnsAsync(new List<Chat> { chat });
+        _storageMock.Setup(s => s.GetChatByGroupIdAsync(It.IsAny<string>())).ReturnsAsync(chat);
         _storageMock.Setup(s => s.MessageExistsByNostrEventIdAsync(It.IsAny<string>())).ReturnsAsync(false);
         _storageMock.Setup(s => s.GetUserByPublicKeyAsync(senderPubKey)).ReturnsAsync((User?)null);
         _nostrMock.Setup(n => n.FetchUserMetadataAsync(senderPubKey)).ReturnsAsync((UserMetadata?)null);
