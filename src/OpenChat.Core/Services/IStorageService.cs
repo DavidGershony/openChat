@@ -20,6 +20,8 @@ public interface IStorageService
     // Chat operations
     Task<Chat?> GetChatAsync(string chatId);
     Task<IEnumerable<Chat>> GetAllChatsAsync();
+    Task<IEnumerable<Chat>> GetArchivedChatsAsync();
+    Task<Chat?> GetChatByGroupIdAsync(string groupIdHex);
     Task SaveChatAsync(Chat chat);
     Task DeleteChatAsync(string chatId);
 

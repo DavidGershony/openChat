@@ -27,9 +27,12 @@ public class ChatListViewModel : ViewModelBase
     private IDisposable? _decryptionErrorSubscription;
 
     public ObservableCollection<ChatItemViewModel> Chats { get; } = new();
+    public ObservableCollection<ChatItemViewModel> ArchivedChats { get; } = new();
     public ObservableCollection<PendingInviteItemViewModel> PendingInvites { get; } = new();
 
     [Reactive] public ChatItemViewModel? SelectedChat { get; set; }
+    [Reactive] public int ArchivedChatsCount { get; set; }
+    [Reactive] public bool ShowArchivedSection { get; set; }
     [Reactive] public string SearchText { get; set; } = string.Empty;
     [Reactive] public bool IsLoading { get; set; }
     [Reactive] public int PendingInviteCount { get; set; }
@@ -108,6 +111,10 @@ public class ChatListViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> ConfirmDeleteChatCommand { get; }
     public ReactiveCommand<Unit, Unit> CancelDeleteChatCommand { get; }
     public ReactiveCommand<ChatItemViewModel, Unit> ResetGroupCommand { get; }
+    public ReactiveCommand<ChatItemViewModel, Unit> ArchiveChatCommand { get; }
+    public ReactiveCommand<ChatItemViewModel, Unit> UnarchiveChatCommand { get; }
+    public ReactiveCommand<ChatItemViewModel, Unit> ToggleMuteCommand { get; }
+    public ReactiveCommand<Unit, Unit> ToggleArchivedViewCommand { get; }
     public ReactiveCommand<Unit, Unit> ConfirmResetGroupCommand { get; }
     public ReactiveCommand<Unit, Unit> CancelResetGroupCommand { get; }
     public ReactiveCommand<Unit, Unit> LookupKeyPackageCommand { get; }
@@ -255,6 +262,41 @@ public class ChatListViewModel : ViewModelBase
         {
             ShowResetGroupDialog = false;
             GroupToReset = null;
+        });
+
+        ArchiveChatCommand = ReactiveCommand.CreateFromTask<ChatItemViewModel>(async chat =>
+        {
+            _logger.LogInformation("Archiving chat: {ChatId} - {Name}", chat.Id, chat.Name);
+            await _messageService.ArchiveChatAsync(chat.Id);
+            Chats.Remove(chat);
+            ArchivedChats.Add(chat);
+            ArchivedChatsCount = ArchivedChats.Count;
+        });
+
+        UnarchiveChatCommand = ReactiveCommand.CreateFromTask<ChatItemViewModel>(async chat =>
+        {
+            _logger.LogInformation("Unarchiving chat: {ChatId} - {Name}", chat.Id, chat.Name);
+            await _messageService.UnarchiveChatAsync(chat.Id);
+            ArchivedChats.Remove(chat);
+            Chats.Add(chat);
+            ArchivedChatsCount = ArchivedChats.Count;
+        });
+
+        ToggleArchivedViewCommand = ReactiveCommand.Create(() =>
+        {
+            ShowArchivedSection = !ShowArchivedSection;
+        });
+
+        ToggleMuteCommand = ReactiveCommand.CreateFromTask<ChatItemViewModel>(async chat =>
+        {
+            var newMuted = !chat.IsMuted;
+            _logger.LogInformation("{Action} chat: {ChatId} - {Name}",
+                newMuted ? "Muting" : "Unmuting", chat.Id, chat.Name);
+            if (newMuted)
+                await _messageService.MuteChatAsync(chat.Id);
+            else
+                await _messageService.UnmuteChatAsync(chat.Id);
+            chat.IsMuted = newMuted;
         });
 
         var canLookupKeyPackage = this.WhenAnyValue(
@@ -420,6 +462,16 @@ public class ChatListViewModel : ViewModelBase
 
                 Chats.Add(chatItem);
             }
+
+            // Load archived chats
+            var archivedChats = await _storageService.GetArchivedChatsAsync();
+            ArchivedChats.Clear();
+            foreach (var chat in archivedChats.OrderByDescending(c => c.LastActivityAt))
+            {
+                ArchivedChats.Add(new ChatItemViewModel(chat));
+            }
+            ArchivedChatsCount = ArchivedChats.Count;
+            _logger.LogInformation("LoadChats: {Count} archived chats loaded", ArchivedChatsCount);
 
             // Load pending invites
             var invites = await _messageService.GetPendingInvitesAsync();
@@ -1480,29 +1532,56 @@ public class ChatListViewModel : ViewModelBase
 
     private void OnChatUpdated(Chat chat)
     {
-        var existing = Chats.FirstOrDefault(c => c.Id == chat.Id);
+        var existingInChats = Chats.FirstOrDefault(c => c.Id == chat.Id);
+        var existingInArchived = ArchivedChats.FirstOrDefault(c => c.Id == chat.Id);
 
         var isParticipant = _currentUserPubKeyHex == null ||
             chat.ParticipantPublicKeys.Any(p => string.Equals(p, _currentUserPubKeyHex, StringComparison.OrdinalIgnoreCase));
 
-        if (existing != null)
+        if (chat.IsArchived)
         {
-            existing.Update(chat);
-            existing.NeedsRepair = !isParticipant;
-            // Re-sort if needed
-            var index = Chats.IndexOf(existing);
-            var newIndex = GetInsertIndex(chat);
-            if (index != newIndex && newIndex < Chats.Count)
+            // Move to archived if it was in main list
+            if (existingInChats != null)
+                Chats.Remove(existingInChats);
+
+            if (existingInArchived != null)
             {
-                Chats.Move(index, newIndex > index ? newIndex - 1 : newIndex);
+                existingInArchived.Update(chat);
             }
+            else
+            {
+                ArchivedChats.Add(new ChatItemViewModel(chat));
+            }
+            ArchivedChatsCount = ArchivedChats.Count;
         }
         else
         {
-            var newItem = new ChatItemViewModel(chat);
-            newItem.NeedsRepair = !isParticipant;
-            var insertIndex = GetInsertIndex(chat);
-            Chats.Insert(insertIndex, newItem);
+            // Move to main list if it was archived
+            if (existingInArchived != null)
+            {
+                ArchivedChats.Remove(existingInArchived);
+                ArchivedChatsCount = ArchivedChats.Count;
+            }
+
+            if (existingInChats != null)
+            {
+                existingInChats.Update(chat);
+                existingInChats.NeedsRepair = !isParticipant;
+                // Re-sort if needed
+                var index = Chats.IndexOf(existingInChats);
+                var newIndex = GetInsertIndex(chat);
+                if (index != newIndex && newIndex < Chats.Count)
+                {
+                    Chats.Move(index, newIndex > index ? newIndex - 1 : newIndex);
+                }
+            }
+            else
+            {
+                var newItem = new ChatItemViewModel(chat);
+                newItem.NeedsRepair = !isParticipant;
+                var insertIndex = GetInsertIndex(chat);
+                Chats.Insert(insertIndex, newItem);
+            }
         }
     }
 

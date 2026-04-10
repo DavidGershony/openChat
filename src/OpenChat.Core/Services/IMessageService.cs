@@ -137,9 +137,24 @@ public interface IMessageService
     Task DeleteMessageAsync(string messageId);
 
     /// <summary>
-    /// Archive a chat.
+    /// Archive a chat (hide from main list, keep receiving messages).
     /// </summary>
     Task ArchiveChatAsync(string chatId);
+
+    /// <summary>
+    /// Unarchive a chat (move back to main list).
+    /// </summary>
+    Task UnarchiveChatAsync(string chatId);
+
+    /// <summary>
+    /// Mute a chat (suppress notifications).
+    /// </summary>
+    Task MuteChatAsync(string chatId);
+
+    /// <summary>
+    /// Unmute a chat.
+    /// </summary>
+    Task UnmuteChatAsync(string chatId);
 
     /// <summary>
     /// Mute/unmute a chat.

@@ -502,6 +502,55 @@ public class StorageService : IStorageService
         return chats;
     }
 
+    public async Task<IEnumerable<Chat>> GetArchivedChatsAsync()
+    {
+        var chats = new List<Chat>();
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        var command = connection.CreateCommand();
+        command.CommandText = "SELECT * FROM Chats WHERE IsArchived = 1 ORDER BY LastActivityAt DESC";
+
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var chat = ReadChat(reader);
+            var (participants, admins) = await GetChatParticipantsAndAdminsAsync(connection, chat.Id);
+            chat.ParticipantPublicKeys = participants;
+            chat.AdminPublicKeys = admins;
+            chat.RelayUrls = await GetChatRelaysAsync(connection, chat.Id);
+            chats.Add(chat);
+        }
+
+        return chats;
+    }
+
+    public async Task<Chat?> GetChatByGroupIdAsync(string groupIdHex)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        var groupIdBytes = Convert.FromHexString(groupIdHex);
+
+        var command = connection.CreateCommand();
+        command.CommandText = "SELECT * FROM Chats WHERE NostrGroupId = @GroupId OR MlsGroupId = @GroupId LIMIT 1";
+        command.Parameters.AddWithValue("@GroupId", groupIdBytes);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            var chat = ReadChat(reader);
+            var (participants, admins) = await GetChatParticipantsAndAdminsAsync(connection, chat.Id);
+            chat.ParticipantPublicKeys = participants;
+            chat.AdminPublicKeys = admins;
+            chat.RelayUrls = await GetChatRelaysAsync(connection, chat.Id);
+            return chat;
+        }
+
+        return null;
+    }
+
     public async Task SaveChatAsync(Chat chat)
     {
         await using var connection = new SqliteConnection(_connectionString);

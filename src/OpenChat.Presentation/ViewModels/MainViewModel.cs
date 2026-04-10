@@ -571,11 +571,17 @@ public class MainViewModel : ViewModelBase
             }
 
             var chats = await _messageService.GetChatsAsync();
-            var groupIds = chats
+
+            // Include archived chats in relay subscriptions so messages are still received
+            var archivedChats = await _storageService.GetArchivedChatsAsync();
+            var allGroupChats = chats.Concat(archivedChats);
+
+            var groupIds = allGroupChats
                 .Where(c => c.Type == ChatType.Group && c.MlsGroupId != null && c.MlsGroupId.Length > 0)
                 .Select(c => c.NostrGroupId != null && c.NostrGroupId.Length > 0
                     ? Convert.ToHexString(c.NostrGroupId).ToLowerInvariant()
                     : Convert.ToHexString(c.MlsGroupId!).ToLowerInvariant())
+                .Distinct()
                 .ToList();
 
             if (groupIds.Count > 0)

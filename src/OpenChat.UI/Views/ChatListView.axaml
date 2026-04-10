@@ -9,10 +9,61 @@
 
     <Grid>
         <!-- Main Content -->
-        <Grid RowDefinitions="Auto,Auto,*,Auto">
+        <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
+
+            <!-- Tab Bar: Chats / Archived -->
+            <Grid Grid.Row="0" ColumnDefinitions="*,*" Margin="12,8,12,0">
+                <!-- Chats tab -->
+                <Button Grid.Column="0"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                        Padding="0,6" Background="Transparent" BorderThickness="0"
+                        Command="{Binding ToggleArchivedViewCommand}"
+                        IsVisible="{Binding ShowArchivedSection}">
+                    <TextBlock Text="Chats" FontSize="13"
+                               Foreground="{DynamicResource TextMutedBrush}" />
+                </Button>
+                <Border Grid.Column="0" Padding="0,6"
+                        IsVisible="{Binding !ShowArchivedSection}"
+                        BorderBrush="{DynamicResource NostrPurpleLightBrush}"
+                        BorderThickness="0,0,0,2">
+                    <TextBlock Text="Chats" FontSize="13"
+                               HorizontalAlignment="Center"
+                               Foreground="{DynamicResource NostrPurpleLightBrush}" />
+                </Border>
+
+                <!-- Archived tab -->
+                <Button Grid.Column="1"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                        Padding="0,6" Background="Transparent" BorderThickness="0"
+                        Command="{Binding ToggleArchivedViewCommand}"
+                        IsVisible="{Binding !ShowArchivedSection}">
+                    <TextBlock FontSize="13"
+                               Foreground="{DynamicResource TextMutedBrush}">
+                        <TextBlock.Text>
+                            <MultiBinding StringFormat="Archived ({0})">
+                                <Binding Path="ArchivedChatsCount" />
+                            </MultiBinding>
+                        </TextBlock.Text>
+                    </TextBlock>
+                </Button>
+                <Border Grid.Column="1" Padding="0,6"
+                        IsVisible="{Binding ShowArchivedSection}"
+                        BorderBrush="{DynamicResource NostrPurpleLightBrush}"
+                        BorderThickness="0,0,0,2">
+                    <TextBlock FontSize="13"
+                               HorizontalAlignment="Center"
+                               Foreground="{DynamicResource NostrPurpleLightBrush}">
+                        <TextBlock.Text>
+                            <MultiBinding StringFormat="Archived ({0})">
+                                <Binding Path="ArchivedChatsCount" />
+                            </MultiBinding>
+                        </TextBlock.Text>
+                    </TextBlock>
+                </Border>
+            </Grid>
 
             <!-- Search Box -->
-        <Border Grid.Row="0" Padding="12">
+        <Border Grid.Row="1" Padding="12">
             <TextBox Text="{Binding SearchText}"
                      Watermark="Search chats..."
                      Classes="search">
@@ -25,7 +76,7 @@
         </Border>
 
         <!-- Pending Invites Section -->
-        <Border Grid.Row="1" Padding="12,0,12,8"
+        <Border Grid.Row="2" Padding="12,0,12,8"
                 IsVisible="{Binding PendingInvites.Count}">
             <StackPanel Spacing="8">
 
@@ -108,10 +159,11 @@
             </StackPanel>
         </Border>
 
-        <!-- Chat List -->
-        <ListBox Grid.Row="2"
+        <!-- Chat List (switches between Chats and ArchivedChats) -->
+        <ListBox Grid.Row="3"
                  x:Name="ChatListBox"
                  ItemsSource="{Binding Chats}"
+                 IsVisible="{Binding !ShowArchivedSection}"
                  SelectedItem="{Binding SelectedChat}"
                  Background="Transparent">
             <ListBox.ItemTemplate>
@@ -119,6 +171,28 @@
                     <Grid ColumnDefinitions="Auto,*,Auto" IsVisible="{Binding IsVisible}">
                         <Grid.ContextMenu>
                             <ContextMenu>
+                                <MenuItem Header="Archive"
+                                          Command="{Binding #ChatListBox.DataContext.ArchiveChatCommand}"
+                                          CommandParameter="{Binding}">
+                                    <MenuItem.Icon>
+                                        <PathIcon Data="M20.54 5.23l-1.39-1.68C18.88 3.21 18.47 3 18 3H6c-.47 0-.88.21-1.16.55L3.46 5.23C3.17 5.57 3 6.02 3 6.5V19c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6.5c0-.48-.17-.93-.46-1.27zM12 17.5L6.5 12H10v-2h4v2h3.5L12 17.5zM5.12 5l.81-1h12l.94 1H5.12z"
+                                                  Width="16" Height="16" />
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Command="{Binding #ChatListBox.DataContext.ToggleMuteCommand}"
+                                          CommandParameter="{Binding}">
+                                    <MenuItem.Header>
+                                        <Panel>
+                                            <TextBlock Text="Mute" IsVisible="{Binding !IsMuted}" />
+                                            <TextBlock Text="Unmute" IsVisible="{Binding IsMuted}" />
+                                        </Panel>
+                                    </MenuItem.Header>
+                                    <MenuItem.Icon>
+                                        <PathIcon Data="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"
+                                                  Width="16" Height="16" />
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <Separator />
                                 <MenuItem Header="Reset Group"
                                           IsVisible="{Binding IsGroup}"
                                           Command="{Binding #ChatListBox.DataContext.ResetGroupCommand}"
@@ -170,8 +244,22 @@
                             <Grid ColumnDefinitions="*,Auto">
                                 <TextBlock Grid.Column="0" Text="{Binding Name}"
                                            FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                <TextBlock Grid.Column="1" Text="{Binding LastActivityAt, StringFormat={}{0:HH:mm}}"
-                                           Classes="muted" FontSize="12" Margin="8,0,0,0" />
+                                <StackPanel Grid.Column="1" Spacing="2" HorizontalAlignment="Right"
+                                            Margin="8,0,0,0">
+                                    <TextBlock Text="{Binding LastActivityAt, StringFormat={}{0:HH:mm}}"
+                                               Classes="muted" FontSize="12"
+                                               HorizontalAlignment="Right" />
+                                    <!-- Muted / Pinned icons below timestamp -->
+                                    <StackPanel Orientation="Horizontal" Spacing="4"
+                                                HorizontalAlignment="Right">
+                                        <PathIcon Data="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"
+                                                  Width="12" Height="12" Foreground="{DynamicResource TextMutedBrush}"
+                                                  IsVisible="{Binding IsMuted}" />
+                                        <PathIcon Data="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"
+                                                  Width="12" Height="12" Foreground="{DynamicResource TextMutedBrush}"
+                                                  IsVisible="{Binding IsPinned}" />
+                                    </StackPanel>
+                                </StackPanel>
                             </Grid>
                             <Grid ColumnDefinitions="*,Auto">
                                 <TextBlock Grid.Column="0" Text="{Binding LastMessagePreview}"
@@ -192,27 +280,13 @@
                                 </Border>
                             </Grid>
                         </StackPanel>
-
-                        <!-- Status Indicators -->
-                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
-                                    VerticalAlignment="Top" Margin="4,4,0,0">
-                            <!-- Muted Icon -->
-                            <PathIcon Data="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"
-                                      Width="14" Height="14" Foreground="{DynamicResource TextMutedBrush}"
-                                      IsVisible="{Binding IsMuted}" />
-
-                            <!-- Pinned Icon -->
-                            <PathIcon Data="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"
-                                      Width="14" Height="14" Foreground="{DynamicResource TextMutedBrush}"
-                                      IsVisible="{Binding IsPinned}" />
-                        </StackPanel>
                     </Grid>
                 </DataTemplate>
             </ListBox.ItemTemplate>
         </ListBox>
 
         <!-- Loading Indicator -->
-        <Border Grid.Row="2" Background="{DynamicResource BackgroundMediumBrush}"
+        <Border Grid.Row="3" Background="{DynamicResource BackgroundMediumBrush}"
                 IsVisible="{Binding IsLoading}" Opacity="0.9">
             <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16">
                 <!-- Spinning circle indicator -->
@@ -232,7 +306,7 @@
         </Border>
 
             <!-- Empty State (hidden while loading) -->
-            <StackPanel Grid.Row="2" VerticalAlignment="Center" HorizontalAlignment="Center"
+            <StackPanel Grid.Row="3" VerticalAlignment="Center" HorizontalAlignment="Center"
                         Spacing="8">
                 <StackPanel.IsVisible>
                     <MultiBinding Converter="{x:Static BoolConverters.And}">
@@ -245,8 +319,59 @@
                 <TextBlock Text="No chats yet" Classes="secondary" HorizontalAlignment="Center" />
             </StackPanel>
 
+            <!-- Archived Chat List (same layout as main, different context menu) -->
+            <ListBox Grid.Row="3"
+                     ItemsSource="{Binding ArchivedChats}"
+                     SelectedItem="{Binding SelectedChat}"
+                     IsVisible="{Binding ShowArchivedSection}"
+                     Background="Transparent"
+                     x:Name="ArchivedListBox">
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ChatItemViewModel">
+                        <Grid ColumnDefinitions="Auto,*" IsVisible="{Binding IsVisible}">
+                            <Grid.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Unarchive"
+                                              Command="{Binding #ArchivedListBox.DataContext.UnarchiveChatCommand}"
+                                              CommandParameter="{Binding}" />
+                                    <MenuItem Header="Delete"
+                                              Command="{Binding #ArchivedListBox.DataContext.DeleteChatCommand}"
+                                              CommandParameter="{Binding}" />
+                                </ContextMenu>
+                            </Grid.ContextMenu>
+                            <!-- Avatar -->
+                            <Border Grid.Column="0" Width="48" Height="48" CornerRadius="24"
+                                    Background="{DynamicResource NostrPurpleBrush}" Margin="0,0,12,0">
+                                <TextBlock Text="{Binding Name[0]}"
+                                           FontSize="20" FontWeight="SemiBold" Foreground="White"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <!-- Name + last message -->
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding LastMessagePreview}"
+                                           Classes="muted" FontSize="12"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                            <!-- Unread badge -->
+                            <Border Grid.Column="2"
+                                    IsVisible="{Binding HasUnread}"
+                                    Background="{DynamicResource NostrPurpleBrush}"
+                                    CornerRadius="10" MinWidth="20" Height="20"
+                                    Padding="6,0" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding UnreadCount}"
+                                           FontSize="11" FontWeight="SemiBold"
+                                           Foreground="White"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
             <!-- Status Bar -->
-            <Border Grid.Row="3"
+            <Border Grid.Row="4"
                     Background="{DynamicResource SurfaceSecondaryBrush}"
                     Padding="12,8"
                     IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">

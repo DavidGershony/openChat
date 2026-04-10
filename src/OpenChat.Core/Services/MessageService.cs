@@ -861,6 +861,21 @@ public class MessageService : IMessageService, IDisposable
         }
     }
 
+    public async Task UnarchiveChatAsync(string chatId)
+    {
+        var chat = await _storageService.GetChatAsync(chatId);
+        if (chat != null)
+        {
+            chat.IsArchived = false;
+            await _storageService.SaveChatAsync(chat);
+            _chatUpdates.OnNext(chat);
+        }
+    }
+
+    public Task MuteChatAsync(string chatId) => SetMutedAsync(chatId, true);
+
+    public Task UnmuteChatAsync(string chatId) => SetMutedAsync(chatId, false);
+
     public async Task SetMutedAsync(string chatId, bool muted)
     {
         var chat = await _storageService.GetChatAsync(chatId);
@@ -1061,19 +1076,13 @@ public class MessageService : IMessageService, IDisposable
             groupIdHex[..Math.Min(16, groupIdHex.Length)],
             nostrEvent.PublicKey[..Math.Min(16, nostrEvent.PublicKey.Length)]);
 
-        // Find chat with this group ID — check both NostrGroupId (h-tag routing) and MlsGroupId (legacy)
-        var chats = await _storageService.GetAllChatsAsync();
-        var chat = chats.FirstOrDefault(c =>
-            (c.NostrGroupId != null && Convert.ToHexString(c.NostrGroupId).Equals(groupIdHex, StringComparison.OrdinalIgnoreCase)) ||
-            (c.MlsGroupId != null && Convert.ToHexString(c.MlsGroupId).Equals(groupIdHex, StringComparison.OrdinalIgnoreCase)));
+        // Find chat with this group ID — searches ALL chats including archived
+        var chat = await _storageService.GetChatByGroupIdAsync(groupIdHex);
 
         if (chat == null)
         {
-            _logger.LogWarning("HandleGroupMessage: no chat found for group {GroupId}. Known groups: [{KnownGroups}]",
-                groupIdHex[..Math.Min(16, groupIdHex.Length)],
-                string.Join(", ", chats.Where(c => c.MlsGroupId != null).Select(c =>
-                    (c.NostrGroupId != null ? "nostr:" + Convert.ToHexString(c.NostrGroupId).ToLowerInvariant()[..Math.Min(16, Convert.ToHexString(c.NostrGroupId).Length)] + "/" : "") +
-                    "mls:" + Convert.ToHexString(c.MlsGroupId!).ToLowerInvariant()[..Math.Min(16, Convert.ToHexString(c.MlsGroupId!).Length)])));
+            _logger.LogWarning("HandleGroupMessage: no chat found for group {GroupId}",
+                groupIdHex[..Math.Min(16, groupIdHex.Length)]);
             return;
         }
 
