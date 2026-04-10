@@ -1294,4 +1294,82 @@ public class MessageServiceTests : IDisposable
         Assert.Equal("wss://bot-relay.example.com", savedChat.RelayUrls[0]);
         Assert.Equal(ChatType.Bot, savedChat.Type);
     }
+
+    // --- Admin role tests ---
+
+    [Fact]
+    public async Task CreateGroupAsync_SetsCreatorAsAdmin()
+    {
+        // Arrange
+        await InitializeServiceAsync();
+
+        _mlsMock.Setup(m => m.CreateGroupAsync(It.IsAny<string>(), It.IsAny<string[]>()))
+            .ReturnsAsync(new MlsGroupInfo
+            {
+                GroupId = new byte[] { 0x01, 0x02 },
+                Epoch = 0
+            });
+
+        Chat? savedChat = null;
+        _storageMock.Setup(s => s.SaveChatAsync(It.IsAny<Chat>()))
+            .Callback<Chat>(c => savedChat = c)
+            .Returns(Task.CompletedTask);
+
+        // Act
+        var chat = await _sut.CreateGroupAsync("Admin Test", Array.Empty<string>());
+
+        // Assert
+        Assert.NotNull(savedChat);
+        Assert.Equal(_currentUser.PublicKeyHex, savedChat!.CreatorPublicKey);
+        Assert.Single(savedChat.AdminPublicKeys);
+        Assert.Contains(_currentUser.PublicKeyHex.ToLowerInvariant(), savedChat.AdminPublicKeys);
+    }
+
+    [Fact]
+    public async Task AcceptInviteAsync_SetsSenderAsAdmin()
+    {
+        // Arrange
+        await InitializeServiceAsync();
+
+        var invite = new PendingInvite
+        {
+            Id = "inv-admin-1",
+            SenderPublicKey = "sender_pub_key_hex_0000000000000000000000000000000000000000000000",
+            SenderDisplayName = "Sender",
+            WelcomeData = new byte[] { 0xAA },
+            NostrEventId = "event123456789012345678901234567890123456789012345678901234567890",
+            RelayUrls = new List<string> { "wss://relay.example.com" }
+        };
+
+        _storageMock.Setup(s => s.GetPendingInvitesAsync()).ReturnsAsync(new List<PendingInvite> { invite });
+        _storageMock.Setup(s => s.DismissWelcomeEventAsync(It.IsAny<string>())).Returns(Task.CompletedTask);
+        _storageMock.Setup(s => s.DeletePendingInviteAsync(It.IsAny<string>())).Returns(Task.CompletedTask);
+        _storageMock.Setup(s => s.GetAllChatsAsync()).ReturnsAsync(new List<Chat>());
+
+        _mlsMock.Setup(m => m.ProcessWelcomeAsync(It.IsAny<byte[]>(), It.IsAny<string>()))
+            .ReturnsAsync(new MlsGroupInfo
+            {
+                GroupId = new byte[] { 0x05, 0x06 },
+                GroupName = "Invited Group",
+                Epoch = 1,
+                MemberPublicKeys = new List<string> { "sender_pub_key_hex_0000000000000000000000000000000000000000000000", _currentUser.PublicKeyHex }
+            });
+
+        _mlsMock.Setup(m => m.GetNostrGroupId(It.IsAny<byte[]>()))
+            .Returns(new byte[] { 0xDD, 0xEE });
+
+        Chat? savedChat = null;
+        _storageMock.Setup(s => s.SaveChatAsync(It.IsAny<Chat>()))
+            .Callback<Chat>(c => savedChat = c)
+            .Returns(Task.CompletedTask);
+
+        // Act
+        var chat = await _sut.AcceptInviteAsync("inv-admin-1");
+
+        // Assert
+        Assert.NotNull(savedChat);
+        Assert.Single(savedChat!.AdminPublicKeys);
+        Assert.Equal(invite.SenderPublicKey.ToLowerInvariant(), savedChat.AdminPublicKeys[0]);
+        Assert.Equal(invite.SenderPublicKey, savedChat.CreatorPublicKey);
+    }
 }

@@ -251,4 +251,101 @@ public class StorageServiceTests : IAsyncLifetime
         Assert.Throws<InvalidOperationException>(
             () => StorageService.ValidateMigrationColumnName(name));
     }
+
+    // --- Admin role persistence tests ---
+
+    [Fact]
+    public async Task SaveChat_AdminPublicKeys_PersistedAsRoles()
+    {
+        var chat = new Chat
+        {
+            Id = "admin-test-1",
+            Name = "Admin Test Group",
+            Type = ChatType.Group,
+            ParticipantPublicKeys = new List<string> { "aaa111", "bbb222", "ccc333" },
+            AdminPublicKeys = new List<string> { "aaa111" },
+            CreatorPublicKey = "aaa111",
+            CreatedAt = DateTime.UtcNow,
+            LastActivityAt = DateTime.UtcNow
+        };
+
+        await _storageService.SaveChatAsync(chat);
+
+        var loaded = await _storageService.GetChatAsync("admin-test-1");
+        Assert.NotNull(loaded);
+        Assert.Equal(3, loaded.ParticipantPublicKeys.Count);
+        Assert.Single(loaded.AdminPublicKeys);
+        Assert.Contains("aaa111", loaded.AdminPublicKeys);
+        Assert.DoesNotContain("bbb222", loaded.AdminPublicKeys);
+    }
+
+    [Fact]
+    public async Task SaveChat_CreatorPublicKey_Persisted()
+    {
+        var chat = new Chat
+        {
+            Id = "creator-test-1",
+            Name = "Creator Test",
+            Type = ChatType.Group,
+            ParticipantPublicKeys = new List<string> { "abc123" },
+            AdminPublicKeys = new List<string> { "abc123" },
+            CreatorPublicKey = "abc123",
+            CreatedAt = DateTime.UtcNow,
+            LastActivityAt = DateTime.UtcNow
+        };
+
+        await _storageService.SaveChatAsync(chat);
+
+        var loaded = await _storageService.GetChatAsync("creator-test-1");
+        Assert.NotNull(loaded);
+        Assert.Equal("abc123", loaded.CreatorPublicKey);
+    }
+
+    [Fact]
+    public async Task SaveChat_NoAdmins_AllRolesAreMember()
+    {
+        var chat = new Chat
+        {
+            Id = "no-admin-test",
+            Name = "No Admin Group",
+            Type = ChatType.Group,
+            ParticipantPublicKeys = new List<string> { "aaa111", "bbb222" },
+            AdminPublicKeys = new List<string>(),
+            CreatedAt = DateTime.UtcNow,
+            LastActivityAt = DateTime.UtcNow
+        };
+
+        await _storageService.SaveChatAsync(chat);
+
+        var loaded = await _storageService.GetChatAsync("no-admin-test");
+        Assert.NotNull(loaded);
+        Assert.Empty(loaded.AdminPublicKeys);
+    }
+
+    [Fact]
+    public async Task SaveChat_UpdateAdminList_Persisted()
+    {
+        var chat = new Chat
+        {
+            Id = "update-admin-test",
+            Name = "Update Admin Test",
+            Type = ChatType.Group,
+            ParticipantPublicKeys = new List<string> { "aaa111", "bbb222" },
+            AdminPublicKeys = new List<string> { "aaa111" },
+            CreatedAt = DateTime.UtcNow,
+            LastActivityAt = DateTime.UtcNow
+        };
+
+        await _storageService.SaveChatAsync(chat);
+
+        // Promote bbb222 to admin
+        chat.AdminPublicKeys.Add("bbb222");
+        await _storageService.SaveChatAsync(chat);
+
+        var loaded = await _storageService.GetChatAsync("update-admin-test");
+        Assert.NotNull(loaded);
+        Assert.Equal(2, loaded.AdminPublicKeys.Count);
+        Assert.Contains("aaa111", loaded.AdminPublicKeys);
+        Assert.Contains("bbb222", loaded.AdminPublicKeys);
+    }
 }
