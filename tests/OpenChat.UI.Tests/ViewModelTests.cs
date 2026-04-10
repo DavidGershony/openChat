@@ -90,7 +90,7 @@ public class ViewModelTests
     }
 
     [Fact]
-    public void MessageViewModel_ShouldTruncateSenderPublicKey_WhenNoSender()
+    public void MessageViewModel_ShouldShowAnonymous_WhenNoSender()
     {
         // Arrange
         var message = new Message
@@ -104,8 +104,8 @@ public class ViewModelTests
         // Act
         var viewModel = new MessageViewModel(message);
 
-        // Assert
-        Assert.Equal("abcdefghijkl...", viewModel.SenderName);
+        // Assert — no Sender object means "Anonymous"
+        Assert.Equal("Anonymous", viewModel.SenderName);
     }
 
     [Fact]
