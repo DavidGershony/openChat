@@ -12,6 +12,7 @@ using DotnetMls.Crypto;
 using DotnetMls.Group;
 using MarmotCs.Protocol.Crypto;
 using MarmotCs.Protocol.Mip00;
+using MarmotCs.Protocol.Mip03;
 using MarmotCs.Storage.Memory;
 
 namespace OpenChat.Core.Services;
@@ -423,16 +424,16 @@ public class ManagedMlsService : IMlsService
         // Step 2: MLS-encrypt the rumor
         var mlsBytes = await _mdk!.CreateMessageAsync(groupId, Encoding.UTF8.GetBytes(rumorJson));
 
-        // Step 3: MIP-03 ChaCha20-Poly1305 encryption
+        // Step 3: MIP-03 encrypt + build kind 445 content and tags via GroupEventBuilder
         var exporterSecret = _mdk!.GetExporterSecret(groupId);
-        var base64Content = GroupEventEncryption.Encrypt(mlsBytes, exporterSecret);
+        var nostrGroupId = GetNostrGroupId(groupId);
+        var (base64Content, mip03Tags) = GroupEventBuilder.BuildGroupEvent(mlsBytes, nostrGroupId, exporterSecret);
 
         // Step 4: Build signed kind 445 Nostr event with EPHEMERAL key (MIP-03 privacy)
         // MIP-03: kind 445 events SHOULD use ephemeral keys so relay operators
         // cannot link group messages to user identities. The sender identity is
         // inside the MLS-encrypted rumor, not in the Nostr event pubkey.
-        var hTagValue = Convert.ToHexString(GetNostrGroupId(groupId)).ToLowerInvariant();
-        var tags = new List<List<string>> { new() { "h", hTagValue }, new() { "encoding", "base64" } };
+        var tags = mip03Tags.Select(t => t.ToList()).ToList();
         var eventJson = BuildEphemeralSignedEvent(445, base64Content, tags);
 
         _logger.LogDebug("EncryptMessage: produced {Len} bytes event JSON (managed)", eventJson.Length);
@@ -467,10 +468,10 @@ public class ManagedMlsService : IMlsService
         // MLS-encrypt, MIP-03 encrypt, build kind 445 event (same as EncryptMessageAsync)
         var mlsBytes = await _mdk!.CreateMessageAsync(groupId, Encoding.UTF8.GetBytes(rumorJson));
         var exporterSecret = _mdk!.GetExporterSecret(groupId);
-        var base64Content = GroupEventEncryption.Encrypt(mlsBytes, exporterSecret);
+        var nostrGroupId = GetNostrGroupId(groupId);
+        var (base64Content, mip03Tags) = GroupEventBuilder.BuildGroupEvent(mlsBytes, nostrGroupId, exporterSecret);
 
-        var hTagValue = Convert.ToHexString(GetNostrGroupId(groupId)).ToLowerInvariant();
-        var tags = new List<List<string>> { new() { "h", hTagValue }, new() { "encoding", "base64" } };
+        var tags = mip03Tags.Select(t => t.ToList()).ToList();
         var eventJson = BuildEphemeralSignedEvent(445, base64Content, tags);
 
         await SaveGroupStateAsync(groupId);
