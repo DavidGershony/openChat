@@ -75,6 +75,7 @@ public class ChatViewModel : ViewModelBase
     public ObservableCollection<GroupMemberViewModel> GroupMembers { get; } = new();
     [Reactive] public bool IsLoadingMembers { get; set; }
     [Reactive] public bool IsCurrentUserAdmin { get; set; }
+    [Reactive] public string EditGroupName { get; set; } = string.Empty;
 
     // Load older messages
     [Reactive] public bool IsLoadingOlder { get; set; }
@@ -107,6 +108,8 @@ public class ChatViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> ToggleRecordingCommand { get; }
     public ReactiveCommand<Unit, Unit> CancelRecordingCommand { get; }
     public ReactiveCommand<Unit, Unit> AttachFileCommand { get; }
+    public ReactiveCommand<GroupMemberViewModel, Unit> ToggleAdminCommand { get; }
+    public ReactiveCommand<Unit, Unit> SaveGroupNameCommand { get; }
 
     // Reply state
     [Reactive] public Message? ReplyingToMessage { get; set; }
@@ -271,6 +274,54 @@ public class ChatViewModel : ViewModelBase
             ReplyPreviewSender = null;
         });
 
+        ToggleAdminCommand = ReactiveCommand.CreateFromTask<GroupMemberViewModel>(async member =>
+        {
+            if (_currentChat == null || !IsCurrentUserAdmin) return;
+
+            var newRole = member.IsAdmin ? "member" : "admin";
+            _logger.LogInformation("ToggleAdmin: {Action} {PubKey} in {Chat}",
+                member.IsAdmin ? "Demoting" : "Promoting",
+                member.PublicKeyHex[..Math.Min(12, member.PublicKeyHex.Length)],
+                _currentChat.Name);
+
+            if (newRole == "admin")
+            {
+                if (!_currentChat.AdminPublicKeys.Contains(member.PublicKeyHex.ToLowerInvariant()))
+                    _currentChat.AdminPublicKeys.Add(member.PublicKeyHex.ToLowerInvariant());
+            }
+            else
+            {
+                _currentChat.AdminPublicKeys.Remove(member.PublicKeyHex.ToLowerInvariant());
+            }
+
+            member.IsAdmin = newRole == "admin";
+            await _storageService.SaveChatAsync(_currentChat);
+
+            // Send system message to notify group
+            var action = newRole == "admin" ? "promoted to admin" : "removed from admin";
+            await _messageService.SendMessageAsync(_currentChat.Id,
+                $"[System] {member.DisplayName} was {action}");
+        });
+
+        SaveGroupNameCommand = ReactiveCommand.CreateFromTask(async () =>
+        {
+            if (_currentChat == null || !IsCurrentUserAdmin || string.IsNullOrWhiteSpace(EditGroupName))
+                return;
+            if (EditGroupName == _currentChat.Name)
+                return;
+
+            var oldName = _currentChat.Name;
+            _currentChat.Name = EditGroupName.Trim();
+            ChatName = _currentChat.Name;
+            await _storageService.SaveChatAsync(_currentChat);
+
+            _logger.LogInformation("Group name changed from '{Old}' to '{New}'", oldName, _currentChat.Name);
+
+            // Notify group members
+            await _messageService.SendMessageAsync(_currentChat.Id,
+                $"[System] Group renamed to \"{_currentChat.Name}\"");
+        });
+
         // Log errors from media commands (ReactiveCommand swallows exceptions by default)
         ToggleRecordingCommand.ThrownExceptions.Subscribe(ex =>
             _logger.LogError(ex, "ToggleRecordingCommand failed"));
@@ -304,6 +355,7 @@ public class ChatViewModel : ViewModelBase
         IsCurrentUserAdmin = IsGroup && _currentUserPublicKeyHex != null &&
             (chat.AdminPublicKeys.Count == 0 ||
              chat.AdminPublicKeys.Contains(_currentUserPublicKeyHex.ToLowerInvariant()));
+        EditGroupName = chat.Name;
         GroupMembers.Clear();
         HasChat = true;
 

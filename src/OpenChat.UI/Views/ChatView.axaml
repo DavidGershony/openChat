@@ -385,6 +385,22 @@
                             </StackPanel>
                         </StackPanel>
 
+                        <!-- Group Settings Section (admin only) -->
+                        <StackPanel Spacing="8" IsVisible="{Binding IsCurrentUserAdmin}">
+                            <TextBlock Text="Group Settings" Classes="muted" FontSize="12" FontWeight="SemiBold" />
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Group Name" Classes="muted" FontSize="11" />
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBox Grid.Column="0" Text="{Binding EditGroupName}"
+                                             FontSize="13" Padding="6,4" />
+                                    <Button Grid.Column="1" Classes="primary"
+                                            Content="Save" Padding="10,4" FontSize="11"
+                                            Margin="6,0,0,0"
+                                            Command="{Binding SaveGroupNameCommand}" />
+                                </Grid>
+                            </StackPanel>
+                        </StackPanel>
+
                         <!-- Group Members Section -->
                         <StackPanel Spacing="12" IsVisible="{Binding IsGroup}">
                             <TextBlock Text="Members" Classes="muted" FontSize="12" FontWeight="SemiBold" />
@@ -396,7 +412,7 @@
                             <ItemsControl ItemsSource="{Binding GroupMembers}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:GroupMemberViewModel">
-                                        <Grid ColumnDefinitions="Auto,*" Margin="0,3">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,3">
                                             <!-- Avatar -->
                                             <Border Grid.Column="0" Width="32" Height="32" CornerRadius="16"
                                                     Background="{DynamicResource NostrPurpleBrush}"
@@ -428,6 +444,20 @@
                                                            TextTrimming="CharacterEllipsis"
                                                            IsVisible="{Binding Npub, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                                             </StackPanel>
+                                            <!-- Admin toggle (visible to admins, not on self) -->
+                                            <Button Grid.Column="2" Classes="secondary"
+                                                    Padding="6,2" FontSize="10"
+                                                    VerticalAlignment="Center"
+                                                    IsVisible="{Binding !IsCurrentUser}"
+                                                    Command="{Binding $parent[ItemsControl].DataContext.ToggleAdminCommand}"
+                                                    CommandParameter="{Binding}">
+                                                <Panel>
+                                                    <TextBlock Text="Make Admin"
+                                                               IsVisible="{Binding !IsAdmin}" />
+                                                    <TextBlock Text="Remove Admin"
+                                                               IsVisible="{Binding IsAdmin}" />
+                                                </Panel>
+                                            </Button>
                                         </Grid>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
