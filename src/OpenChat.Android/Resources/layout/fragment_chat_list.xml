@@ -44,6 +44,16 @@
                 android:maxLines="1" />
         </com.google.android.material.textfield.TextInputLayout>
 
+        <!-- Chats / Archived Tab -->
+        <com.google.android.material.tabs.TabLayout
+            android:id="@+id/chat_tabs"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:tabMode="fixed"
+            app:tabGravity="fill"
+            app:tabTextAppearance="@style/TextAppearance.Material3.BodyMedium"
+            app:tabIndicatorColor="?attr/colorPrimary" />
+
         <!-- Pending Invites Section -->
         <LinearLayout
             android:id="@+id/pending_invites_section"

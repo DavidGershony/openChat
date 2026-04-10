@@ -52,7 +52,6 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:textSize="16sp"
-                android:textStyle="bold"
                 android:textColor="?attr/colorOnSurface"
                 android:maxLines="1"
                 android:ellipsize="end" />

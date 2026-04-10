@@ -209,10 +209,11 @@
                         <StackPanel Spacing="8">
                             <!-- New Chat Button -->
                             <Button Classes="secondary" HorizontalAlignment="Stretch"
-                                    Command="{Binding ChatListViewModel.NewChatCommand}">
+                                    Command="{Binding ChatListViewModel.NewChatCommand}"
+                                    Padding="8,6">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <PathIcon Data="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" Width="18" Height="18" />
-                                    <TextBlock Text="New Chat" />
+                                    <PathIcon Data="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" Width="16" Height="16" />
+                                    <TextBlock Text="New Chat" FontSize="13" />
                                 </StackPanel>
                             </Button>
                             <!-- Group Buttons Row -->

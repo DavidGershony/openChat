@@ -8,6 +8,7 @@ using Google.Android.Material.Button;
 using Google.Android.Material.Dialog;
 using Google.Android.Material.FloatingActionButton;
 using Google.Android.Material.Snackbar;
+using Google.Android.Material.Tabs;
 using Google.Android.Material.TextField;
 using OpenChat.Android.Adapters;
 using OpenChat.Presentation.ViewModels;
@@ -47,6 +48,24 @@ public class ChatListFragment : Fragment
         var loadingIndicator = view.FindViewById<ProgressBar>(Resource.Id.loading_indicator)!;
         var emptyState = view.FindViewById<LinearLayout>(Resource.Id.empty_state)!;
         var fab = view.FindViewById<FloatingActionButton>(Resource.Id.fab_new_chat)!;
+        var chatTabs = view.FindViewById<TabLayout>(Resource.Id.chat_tabs)!;
+
+        // Set up tab toggle for Chats / Archived
+        var chatsTab = chatTabs.NewTab()!.SetText("Chats")!;
+        var archivedTab = chatTabs.NewTab()!.SetText("Archived (0)")!;
+        chatTabs.AddTab(chatsTab);
+        chatTabs.AddTab(archivedTab);
+
+        ViewModel.WhenAnyValue(x => x.ArchivedChatsCount)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(count => archivedTab.SetText($"Archived ({count})"))
+            .DisposeWith(_disposables);
+
+        chatTabs.TabSelected += (s, e) =>
+        {
+            var showArchived = e.Tab == archivedTab;
+            ViewModel.ShowArchivedSection = showArchived;
+        };
 
         // Pending invites views
         var pendingInvitesSection = view.FindViewById<LinearLayout>(Resource.Id.pending_invites_section)!;
@@ -138,15 +157,25 @@ public class ChatListFragment : Fragment
             ViewModel.SearchText = searchInput.Text ?? string.Empty;
         };
 
-        // Observe chats collection
-        ViewModel.Chats.CollectionChanged += (s, e) =>
+        // Observe chats collection and switch based on active tab
+        void RefreshChatList()
         {
             Activity?.RunOnUiThread(() =>
             {
-                _adapter.UpdateItems(ViewModel.Chats.ToList());
-                emptyState.Visibility = ViewModel.Chats.Count == 0 ? ViewStates.Visible : ViewStates.Gone;
+                var items = ViewModel.ShowArchivedSection
+                    ? ViewModel.ArchivedChats.ToList()
+                    : ViewModel.Chats.ToList();
+                _adapter.UpdateItems(items);
+                emptyState.Visibility = items.Count == 0 ? ViewStates.Visible : ViewStates.Gone;
             });
-        };
+        }
+
+        ViewModel.Chats.CollectionChanged += (s, e) => RefreshChatList();
+        ViewModel.ArchivedChats.CollectionChanged += (s, e) => RefreshChatList();
+        ViewModel.WhenAnyValue(x => x.ShowArchivedSection)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(_ => RefreshChatList())
+            .DisposeWith(_disposables);
 
         // Observe pending invites
         ViewModel.PendingInvites.CollectionChanged += (s, e) =>
@@ -244,25 +273,33 @@ public class ChatListFragment : Fragment
     {
         if (Context == null) return;
 
-        var options = new List<string> { "Delete Chat" };
+        var isArchived = ViewModel.ShowArchivedSection;
+        var options = new List<(string label, Action action)>();
+
+        if (isArchived)
+        {
+            options.Add(("Unarchive", () =>
+                ViewModel.UnarchiveChatCommand.Execute(chatItem).Subscribe().DisposeWith(_disposables)));
+        }
+        else
+        {
+            options.Add(("Archive", () =>
+                ViewModel.ArchiveChatCommand.Execute(chatItem).Subscribe().DisposeWith(_disposables)));
+        }
+
+        options.Add((chatItem.IsMuted ? "Unmute" : "Mute", () =>
+            ViewModel.ToggleMuteCommand.Execute(chatItem).Subscribe().DisposeWith(_disposables)));
+
         if (chatItem.IsGroup)
-            options.Add("Reset Group");
+            options.Add(("Reset Group", () => ShowResetGroupConfirmation(chatItem)));
+
+        options.Add(("Delete Chat", () => ShowDeleteConfirmation(chatItem)));
 
         new MaterialAlertDialogBuilder(Context)
             .SetTitle(chatItem.Name)!
-            .SetItems(options.ToArray(), (s, e) =>
+            .SetItems(options.Select(o => o.label).ToArray(), (s, e) =>
             {
-                switch (e.Which)
-                {
-                    case 0: // Delete
-                        ViewModel.DeleteChatCommand.Execute(chatItem).Subscribe().DisposeWith(_disposables);
-                        ShowDeleteConfirmation(chatItem);
-                        break;
-                    case 1: // Reset Group
-                        ViewModel.ResetGroupCommand.Execute(chatItem).Subscribe().DisposeWith(_disposables);
-                        ShowResetGroupConfirmation(chatItem);
-                        break;
-                }
+                options[e.Which].action();
             })!
             .Show();
     }

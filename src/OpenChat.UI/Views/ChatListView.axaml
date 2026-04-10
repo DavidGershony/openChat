@@ -243,7 +243,7 @@
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
                             <Grid ColumnDefinitions="*,Auto">
                                 <TextBlock Grid.Column="0" Text="{Binding Name}"
-                                           FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                           TextTrimming="CharacterEllipsis" />
                                 <StackPanel Grid.Column="1" Spacing="2" HorizontalAlignment="Right"
                                             Margin="8,0,0,0">
                                     <TextBlock Text="{Binding LastActivityAt, StringFormat={}{0:HH:mm}}"
@@ -348,7 +348,7 @@
                             </Border>
                             <!-- Name + last message -->
                             <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14"
+                                <TextBlock Text="{Binding Name}" FontSize="14"
                                            TextTrimming="CharacterEllipsis" />
                                 <TextBlock Text="{Binding LastMessagePreview}"
                                            Classes="muted" FontSize="12"
