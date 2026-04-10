@@ -10,6 +10,7 @@ using MarmotCs.Core.Results;
 using DotnetMls.Codec;
 using DotnetMls.Crypto;
 using DotnetMls.Group;
+using MarmotCs.Protocol.Crypto;
 using MarmotCs.Protocol.Mip00;
 using MarmotCs.Storage.Memory;
 
@@ -304,7 +305,8 @@ public class ManagedMlsService : IMlsService
         var mlsMessage = WrapWelcomeInMlsMessage(rawWelcome);
 
         // MIP-03 encrypt the commit with the PRE-commit exporter secret
-        var mip03Encrypted = Mip03Crypto.Encrypt(preCommitExporterSecret, result.CommitMessageBytes);
+        var mip03EncryptedBase64 = GroupEventEncryption.Encrypt(result.CommitMessageBytes, preCommitExporterSecret);
+        var mip03Encrypted = Convert.FromBase64String(mip03EncryptedBase64);
 
         return new MlsWelcome
         {
@@ -423,8 +425,7 @@ public class ManagedMlsService : IMlsService
 
         // Step 3: MIP-03 ChaCha20-Poly1305 encryption
         var exporterSecret = _mdk!.GetExporterSecret(groupId);
-        var mip03Encrypted = Mip03Crypto.Encrypt(exporterSecret, mlsBytes);
-        var base64Content = Convert.ToBase64String(mip03Encrypted);
+        var base64Content = GroupEventEncryption.Encrypt(mlsBytes, exporterSecret);
 
         // Step 4: Build signed kind 445 Nostr event with EPHEMERAL key (MIP-03 privacy)
         // MIP-03: kind 445 events SHOULD use ephemeral keys so relay operators
@@ -466,8 +467,7 @@ public class ManagedMlsService : IMlsService
         // MLS-encrypt, MIP-03 encrypt, build kind 445 event (same as EncryptMessageAsync)
         var mlsBytes = await _mdk!.CreateMessageAsync(groupId, Encoding.UTF8.GetBytes(rumorJson));
         var exporterSecret = _mdk!.GetExporterSecret(groupId);
-        var mip03Encrypted = Mip03Crypto.Encrypt(exporterSecret, mlsBytes);
-        var base64Content = Convert.ToBase64String(mip03Encrypted);
+        var base64Content = GroupEventEncryption.Encrypt(mlsBytes, exporterSecret);
 
         var hTagValue = Convert.ToHexString(GetNostrGroupId(groupId)).ToLowerInvariant();
         var tags = new List<List<string>> { new() { "h", hTagValue }, new() { "encoding", "base64" } };
@@ -507,7 +507,7 @@ public class ManagedMlsService : IMlsService
             _logger.LogDebug("DecryptMessage: applying MIP-03 ChaCha20-Poly1305 decryption ({Len} bytes)",
                 payloadBytes.Length);
             var exporterSecret = _mdk!.GetExporterSecret(groupId);
-            mlsBytes = Mip03Crypto.Decrypt(exporterSecret, payloadBytes);
+            mlsBytes = GroupEventEncryption.Decrypt(Convert.ToBase64String(payloadBytes), exporterSecret);
             _logger.LogDebug("DecryptMessage: MIP-03 decrypted to {Len} bytes, first 32: {Hex}",
                 mlsBytes.Length,
                 Convert.ToHexString(mlsBytes[..Math.Min(32, mlsBytes.Length)]));
