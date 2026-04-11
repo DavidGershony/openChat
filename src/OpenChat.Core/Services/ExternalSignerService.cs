@@ -1100,7 +1100,7 @@ public class ExternalSignerService : IExternalSigner, IDisposable
     /// Validates a signer relay URL for safe connection.
     /// Enforces wss:// scheme and blocks private/reserved IP addresses (SSRF prevention).
     /// </summary>
-    private async Task<string?> ValidateSignerRelayUrlAsync(string relayUrl)
+    internal async Task<string?> ValidateSignerRelayUrlAsync(string relayUrl)
     {
         if (!Uri.TryCreate(relayUrl, UriKind.Absolute, out var uri))
             return "Invalid URL format.";
