@@ -350,6 +350,12 @@ public class ChatViewModel : ViewModelBase
         ChatName = chat.Name;
         ChatAvatarUrl = chat.AvatarUrl;
         IsGroup = chat.Type == ChatType.Group;
+
+        // Reset send state — IsSending/UploadStatus belong to the shared VM instance, not
+        // the specific chat. Any pending send on the previous chat will still complete in
+        // the background; its finally-block sets IsSending=false again (no-op at that point).
+        IsSending = false;
+        UploadStatus = null;
         ParticipantCount = chat.ParticipantPublicKeys.Count;
         // Admin check: if admin list exists, check membership; if empty (legacy group), allow all
         IsCurrentUserAdmin = IsGroup && _currentUserPublicKeyHex != null &&
