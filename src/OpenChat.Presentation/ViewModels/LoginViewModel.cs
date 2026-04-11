@@ -214,7 +214,6 @@ public class LoginViewModel : ViewModelBase
                 PublicKeyHex = publicKeyHex,
                 Nsec = nsec,
                 Npub = npub,
-                DisplayName = $"User {npub[..12]}...",
                 CreatedAt = DateTime.UtcNow,
                 IsCurrentUser = true
             };
@@ -257,7 +256,6 @@ public class LoginViewModel : ViewModelBase
                 Id = Guid.NewGuid().ToString(),
                 PublicKeyHex = publicKeyHex,
                 Npub = npub ?? string.Empty,
-                DisplayName = $"User {npub?[..12]}...",
                 CreatedAt = DateTime.UtcNow,
                 IsCurrentUser = true,
                 PrivateKeyHex = null,

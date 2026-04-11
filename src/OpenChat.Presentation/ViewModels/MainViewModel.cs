@@ -666,6 +666,19 @@ public class MainViewModel : ViewModelBase
                                 !string.IsNullOrEmpty(metadata.Username))
                             {
                                 HeaderDisplayName = fetchedName;
+                                // Persist real name back to CurrentUser and DB so restarts don't
+                                // show the placeholder until metadata is fetched again
+                                CurrentUser.DisplayName = fetchedName;
+                                SettingsViewModel.DisplayName = fetchedName;
+                                try
+                                {
+                                    await _storageService.SaveCurrentUserAsync(CurrentUser);
+                                    _logger.LogInformation("Persisted fetched display name '{Name}' for current user", fetchedName);
+                                }
+                                catch (Exception saveEx)
+                                {
+                                    _logger.LogWarning(saveEx, "Failed to persist fetched display name");
+                                }
                             }
                         }
                     }
