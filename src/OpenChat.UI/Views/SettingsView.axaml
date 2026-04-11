@@ -304,6 +304,9 @@
                               HorizontalAlignment="Stretch">
                         <ComboBoxItem Content="Nostr" />
                         <ComboBoxItem Content="Golden Axe" />
+                        <ComboBoxItem Content="Cyber Teal" />
+                        <ComboBoxItem Content="Solarized Dark" />
+                        <ComboBoxItem Content="AMOLED Black" />
                     </ComboBox>
                 </StackPanel>
             </Border>
