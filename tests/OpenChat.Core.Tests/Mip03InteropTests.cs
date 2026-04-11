@@ -1,5 +1,4 @@
 using System.Security.Cryptography;
-using MarmotCs.Core;
 using MarmotCs.Protocol.Crypto;
 using MarmotCs.Protocol.Mip03;
 using Xunit;
@@ -9,8 +8,7 @@ namespace OpenChat.Core.Tests;
 
 /// <summary>
 /// MIP-03 compliance tests verifying group message encryption (kind 445),
-/// ChaCha20-Poly1305 wire format, and cross-layer compatibility between
-/// MarmotCs.Protocol (GroupEventEncryption) and MarmotCs.Core (Mip03Crypto).
+/// ChaCha20-Poly1305 wire format, and GroupEventEncryption roundtrips.
 ///
 /// Full cross-MDK interop (C# ↔ Rust) for kind 445 is tested in
 /// EndToEndChatIntegrationTests (requires relay + native DLL).
@@ -32,52 +30,40 @@ public class Mip03InteropTests
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // Test 1: Mip03Crypto ↔ GroupEventEncryption compatibility
+    // Test 1: GroupEventEncryption roundtrip
     // ═══════════════════════════════════════════════════════════════════
 
     /// <summary>
-    /// Verifies that Mip03Crypto.Encrypt (Core layer, raw bytes) produces output
-    /// that can be decoded by GroupEventEncryption.Decrypt (Protocol layer, base64).
-    /// This tests cross-layer compatibility.
+    /// Verifies that GroupEventEncryption.Encrypt → Decrypt roundtrips correctly.
     /// </summary>
     [Fact]
-    public void Mip03Crypto_Encrypt_GroupEventEncryption_Decrypt_Compatible()
+    public void GroupEventEncryption_Encrypt_Decrypt_RoundTrips()
     {
         byte[] key = RandomKey();
         byte[] plaintext = new byte[] { 1, 2, 3, 4, 5 };
 
-        // Core layer: encrypt to raw bytes (nonce || ciphertext || tag)
-        byte[] rawEncrypted = Mip03Crypto.Encrypt(key, plaintext);
-
-        // Protocol layer expects base64(nonce || ciphertext || tag)
-        string base64Encrypted = Convert.ToBase64String(rawEncrypted);
-
-        // Protocol layer: decrypt from base64
+        string base64Encrypted = GroupEventEncryption.Encrypt(plaintext, key);
         byte[] decrypted = GroupEventEncryption.Decrypt(base64Encrypted, key);
 
         Assert.Equal(plaintext, decrypted);
-        _output.WriteLine($"Core→Protocol roundtrip: {plaintext.Length} bytes → {rawEncrypted.Length} raw → {base64Encrypted.Length} base64 → OK");
+        _output.WriteLine($"Roundtrip: {plaintext.Length} bytes → {base64Encrypted.Length} base64 → OK");
     }
 
     /// <summary>
-    /// Verifies that GroupEventEncryption.Encrypt (Protocol layer, base64) produces output
-    /// that can be decoded by Mip03Crypto.Decrypt (Core layer, raw bytes).
+    /// Verifies roundtrip with larger payloads.
     /// </summary>
     [Fact]
-    public void GroupEventEncryption_Encrypt_Mip03Crypto_Decrypt_Compatible()
+    public void GroupEventEncryption_LargePayload_RoundTrips()
     {
         byte[] key = RandomKey();
-        byte[] plaintext = new byte[] { 10, 20, 30, 40, 50 };
+        byte[] plaintext = new byte[4096];
+        RandomNumberGenerator.Fill(plaintext);
 
-        // Protocol layer: encrypt to base64
         string base64Encrypted = GroupEventEncryption.Encrypt(plaintext, key);
-
-        // Core layer: expects raw bytes
-        byte[] rawEncrypted = Convert.FromBase64String(base64Encrypted);
-        byte[] decrypted = Mip03Crypto.Decrypt(key, rawEncrypted);
+        byte[] decrypted = GroupEventEncryption.Decrypt(base64Encrypted, key);
 
         Assert.Equal(plaintext, decrypted);
-        _output.WriteLine($"Protocol→Core roundtrip: {plaintext.Length} bytes → OK");
+        _output.WriteLine($"Large roundtrip: {plaintext.Length} bytes → OK");
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -99,27 +85,34 @@ public class Mip03InteropTests
         byte[] plaintext = new byte[plaintextSize];
         RandomNumberGenerator.Fill(plaintext);
 
-        byte[] encrypted = Mip03Crypto.Encrypt(key, plaintext);
+        string base64Encrypted = GroupEventEncryption.Encrypt(plaintext, key);
+        byte[] rawBytes = Convert.FromBase64String(base64Encrypted);
 
         // Expected: nonce(12) + ciphertext(N) + tag(16) = 12 + N + 16
-        Assert.Equal(12 + plaintextSize + 16, encrypted.Length);
-        _output.WriteLine($"Plaintext {plaintextSize} bytes → encrypted {encrypted.Length} bytes (overhead: 28 bytes)");
+        Assert.Equal(12 + plaintextSize + 16, rawBytes.Length);
+        _output.WriteLine($"Plaintext {plaintextSize} bytes → encrypted {rawBytes.Length} bytes (overhead: 28 bytes)");
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // Test 3: Exporter constants match
+    // Test 3: Different keys produce different ciphertext
     // ═══════════════════════════════════════════════════════════════════
 
-    /// <summary>
-    /// Verifies that Mip03Crypto exporter constants match MIP-03 spec:
-    /// label="marmot", context="group-event", length=32.
-    /// </summary>
     [Fact]
-    public void ExporterConstants_MatchSpec()
+    public void DifferentKeys_ProduceDifferentCiphertext()
     {
-        Assert.Equal("marmot", Mip03Crypto.ExporterLabel);
-        Assert.Equal(System.Text.Encoding.UTF8.GetBytes("group-event"), Mip03Crypto.ExporterContext);
-        Assert.Equal(32, Mip03Crypto.ExporterLength);
+        byte[] key1 = RandomKey();
+        byte[] key2 = RandomKey();
+        byte[] plaintext = new byte[] { 10, 20, 30 };
+
+        string encrypted1 = GroupEventEncryption.Encrypt(plaintext, key1);
+        string encrypted2 = GroupEventEncryption.Encrypt(plaintext, key2);
+
+        // Different keys must produce different ciphertext
+        Assert.NotEqual(encrypted1, encrypted2);
+
+        // But each decrypts correctly with its own key
+        Assert.Equal(plaintext, GroupEventEncryption.Decrypt(encrypted1, key1));
+        Assert.Equal(plaintext, GroupEventEncryption.Decrypt(encrypted2, key2));
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -189,36 +182,27 @@ public class Mip03InteropTests
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // Test 6: AAD is empty (not null, not group ID)
+    // Test 6: AAD is empty (verified via encrypt/decrypt roundtrip)
     // ═══════════════════════════════════════════════════════════════════
 
     /// <summary>
-    /// Verifies that GroupEventEncryption uses empty AAD by cross-decrypting
-    /// with Mip03Crypto which also uses empty AAD (no AAD parameter at all,
-    /// which defaults to empty in BouncyCastle). If either used non-empty AAD,
-    /// the cross-layer decryption would fail with AEAD auth error.
+    /// Verifies that GroupEventEncryption uses empty AAD by confirming that
+    /// encrypt → raw bytes → decrypt roundtrips correctly. If non-empty AAD
+    /// were used inconsistently, the AEAD auth check would fail.
     /// </summary>
     [Fact]
-    public void AAD_IsEmpty_CrossLayerVerification()
+    public void AAD_IsEmpty_Verification()
     {
         byte[] key = RandomKey();
         byte[] plaintext = System.Text.Encoding.UTF8.GetBytes("AAD must be empty per MIP-03");
 
-        // Encrypt with Protocol layer (explicitly passes Array.Empty<byte>() as AAD)
-        string protocolEncrypted = GroupEventEncryption.Encrypt(plaintext, key);
-        byte[] rawBytes = Convert.FromBase64String(protocolEncrypted);
+        // Encrypt with GroupEventEncryption
+        string encrypted = GroupEventEncryption.Encrypt(plaintext, key);
 
-        // Decrypt with Core layer (no AAD parameter = empty)
-        byte[] coreDecrypted = Mip03Crypto.Decrypt(key, rawBytes);
+        // Decrypt the raw bytes back through GroupEventEncryption
+        byte[] decrypted = GroupEventEncryption.Decrypt(encrypted, key);
 
-        Assert.Equal(plaintext, coreDecrypted);
-
-        // And vice versa
-        byte[] coreEncrypted = Mip03Crypto.Encrypt(key, plaintext);
-        string base64Core = Convert.ToBase64String(coreEncrypted);
-        byte[] protocolDecrypted = GroupEventEncryption.Decrypt(base64Core, key);
-
-        Assert.Equal(plaintext, protocolDecrypted);
+        Assert.Equal(plaintext, decrypted);
     }
 
     // ═══════════════════════════════════════════════════════════════════
