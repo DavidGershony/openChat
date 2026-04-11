@@ -242,8 +242,7 @@ public class MarmotWrapper : IDisposable
 
                     // Parse the JSON response containing both welcome and commit
                     var responseJson = System.Text.Encoding.UTF8.GetString(responseData);
-                    _logger.LogDebug("AddMember native response ({Len} bytes): {Json}",
-                        responseJson.Length, responseJson[..Math.Min(500, responseJson.Length)]);
+                    _logger.LogDebug("AddMember native response: {Len} bytes", responseJson.Length);
 
                     using var doc = JsonDocument.Parse(responseJson);
                     var root = doc.RootElement;

@@ -525,6 +525,28 @@ public class ChatListViewModel : ViewModelBase
                 var metadata = await _nostrService.FetchUserMetadataAsync(otherPubKey);
                 if (string.IsNullOrEmpty(metadata?.Picture)) continue;
 
+                // Validate avatar URL to prevent SSRF
+                if (!Uri.TryCreate(metadata.Picture, UriKind.Absolute, out var avatarUri) ||
+                    (avatarUri.Scheme != "https" && avatarUri.Scheme != "http"))
+                    continue;
+                try
+                {
+                    var addresses = await System.Net.Dns.GetHostAddressesAsync(avatarUri.Host);
+                    var blocked = false;
+                    foreach (var addr in addresses)
+                    {
+                        if (System.Net.IPAddress.IsLoopback(addr)) { blocked = true; break; }
+                        var b = addr.GetAddressBytes();
+                        if (addr.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork &&
+                            (b[0] == 10 || (b[0] == 172 && b[1] >= 16 && b[1] <= 31) ||
+                             (b[0] == 192 && b[1] == 168) || b[0] == 127 ||
+                             (b[0] == 169 && b[1] == 254) || b[0] == 0))
+                        { blocked = true; break; }
+                    }
+                    if (blocked) continue;
+                }
+                catch { continue; }
+
                 // Download the avatar image (max 2 MB)
                 var imageBytes = await _httpClient.GetByteArrayAsync(metadata.Picture);
                 if (imageBytes.Length > 2 * 1024 * 1024)

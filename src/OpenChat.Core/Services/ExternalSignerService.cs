@@ -9,6 +9,8 @@ using NBitcoin.Secp256k1;
 using MarmotCs.Protocol.Nip44;
 using OpenChat.Core.Crypto;
 using OpenChat.Core.Logging;
+using System.Net;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using Aes = System.Security.Cryptography.Aes;
 using RandomNumberGenerator = System.Security.Cryptography.RandomNumberGenerator;
@@ -83,6 +85,19 @@ public class ExternalSignerService : IExternalSigner, IDisposable
             _remotePubKey = remotePubKey;
             _relayUrl = relayUrl;
             _secret = secret;
+
+            // Validate relay URL before connecting (SSRF / scheme check)
+            var validationError = await ValidateSignerRelayUrlAsync(_relayUrl!);
+            if (validationError != null)
+            {
+                _logger.LogError("Signer relay URL rejected: {Error}", validationError);
+                _status.OnNext(new ExternalSignerStatus
+                {
+                    State = ExternalSignerState.Error,
+                    Error = $"Invalid relay URL: {validationError}"
+                });
+                return false;
+            }
 
             // Generate ephemeral keypair for NIP-46 communication
             GenerateLocalKeyPair();
@@ -163,6 +178,19 @@ public class ExternalSignerService : IExternalSigner, IDisposable
             _secret = secret;
             _localPrivateKeyHex = localPrivateKeyHex;
             _localPublicKeyHex = localPublicKeyHex;
+
+            // Validate relay URL before connecting (SSRF / scheme check)
+            var validationError = await ValidateSignerRelayUrlAsync(_relayUrl);
+            if (validationError != null)
+            {
+                _logger.LogError("Signer relay URL rejected during restore: {Error}", validationError);
+                _status.OnNext(new ExternalSignerStatus
+                {
+                    State = ExternalSignerState.Error,
+                    Error = $"Invalid relay URL: {validationError}"
+                });
+                return false;
+            }
 
             // The signer's public key is the remote pubkey (what Amber uses as its identity)
             PublicKeyHex = remotePubKey;
@@ -267,13 +295,21 @@ public class ExternalSignerService : IExternalSigner, IDisposable
         // NIP-46 current spec: individual params instead of deprecated metadata JSON
         var perms = "nip04_encrypt,nip04_decrypt,nip44_encrypt,nip44_decrypt,sign_event:443,sign_event:444,sign_event:445,sign_event:1059";
         var uri = $"nostrconnect://{_localPublicKeyHex}?relay={Uri.EscapeDataString(relayUrl)}&secret={_secret}&name=OpenChat&perms={Uri.EscapeDataString(perms)}";
-        _logger.LogInformation("Generated nostrconnect URI: {Uri}", uri);
+        _logger.LogInformation("Generated nostrconnect URI for relay {Relay}, local pubkey {PubKey}", relayUrl, _localPublicKeyHex?[..16]);
         return uri;
     }
 
     public async Task<string> GenerateAndListenForConnectionAsync(string relayUrl)
     {
         _logger.LogInformation("Generating nostrconnect URI and listening on relay: {Relay}", relayUrl);
+
+        // Validate relay URL before connecting (SSRF / scheme check)
+        var validationError = await ValidateSignerRelayUrlAsync(relayUrl);
+        if (validationError != null)
+        {
+            _logger.LogError("Signer relay URL rejected: {Error}", validationError);
+            throw new ArgumentException($"Invalid relay URL: {validationError}", nameof(relayUrl));
+        }
 
         // Reset connection state so Amber's connect ack is recognized (not cached as "replayed")
         IsConnected = false;
@@ -317,6 +353,14 @@ public class ExternalSignerService : IExternalSigner, IDisposable
 
         try
         {
+            // Re-validate relay URL on reconnect (URL may have been persisted from older version)
+            var validationError = await ValidateSignerRelayUrlAsync(_relayUrl);
+            if (validationError != null)
+            {
+                _logger.LogError("Signer relay URL rejected on reconnect: {Error}", validationError);
+                return;
+            }
+
             // Clean up old WebSocket
             _cts?.Cancel();
             if (_webSocket != null)
@@ -794,13 +838,13 @@ public class ExternalSignerService : IExternalSigner, IDisposable
                         {
                             // NIP-04 format
                             decrypted = DecryptNip04(content, _localPrivateKeyHex, senderPubKey);
-                            _logger.LogDebug("NIP-46 decrypted (NIP-04): {Message}", decrypted.Length > 200 ? decrypted[..200] + "..." : decrypted);
+                            _logger.LogDebug("NIP-46 decrypted (NIP-04): {Length} bytes", decrypted.Length);
                         }
                         else
                         {
                             // NIP-44 format
                             decrypted = DecryptNip44(content, _localPrivateKeyHex, senderPubKey);
-                            _logger.LogDebug("NIP-46 decrypted (NIP-44): {Message}", decrypted.Length > 200 ? decrypted[..200] + "..." : decrypted);
+                            _logger.LogDebug("NIP-46 decrypted (NIP-44): {Length} bytes", decrypted.Length);
                         }
 
                         ProcessDecryptedNip46Message(decrypted, senderPubKey);
@@ -1050,5 +1094,64 @@ public class ExternalSignerService : IExternalSigner, IDisposable
 
         [JsonPropertyName("error")]
         public string? Error { get; set; }
+    }
+
+    /// <summary>
+    /// Validates a signer relay URL for safe connection.
+    /// Enforces wss:// scheme and blocks private/reserved IP addresses (SSRF prevention).
+    /// </summary>
+    private async Task<string?> ValidateSignerRelayUrlAsync(string relayUrl)
+    {
+        if (!Uri.TryCreate(relayUrl, UriKind.Absolute, out var uri))
+            return "Invalid URL format.";
+
+        if (uri.Scheme != "wss" && uri.Scheme != "ws")
+            return $"Relay URL must use ws:// or wss:// scheme, got: {uri.Scheme}://";
+
+        if (uri.Scheme == "ws" && !Configuration.ProfileConfiguration.AllowLocalRelays)
+            return "Signer relay URL must use wss:// (TLS required).";
+
+        try
+        {
+            var addresses = await Dns.GetHostAddressesAsync(uri.Host);
+            foreach (var addr in addresses)
+            {
+                if (IsPrivateOrReservedIp(addr))
+                    return $"Relay URL resolves to private/reserved IP address ({addr}).";
+            }
+        }
+        catch (SocketException)
+        {
+            return $"Cannot resolve hostname: {uri.Host}";
+        }
+
+        return null;
+    }
+
+    private static bool IsPrivateOrReservedIp(IPAddress address)
+    {
+        if (IPAddress.IsLoopback(address))
+            return true;
+
+        if (address.AddressFamily == AddressFamily.InterNetwork)
+        {
+            var bytes = address.GetAddressBytes();
+            if (bytes[0] == 10) return true;
+            if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) return true;
+            if (bytes[0] == 192 && bytes[1] == 168) return true;
+            if (bytes[0] == 127) return true;
+            if (bytes[0] == 169 && bytes[1] == 254) return true;
+            if (bytes[0] == 0) return true;
+        }
+        else if (address.AddressFamily == AddressFamily.InterNetworkV6)
+        {
+            var bytes = address.GetAddressBytes();
+            if ((bytes[0] & 0xFE) == 0xFC) return true;
+            if (bytes[0] == 0xFE && (bytes[1] & 0xC0) == 0x80) return true;
+            if (address.Equals(IPAddress.IPv6None) || address.Equals(IPAddress.IPv6Any))
+                return true;
+        }
+
+        return false;
     }
 }

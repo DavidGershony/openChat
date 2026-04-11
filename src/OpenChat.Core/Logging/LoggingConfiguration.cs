@@ -32,7 +32,7 @@ public static class LoggingConfiguration
     /// <param name="logDirectory">Optional custom log directory. Defaults to AppData/OpenChat/logs</param>
     /// <param name="minimumLevel">Minimum log level. Defaults to Debug.</param>
     /// <param name="perSession">When true, creates a new log file per app session instead of per day. Useful for mobile.</param>
-    public static void Initialize(string? logDirectory = null, LogEventLevel minimumLevel = LogEventLevel.Debug, bool perSession = false, string? appVersion = null)
+    public static void Initialize(string? logDirectory = null, LogEventLevel minimumLevel = LogEventLevel.Information, bool perSession = false, string? appVersion = null)
     {
         lock (_lock)
         {

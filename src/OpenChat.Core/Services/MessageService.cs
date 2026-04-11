@@ -1940,6 +1940,40 @@ public class MessageService : IMessageService, IDisposable
             if (File.Exists(localPath))
                 return localPath;
 
+            // Validate URL to prevent SSRF (block private IPs and non-HTTPS)
+            if (!Uri.TryCreate(avatarUrl, UriKind.Absolute, out var parsedUri) ||
+                (parsedUri.Scheme != "https" && parsedUri.Scheme != "http"))
+            {
+                _logger.LogWarning("Avatar URL rejected for {PubKey}: invalid scheme", publicKeyHex[..16]);
+                return null;
+            }
+            try
+            {
+                var addresses = await System.Net.Dns.GetHostAddressesAsync(parsedUri.Host);
+                foreach (var addr in addresses)
+                {
+                    if (System.Net.IPAddress.IsLoopback(addr))
+                    {
+                        _logger.LogWarning("Avatar URL rejected for {PubKey}: resolves to loopback", publicKeyHex[..16]);
+                        return null;
+                    }
+                    var bytes = addr.GetAddressBytes();
+                    if (addr.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork &&
+                        (bytes[0] == 10 || (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) ||
+                         (bytes[0] == 192 && bytes[1] == 168) || bytes[0] == 127 ||
+                         (bytes[0] == 169 && bytes[1] == 254) || bytes[0] == 0))
+                    {
+                        _logger.LogWarning("Avatar URL rejected for {PubKey}: resolves to private IP", publicKeyHex[..16]);
+                        return null;
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                _logger.LogWarning("Avatar URL rejected for {PubKey}: DNS resolution failed", publicKeyHex[..16]);
+                return null;
+            }
+
             using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
             using var response = await httpClient.GetAsync(avatarUrl);
             if (!response.IsSuccessStatusCode)

@@ -284,8 +284,14 @@ public class NostrService : INostrService, IDisposable
     }
 
     /// <summary>
+    /// Maximum WebSocket message size (16 MB). Messages exceeding this are dropped to prevent DoS.
+    /// </summary>
+    private const int MaxWebSocketMessageSize = 16 * 1024 * 1024;
+
+    /// <summary>
     /// Reads a complete WebSocket message, accumulating frames until EndOfMessage is true.
     /// Handles messages larger than the receive buffer (e.g. MLS Welcome events).
+    /// Returns null if the message exceeds the maximum allowed size.
     /// </summary>
     private static async Task<(WebSocketMessageType Type, string Text)?> ReceiveFullMessageAsync(
         ClientWebSocket ws, byte[] buffer, CancellationToken ct)
@@ -298,6 +304,8 @@ public class NostrService : INostrService, IDisposable
             if (result.MessageType == WebSocketMessageType.Close)
                 return (WebSocketMessageType.Close, string.Empty);
             ms.Write(buffer, 0, result.Count);
+            if (ms.Length > MaxWebSocketMessageSize)
+                return null; // message too large, drop it
         } while (!result.EndOfMessage);
 
         return (result.MessageType, Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length));
