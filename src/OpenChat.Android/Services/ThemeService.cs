@@ -26,6 +26,9 @@ public static class ThemeService
         new ThemeInfo("blood_orange", "Blood Orange", Resource.Style.AppTheme_BloodOrange),
         new ThemeInfo("golden_axe", "Golden Axe", Resource.Style.AppTheme_GoldenAxe),
         new ThemeInfo("monochrome", "Monochrome", Resource.Style.AppTheme_Monochrome),
+        new ThemeInfo("cyber_teal", "Cyber Teal", Resource.Style.AppTheme_CyberTeal),
+        new ThemeInfo("solarized_dark", "Solarized Dark", Resource.Style.AppTheme_SolarizedDark),
+        new ThemeInfo("amoled_black", "AMOLED Black", Resource.Style.AppTheme_AmoledBlack),
     };
 
     /// <summary>

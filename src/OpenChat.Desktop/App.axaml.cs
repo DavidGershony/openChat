@@ -21,11 +21,14 @@ public partial class App : Application
 {
     private static ILogger? _logger;
 
-    private static readonly string[] ThemeNames = { "Nostr", "Golden Axe" };
+    private static readonly string[] ThemeNames = { "Nostr", "Golden Axe", "Cyber Teal", "Solarized Dark", "AMOLED Black" };
     private static readonly string[] ThemeUris =
     {
         "avares://OpenChat.UI/Themes/NostrColors.axaml",
         "avares://OpenChat.UI/Themes/GoldenAxeTheme.axaml",
+        "avares://OpenChat.UI/Themes/CyberTealTheme.axaml",
+        "avares://OpenChat.UI/Themes/SolarizedDarkTheme.axaml",
+        "avares://OpenChat.UI/Themes/AmoledBlackTheme.axaml",
     };
 
     public override void Initialize()
