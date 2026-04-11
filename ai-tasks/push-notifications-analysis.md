@@ -151,10 +151,111 @@ This is what White Noise currently ships as their primary notification transport
 
 ---
 
+## Option 4: UnifiedPush (Google-Free Push Notifications)
+
+**Concept:** Use the UnifiedPush open protocol to deliver push notifications without Google/FCM dependency. A server-side relay watcher monitors Nostr events for registered users and sends wake-up messages via a push server (ntfy). A distributor app on the phone (installed by the user) maintains a single persistent connection and delivers pushes to OpenChat via Android Broadcast Intents. OpenChat itself has zero background connections.
+
+### Architecture
+
+```
+Relay Watcher Server (subscribes to Nostr relays for kind 1059 events)
+    ↓ HTTP POST to user's registered endpoint URL
+Push Server (ntfy.sh public or self-hosted)
+    ↓ single persistent connection (shared by all UP-enabled apps)
+Distributor App (ntfy on phone)
+    ↓ Android Broadcast Intent
+OpenChat BroadcastReceiver → connects to relays → fetches → decrypts → local notification
+```
+
+### Server Side (Relay Watcher)
+
+- Subscribes to Nostr relays for kind 1059 gift wraps tagged with registered users' pubkeys
+- When an event arrives, HTTP POSTs a wake-up payload to the user's registered UnifiedPush endpoint URL
+- ntfy handles delivery to the device
+- Can be a simple C# console app or Rust service
+- Reference: Amethyst built `amethyst-push-notif-server` (Node.js) for the same purpose
+
+**Effort:** ~1-2 days to deploy
+
+### Client Side (OpenChat)
+
+No .NET UnifiedPush library exists, but the protocol is thin Android IPC (Intents):
+
+| Work Item | Effort | Details |
+|-----------|--------|---------|
+| `UnifiedPushReceiver.cs` | Small | Android `BroadcastReceiver` for `org.unifiedpush.android.connector.PUSH_EVENT` and registration intents |
+| Registration flow | Small | Call distributor via Intent → receive endpoint URL → send to relay watcher server |
+| Wake handler | Medium | On push received: reconnect relays → fetch new messages → decrypt MLS → post local notification |
+| Endpoint storage | Small | Store endpoint URL locally, send to server on registration/change |
+| Re-registration | Small | Handle distributor changes, token refresh |
+
+**Total client effort:** ~1 week
+
+### Distributor Apps (User Installs One)
+
+- **ntfy** — most popular, available on F-Droid and Play Store, can use free public server (ntfy.sh) or self-host
+- **NextPush** — Nextcloud-based, good for users already running Nextcloud
+- **Conversations** — XMPP client that doubles as a distributor
+- **gCompat-UP** — uses FCM under the hood (development/testing bridge)
+
+### Advantages
+
+- No Google dependency — works on degoogled phones, F-Droid builds
+- Zero background connections from OpenChat — distributor handles the persistent connection
+- Battery impact near zero for OpenChat (comparable to FCM)
+- Privacy — you control the payload end-to-end, ntfy sees only opaque wake-up data
+- Fits Nostr ethos (decentralized, sovereign)
+- One distributor serves all UnifiedPush-enabled apps (battery-efficient)
+- Existing Nostr ecosystem adoption (Amethyst, Pokey)
+
+### Limitations
+
+- User must install a distributor app (extra onboarding step)
+- Slightly less reliable than FCM (userspace process vs system-level)
+- Niche adoption — mostly FOSS/privacy community
+- Need to run a relay watcher server (though simpler than Transponder)
+- Distributor foreground service battery cost is shared across all apps but still exists
+
+### Notification UX and Delivery Issues
+
+UnifiedPush is **data-only** — unlike FCM's "notification message" mode, there is no fallback where the push server shows a notification on your behalf. The distributor (ntfy) silently delivers an Intent to your app's BroadcastReceiver. Your app must wake up, connect to relays, decrypt MLS, and post a local notification itself. The user always sees an OpenChat-branded notification (your icon, your colors) or nothing at all.
+
+**Known issues:**
+
+| Issue | Impact | Details |
+|-------|--------|---------|
+| Aggressive OEM battery killers | High | Xiaomi, Samsung, Huawei may kill the app before it finishes fetching + decrypting. User gets no notification at all |
+| BroadcastReceiver time limit | Medium | Default 10-second limit to complete work in a BroadcastReceiver — not enough for relay connect + MLS decrypt |
+| App force-killed by user | Medium | If user swipes app from recents on some OEMs, BroadcastReceiver may not fire |
+| Slow relay response | Low-Medium | If relays are slow to respond, notification is delayed or missed if the process is killed |
+
+**Mitigations:**
+
+| Mitigation | Addresses | Details |
+|------------|-----------|---------|
+| `goAsync()` in BroadcastReceiver | Time limit | Extends processing window from 10 seconds to ~30 seconds |
+| Short-lived foreground service | Time limit, OEM killers | Start a temporary foreground service from the receiver to do relay fetch + decrypt. Android is less likely to kill a foreground service |
+| Immediate generic notification | All issues | Post "You have new messages" notification instantly on push received, then update it with real content (sender, preview) once decrypted. User always sees something |
+| Cache relay connections | Slow relays | Keep relay connection state so reconnection is faster |
+| `dontkillmyapp.com` guidance | OEM killers | Link users to OEM-specific instructions for whitelisting OpenChat from battery optimization |
+
+**Recommended approach:** Post a generic "New message in OpenChat" notification immediately when the push arrives, then start a short-lived foreground service to fetch + decrypt. Update the notification with full context (sender name, message preview, group name) once decrypted. This guarantees the user always sees a notification even if the decrypt is slow or fails.
+
+### Nostr Ecosystem References
+
+- **Amethyst** — supports UnifiedPush in F-Droid build (v0.80.1+)
+- **Pokey** — standalone Nostr notification app, can act as both UP distributor and relay watcher
+
+---
+
 ## Recommendation
 
 Start with **Option 1** (Amber piggyback) — investigate whether it works with zero effort. If Amber already notifies on kind 1059 events, this covers the Amber-user case immediately.
 
 Then implement **Option 2** (foreground service) as the reliable baseline for all users.
 
-**Option 3** (MIP-05) is the long-term goal for interoperability with the Marmot ecosystem, but is not urgent until there are more MLS clients to interoperate with.
+For push notifications, support **both Option 3 and Option 4** with a shared relay watcher server:
+- **Option 4** (UnifiedPush) for F-Droid / degoogled users — fits the Nostr ethos, no Google dependency
+- **Option 3** (MIP-05/FCM) for Play Store users — zero friction, best reliability
+
+The server-side relay watcher is nearly identical for both — it just POSTs to either an FCM endpoint or an ntfy endpoint. The client-side code is a thin BroadcastReceiver in both cases.
