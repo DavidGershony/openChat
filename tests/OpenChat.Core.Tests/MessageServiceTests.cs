@@ -44,6 +44,8 @@ public class MessageServiceTests : IDisposable
 
         _mlsMock.Setup(m => m.InitializeAsync(It.IsAny<string>(), It.IsAny<string>())).Returns(Task.CompletedTask);
         _mlsMock.Setup(m => m.GetAdminPubkeys(It.IsAny<byte[]>())).Returns(new List<string>());
+        // Default: key material is available so welcome events are processed normally
+        _mlsMock.Setup(m => m.CanProcessWelcomeAsync(It.IsAny<byte[]>())).ReturnsAsync(true);
 
         _sut = new MessageService(_storageMock.Object, _nostrMock.Object, _mlsMock.Object);
     }

@@ -1,3 +1,4 @@
+using System.Reactive;
 using OpenChat.Core.Models;
 
 namespace OpenChat.Core.Services;
@@ -26,6 +27,12 @@ public interface IMessageService
     /// Observable stream of new pending invites.
     /// </summary>
     IObservable<PendingInvite> NewInvites { get; }
+
+    /// <summary>
+    /// Fires each time a Welcome event is skipped because no key material was available.
+    /// Subscribers can use this to update the skipped invite count in the UI.
+    /// </summary>
+    IObservable<Unit> SkippedInvites { get; }
 
     /// <summary>
     /// Observable stream of reaction updates (messageId, emoji, reactorPublicKey).

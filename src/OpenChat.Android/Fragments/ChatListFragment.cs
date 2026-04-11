@@ -73,6 +73,11 @@ public class ChatListFragment : Fragment
         var rescanButton = view.FindViewById<MaterialButton>(Resource.Id.rescan_invites_button)!;
         var invitesRecycler = view.FindViewById<RecyclerView>(Resource.Id.pending_invites_recycler)!;
 
+        // Skipped invites notice views
+        var skippedNotice = view.FindViewById<LinearLayout>(Resource.Id.skipped_invites_notice)!;
+        var skippedText = view.FindViewById<TextView>(Resource.Id.skipped_invites_text)!;
+        var skippedDismiss = view.FindViewById<MaterialButton>(Resource.Id.skipped_invites_dismiss)!;
+
         // Bind toolbar title to HeaderDisplayName (shows npub until metadata loads)
         toolbar.Title = _mainViewModel.HeaderDisplayName;
         _mainViewModel.WhenAnyValue(x => x.HeaderDisplayName)
@@ -206,6 +211,21 @@ public class ChatListFragment : Fragment
             })
             .DisposeWith(_disposables);
 
+        // Skipped invite notice → show/hide and update text
+        ViewModel.WhenAnyValue(x => x.SkippedInviteCount)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(count =>
+            {
+                skippedNotice.Visibility = count > 0 ? ViewStates.Visible : ViewStates.Gone;
+                skippedText.Text = count == 1
+                    ? "1 group invite received — encryption key not available on this device"
+                    : $"{count} group invites received — encryption keys not available on this device";
+            })
+            .DisposeWith(_disposables);
+
+        skippedDismiss.Click += (s, e) =>
+            ViewModel.DismissSkippedInviteNoticeCommand.Execute().Subscribe().DisposeWith(_disposables);
+
         // Status message → Snackbar
         ViewModel.WhenAnyValue(x => x.StatusMessage)
             .ObserveOn(RxApp.MainThreadScheduler)
@@ -245,6 +265,10 @@ public class ChatListFragment : Fragment
         emptyState.Visibility = ViewModel.Chats.Count == 0 && !ViewModel.IsLoading ? ViewStates.Visible : ViewStates.Gone;
         pendingInvitesSection.Visibility = ViewModel.PendingInviteCount > 0 ? ViewStates.Visible : ViewStates.Gone;
         inviteBadge.Text = ViewModel.PendingInviteCount.ToString();
+        skippedNotice.Visibility = ViewModel.SkippedInviteCount > 0 ? ViewStates.Visible : ViewStates.Gone;
+        skippedText.Text = ViewModel.SkippedInviteCount == 1
+            ? "1 group invite received — encryption key not available on this device"
+            : $"{ViewModel.SkippedInviteCount} group invites received — encryption keys not available on this device";
 
         // Auto-scan for invites on load
         ViewModel.RescanInvitesCommand.Execute().Subscribe().DisposeWith(_disposables);

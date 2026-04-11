@@ -9,7 +9,7 @@
 
     <Grid>
         <!-- Main Content -->
-        <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto">
 
             <!-- Tab Bar: Chats / Archived -->
             <Grid Grid.Row="0" ColumnDefinitions="*,*" Margin="12,8,12,0">
@@ -159,8 +159,34 @@
             </StackPanel>
         </Border>
 
+        <!-- Skipped invites notice (no key material on this device) -->
+        <Border Grid.Row="3"
+                Background="{DynamicResource SurfaceSecondaryBrush}"
+                Padding="12,8"
+                IsVisible="{Binding SkippedInviteCount}">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0"
+                           Classes="secondary" FontSize="12"
+                           VerticalAlignment="Center"
+                           TextWrapping="Wrap">
+                    <TextBlock.Text>
+                        <MultiBinding StringFormat="{}{0} group invite(s) received — encryption keys not available on this device">
+                            <Binding Path="SkippedInviteCount" />
+                        </MultiBinding>
+                    </TextBlock.Text>
+                </TextBlock>
+                <Button Grid.Column="1"
+                        Classes="secondary"
+                        Content="Dismiss"
+                        FontSize="11"
+                        Padding="8,4"
+                        Margin="8,0,0,0"
+                        Command="{Binding DismissSkippedInviteNoticeCommand}" />
+            </Grid>
+        </Border>
+
         <!-- Chat List (switches between Chats and ArchivedChats) -->
-        <ListBox Grid.Row="3"
+        <ListBox Grid.Row="4"
                  x:Name="ChatListBox"
                  ItemsSource="{Binding Chats}"
                  IsVisible="{Binding !ShowArchivedSection}"
@@ -286,7 +312,7 @@
         </ListBox>
 
         <!-- Loading Indicator -->
-        <Border Grid.Row="3" Background="{DynamicResource BackgroundMediumBrush}"
+        <Border Grid.Row="4" Background="{DynamicResource BackgroundMediumBrush}"
                 IsVisible="{Binding IsLoading}" Opacity="0.9">
             <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16">
                 <!-- Spinning circle indicator -->
@@ -306,7 +332,7 @@
         </Border>
 
             <!-- Empty State (hidden while loading) -->
-            <StackPanel Grid.Row="3" VerticalAlignment="Center" HorizontalAlignment="Center"
+            <StackPanel Grid.Row="4" VerticalAlignment="Center" HorizontalAlignment="Center"
                         Spacing="8">
                 <StackPanel.IsVisible>
                     <MultiBinding Converter="{x:Static BoolConverters.And}">
@@ -320,7 +346,7 @@
             </StackPanel>
 
             <!-- Archived Chat List (same layout as main, different context menu) -->
-            <ListBox Grid.Row="3"
+            <ListBox Grid.Row="4"
                      ItemsSource="{Binding ArchivedChats}"
                      SelectedItem="{Binding SelectedChat}"
                      IsVisible="{Binding ShowArchivedSection}"
@@ -371,7 +397,7 @@
             </ListBox>
 
             <!-- Status Bar -->
-            <Border Grid.Row="4"
+            <Border Grid.Row="5"
                     Background="{DynamicResource SurfaceSecondaryBrush}"
                     Padding="12,8"
                     IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">

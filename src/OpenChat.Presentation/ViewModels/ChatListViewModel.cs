@@ -25,6 +25,7 @@ public class ChatListViewModel : ViewModelBase
     private IDisposable? _chatUpdateSubscription;
     private IDisposable? _inviteSubscription;
     private IDisposable? _decryptionErrorSubscription;
+    private IDisposable? _skippedInviteSubscription;
 
     public ObservableCollection<ChatItemViewModel> Chats { get; } = new();
     public ObservableCollection<ChatItemViewModel> ArchivedChats { get; } = new();
@@ -36,6 +37,7 @@ public class ChatListViewModel : ViewModelBase
     [Reactive] public string SearchText { get; set; } = string.Empty;
     [Reactive] public bool IsLoading { get; set; }
     [Reactive] public int PendingInviteCount { get; set; }
+    [Reactive] public int SkippedInviteCount { get; set; }
     [Reactive] public string? StatusMessage { get; set; }
 
     // New Chat Dialog
@@ -119,6 +121,7 @@ public class ChatListViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> CancelResetGroupCommand { get; }
     public ReactiveCommand<Unit, Unit> LookupKeyPackageCommand { get; }
     public ReactiveCommand<Unit, Unit> LookupGroupKeyPackagesCommand { get; }
+    public ReactiveCommand<Unit, Unit> DismissSkippedInviteNoticeCommand { get; }
     public ReactiveCommand<PendingInviteItemViewModel, Unit> AcceptInviteCommand { get; }
     public ReactiveCommand<PendingInviteItemViewModel, Unit> DeclineInviteCommand { get; }
     public ReactiveCommand<Unit, Unit> RescanInvitesCommand { get; }
@@ -406,6 +409,13 @@ public class ChatListViewModel : ViewModelBase
                 StatusMessage = $"Failed to decrypt message in \"{error.ChatName}\". Group may need reset.";
             });
 
+        // Subscribe to skipped invite notifications
+        _skippedInviteSubscription = _messageService.SkippedInvites
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(_ => SkippedInviteCount++);
+
+        DismissSkippedInviteNoticeCommand = ReactiveCommand.CreateFromTask(DismissSkippedInviteNoticeAsync);
+
         // Filter chats based on search
         this.WhenAnyValue(x => x.SearchText)
             .Throttle(TimeSpan.FromMilliseconds(300))
@@ -481,6 +491,7 @@ public class ChatListViewModel : ViewModelBase
                 PendingInvites.Add(new PendingInviteItemViewModel(invite));
             }
             PendingInviteCount = PendingInvites.Count;
+            SkippedInviteCount = await _storageService.GetSkippedInviteCountAsync();
 
             // Kick off background avatar refresh for DM chats missing profile images
             _ = Task.Run(() => RefreshAvatarsAsync());
@@ -1715,6 +1726,13 @@ public class ChatListViewModel : ViewModelBase
             StatusMessage = $"Failed to decline invite: {ex.Message}";
             inviteVm.IsDeclining = false;
         }
+    }
+
+    private async Task DismissSkippedInviteNoticeAsync()
+    {
+        _logger.LogInformation("Dismissing skipped invite notice (count was {Count})", SkippedInviteCount);
+        await _storageService.ResetSkippedInviteCountAsync();
+        SkippedInviteCount = 0;
     }
 
     private async Task RescanInvitesAsync()

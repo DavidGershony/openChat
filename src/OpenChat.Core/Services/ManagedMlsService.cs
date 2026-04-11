@@ -397,6 +397,42 @@ public class ManagedMlsService : IMlsService
             lastError);
     }
 
+    public async Task<bool> CanProcessWelcomeAsync(byte[] welcomeData)
+    {
+        if (_storedKeyPackages.Count == 0)
+        {
+            _logger.LogInformation("CanProcessWelcome: no stored KeyPackages — cannot process welcome");
+            return false;
+        }
+
+        var mlsWelcomeBytes = ExtractMlsWelcomeBytes(welcomeData);
+        _logger.LogDebug("CanProcessWelcome: checking {KpCount} stored KeyPackage(s) against welcome ({Len} bytes)",
+            _storedKeyPackages.Count, mlsWelcomeBytes.Length);
+
+        foreach (var kp in _storedKeyPackages)
+        {
+            try
+            {
+                await _mdk!.PreviewWelcomeAsync(
+                    mlsWelcomeBytes,
+                    kp.KeyPackageBytes,
+                    kp.InitPrivateKey,
+                    kp.HpkePrivateKey,
+                    _signingPrivateKey!);
+
+                _logger.LogInformation("CanProcessWelcome: found matching KeyPackage — welcome is processable");
+                return true;
+            }
+            catch
+            {
+                // This key didn't match — try the next one
+            }
+        }
+
+        _logger.LogInformation("CanProcessWelcome: no stored KeyPackage matched — welcome cannot be processed on this device");
+        return false;
+    }
+
     public async Task<byte[]> EncryptMessageAsync(byte[] groupId, string plaintext, List<List<string>>? rumorTags = null)
     {
         EnsureInitialized();

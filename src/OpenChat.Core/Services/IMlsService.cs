@@ -42,6 +42,14 @@ public interface IMlsService
     Task<MlsGroupInfo> ProcessWelcomeAsync(byte[] welcomeData, string wrapperEventId);
 
     /// <summary>
+    /// Check whether we have the key material needed to process a Welcome message,
+    /// without committing to joining the group.
+    /// Returns false immediately if no KeyPackages are stored locally.
+    /// The Rust backend always returns true (cannot check without attempting).
+    /// </summary>
+    Task<bool> CanProcessWelcomeAsync(byte[] welcomeData);
+
+    /// <summary>
     /// Encrypt a message for a group.
     /// </summary>
     Task<byte[]> EncryptMessageAsync(byte[] groupId, string plaintext, List<List<string>>? rumorTags = null);

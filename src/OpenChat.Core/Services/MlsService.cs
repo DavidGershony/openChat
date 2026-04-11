@@ -328,6 +328,14 @@ public class MlsService : IMlsService
         return false;
     }
 
+    public Task<bool> CanProcessWelcomeAsync(byte[] welcomeData)
+    {
+        // Rust MDK manages key material internally — we cannot check without attempting
+        // a full process_welcome. Return true to let the accept attempt proceed normally.
+        _logger.LogDebug("CanProcessWelcomeAsync: Rust backend cannot pre-check — returning true (pass-through)");
+        return Task.FromResult(true);
+    }
+
     public void SetNostrEventSigner(INostrEventSigner signer)
     {
         // Rust MDK signs events internally — external signer not applicable.

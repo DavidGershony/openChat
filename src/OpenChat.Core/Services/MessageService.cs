@@ -1,3 +1,4 @@
+using System.Reactive;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using Microsoft.Extensions.Logging;
@@ -20,6 +21,7 @@ public class MessageService : IMessageService, IDisposable
     private readonly Subject<PendingInvite> _newInvites = new();
     private readonly Subject<MlsDecryptionError> _decryptionErrors = new();
     private readonly Subject<(string MessageId, string Emoji, string ReactorPublicKey)> _reactionUpdates = new();
+    private readonly Subject<Unit> _skippedInvites = new();
 
     private User? _currentUser;
     private IDisposable? _eventSubscription;
@@ -31,6 +33,7 @@ public class MessageService : IMessageService, IDisposable
     public IObservable<PendingInvite> NewInvites => _newInvites.AsObservable();
     public IObservable<MlsDecryptionError> DecryptionErrors => _decryptionErrors.AsObservable();
     public IObservable<(string MessageId, string Emoji, string ReactorPublicKey)> ReactionUpdates => _reactionUpdates.AsObservable();
+    public IObservable<Unit> SkippedInvites => _skippedInvites.AsObservable();
 
     public MessageService(IStorageService storageService, INostrService nostrService, IMlsService mlsService)
     {
@@ -1010,6 +1013,26 @@ public class MessageService : IMessageService, IDisposable
         }
 
         var welcomeData = Convert.FromBase64String(nostrEvent.Content);
+
+        // Check if we have key material to process this Welcome — skip silently if not
+        try
+        {
+            var canProcess = await _mlsService.CanProcessWelcomeAsync(welcomeData);
+            if (!canProcess)
+            {
+                _logger.LogWarning("HandleWelcome: no key material for welcome {EventId} — dismissing and incrementing skipped count",
+                    nostrEvent.EventId[..Math.Min(16, nostrEvent.EventId.Length)]);
+                await _storageService.DismissWelcomeEventAsync(nostrEvent.EventId);
+                await _storageService.IncrementSkippedInviteCountAsync();
+                _skippedInvites.OnNext(Unit.Default);
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "HandleWelcome: CanProcessWelcomeAsync threw for {EventId} — treating as processable",
+                nostrEvent.EventId[..Math.Min(16, nostrEvent.EventId.Length)]);
+        }
 
         // Extract group ID from tags (h or g tag per MIP-02)
         var groupTag = nostrEvent.Tags.FirstOrDefault(t => t.Count > 1 && (t[0] == "h" || t[0] == "g"));
@@ -2012,6 +2035,7 @@ public class MessageService : IMessageService, IDisposable
         _newInvites.Dispose();
         _decryptionErrors.Dispose();
         _reactionUpdates.Dispose();
+        _skippedInvites.Dispose();
 
         _disposed = true;
     }

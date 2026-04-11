@@ -67,4 +67,9 @@ public interface IStorageService
     // App settings (key-value store)
     Task<string?> GetSettingAsync(string key);
     Task SaveSettingAsync(string key, string value);
+
+    // Skipped invite count (welcomes dismissed because no key material was available)
+    Task<int> GetSkippedInviteCountAsync();
+    Task IncrementSkippedInviteCountAsync();
+    Task ResetSkippedInviteCountAsync();
 }

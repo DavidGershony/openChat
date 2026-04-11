@@ -1626,6 +1626,27 @@ public class StorageService : IStorageService
         }
     }
 
+    private const string SkippedInviteCountKey = "SkippedInviteCount";
+
+    public async Task<int> GetSkippedInviteCountAsync()
+    {
+        var value = await GetSettingAsync(SkippedInviteCountKey);
+        return value != null && int.TryParse(value, out var count) ? count : 0;
+    }
+
+    public async Task IncrementSkippedInviteCountAsync()
+    {
+        var current = await GetSkippedInviteCountAsync();
+        await SaveSettingAsync(SkippedInviteCountKey, (current + 1).ToString());
+        _logger.LogInformation("IncrementSkippedInviteCount: new count={Count}", current + 1);
+    }
+
+    public async Task ResetSkippedInviteCountAsync()
+    {
+        await SaveSettingAsync(SkippedInviteCountKey, "0");
+        _logger.LogInformation("ResetSkippedInviteCount: count reset to 0");
+    }
+
     /// <summary>
     /// Executes a write operation with serialized access to prevent "database is locked" errors.
     /// WAL mode allows concurrent reads, but writes must be serialized.
