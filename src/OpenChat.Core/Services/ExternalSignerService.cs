@@ -271,8 +271,8 @@ public class ExternalSignerService : IExternalSigner, IDisposable
             created_at = new DateTimeOffset(unsignedEvent.CreatedAt).ToUnixTimeSeconds()
         });
 
-        // sign_event requires user approval on the signer app — use longer timeout
-        var response = await SendRequestAsync("sign_event", new[] { eventJson }, TimeSpan.FromMinutes(3));
+        // sign_event requires user approval on the signer app — 60 s is enough to pull out your phone
+        var response = await SendRequestAsync("sign_event", new[] { eventJson }, TimeSpan.FromSeconds(60));
         return response;
     }
 

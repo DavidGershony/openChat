@@ -860,6 +860,9 @@ public class ChatViewModel : ViewModelBase
         if (ChatId == null || string.IsNullOrWhiteSpace(MessageText)) return;
 
         IsSending = true;
+        // For external-signer users (Amber/NIP-46), show a hint so they know to check their phone
+        if (string.IsNullOrEmpty(_currentUserPrivateKeyHex))
+            UploadStatus = "Waiting for Amber approval…";
 
         try
         {
@@ -882,6 +885,7 @@ public class ChatViewModel : ViewModelBase
         finally
         {
             IsSending = false;
+            UploadStatus = null;
         }
     }
 
