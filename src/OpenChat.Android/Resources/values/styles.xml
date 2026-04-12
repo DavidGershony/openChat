@@ -125,23 +125,6 @@
         <item name="android:windowBackground">#FF0B1215</item>
     </style>
 
-    <!-- Solarized Dark -->
-    <style name="AppTheme.SolarizedDark" parent="Theme.Material3.Dark.NoActionBar">
-        <item name="colorPrimary">#FF268BD2</item>
-        <item name="colorPrimaryVariant">#FF2176B8</item>
-        <item name="colorOnPrimary">#FFFFFFFF</item>
-        <item name="colorSecondary">#FF2AA198</item>
-        <item name="colorOnSecondary">#FFFFFFFF</item>
-        <item name="colorSurface">#FF073642</item>
-        <item name="colorOnSurface">#FF93A1A1</item>
-        <item name="colorSurfaceVariant">#FF0D3F4C</item>
-        <item name="colorOnSurfaceVariant">#FF839496</item>
-        <item name="android:colorBackground">#FF002B36</item>
-        <item name="android:statusBarColor">#FF002B36</item>
-        <item name="android:navigationBarColor">#FF002B36</item>
-        <item name="android:windowBackground">#FF002B36</item>
-    </style>
-
     <!-- AMOLED Black -->
     <style name="AppTheme.AmoledBlack" parent="Theme.Material3.Dark.NoActionBar">
         <item name="colorPrimary">#FF5B9CF6</item>

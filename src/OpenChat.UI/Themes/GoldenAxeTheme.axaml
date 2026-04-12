@@ -27,11 +27,11 @@
     <Color x:Key="TextSecondary">#D4A843</Color>
     <Color x:Key="TextMuted">#B08C3E</Color>
 
-    <!-- Message Bubble Colors -->
-    <Color x:Key="BubbleSent">#CC7000</Color>
+    <!-- Message Bubble Colors — dark bg with gold border, not solid fill -->
+    <Color x:Key="BubbleSent">#1A0F25</Color>
     <Color x:Key="BubbleReceived">#2D1B3D</Color>
-    <Color x:Key="BubbleSentText">#FFFFFF</Color>
-    <Color x:Key="BubbleReceivedText">#FFB347</Color>
+    <Color x:Key="BubbleSentText">#FFD080</Color>
+    <Color x:Key="BubbleReceivedText">#FFD080</Color>
 
     <!-- Status Colors - Arcade Style -->
     <Color x:Key="StatusOnline">#00CED1</Color>
@@ -76,12 +76,12 @@
     <SolidColorBrush x:Key="StatusWarningBrush" Color="{StaticResource StatusWarning}" />
     <SolidColorBrush x:Key="StatusOfflineBrush" Color="{StaticResource StatusOffline}" />
 
-    <!-- Sent bubble border (transparent = no border in this theme) -->
-    <SolidColorBrush x:Key="BubbleSentBorderBrush" Color="Transparent" />
+    <!-- Sent bubble border — gold border on dark bg -->
+    <SolidColorBrush x:Key="BubbleSentBorderBrush" Color="{StaticResource NostrPurple}" />
 
-    <!-- Selected item (solid fill in this theme, no separate border) -->
-    <SolidColorBrush x:Key="SelectedItemBgBrush" Color="{StaticResource NostrPurpleDark}" />
-    <SolidColorBrush x:Key="SelectedItemBorderBrush" Color="Transparent" />
+    <!-- Selected item — dark bg with gold border -->
+    <SolidColorBrush x:Key="SelectedItemBgBrush" Color="{StaticResource BackgroundMedium}" />
+    <SolidColorBrush x:Key="SelectedItemBorderBrush" Color="{StaticResource NostrPurple}" />
 
     <!-- Semi-transparent themed backgrounds -->
     <SolidColorBrush x:Key="ErrorBgBrush" Color="#3DFF4500" />
