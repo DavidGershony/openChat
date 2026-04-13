@@ -1,4 +1,5 @@
 using Android.App;
+using Android.Content.PM;
 using Android.OS;
 using Android.Views;
 using AndroidX.AppCompat.App;
@@ -16,7 +17,8 @@ using System.Reactive.Linq;
 
 namespace OpenChat.Android;
 
-[Activity(Label = "OpenChat", MainLauncher = true, Theme = "@style/AppTheme")]
+[Activity(Label = "OpenChat", MainLauncher = true, Theme = "@style/AppTheme",
+    ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.ScreenLayout | ConfigChanges.KeyboardHidden)]
 public class MainActivity : AppCompatActivity, IActivatableView
 {
     // Static so services survive Activity.Recreate() (theme change)
