@@ -29,6 +29,12 @@
     <ProjectReference Include="..\..\src\OpenChat.UI\OpenChat.UI.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="xunit.runner.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
   <!-- Copy native DLL to test output so integration tests exercise the real native lib -->
   <ItemGroup Condition="Exists('..\..\src\OpenChat.Desktop\openchat_native.dll')">
     <None Include="..\..\src\OpenChat.Desktop\openchat_native.dll">

@@ -1,3 +1,4 @@
+using System.Reactive;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using Avalonia.Controls;
@@ -577,6 +578,7 @@ public class HeadlessIntegrationTests
         mockMessage.Setup(m => m.ChatUpdates).Returns(Observable.Empty<Chat>());
         mockMessage.Setup(m => m.NewInvites).Returns(Observable.Empty<PendingInvite>());
         mockMessage.Setup(m => m.DecryptionErrors).Returns(Observable.Empty<MlsDecryptionError>());
+        mockMessage.Setup(m => m.SkippedInvites).Returns(Observable.Empty<Unit>());
         mockMessage.Setup(m => m.ReactionUpdates).Returns(Observable.Empty<(string, string, string)>());
         mockMessage.Setup(m => m.InitializeAsync()).Returns(Task.CompletedTask);
         mockMessage.Setup(m => m.GetChatsAsync()).ReturnsAsync(Enumerable.Empty<Chat>());

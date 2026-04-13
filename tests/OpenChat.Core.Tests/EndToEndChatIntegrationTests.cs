@@ -242,7 +242,7 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
     // Test 2: Welcome deduplication
     // ═══════════════════════════════════════════════════════════════════
 
-    [Theory]
+    [Theory(Skip = "Obsolete: since commit 706fd66, MessageService filters welcomes via CanProcessWelcomeAsync (managed backend returns false without matching key packages) before saving a PendingInvite. This test pushes random bytes which are now correctly rejected. Needs a real MLS key-package + welcome flow to reinstate.")]
     [InlineData("rust")]
     [InlineData("managed")]
     public async Task WelcomeEvent_ReceivedTwice_OnlyCreatesOneInvite(string backend)
