@@ -19,7 +19,7 @@
             android:layout_height="48dp"
             android:gravity="center"
             android:textSize="20sp"
-            android:textColor="@color/on_primary"
+            android:textColor="?attr/colorPrimary"
             android:background="@drawable/avatar_background"
             android:text="?" />
 

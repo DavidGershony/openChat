@@ -6,7 +6,6 @@ using AndroidX.RecyclerView.Widget;
 using Google.Android.Material.AppBar;
 using Google.Android.Material.Button;
 using Google.Android.Material.Dialog;
-using Google.Android.Material.FloatingActionButton;
 using Google.Android.Material.Snackbar;
 using Google.Android.Material.Tabs;
 using Google.Android.Material.TextField;
@@ -43,11 +42,9 @@ public class ChatListFragment : Fragment
         base.OnViewCreated(view, savedInstanceState);
 
         var toolbar = view.FindViewById<MaterialToolbar>(Resource.Id.toolbar)!;
-        var searchInput = view.FindViewById<TextInputEditText>(Resource.Id.search_input)!;
         var recyclerView = view.FindViewById<RecyclerView>(Resource.Id.chat_list_recycler)!;
         var loadingIndicator = view.FindViewById<ProgressBar>(Resource.Id.loading_indicator)!;
         var emptyState = view.FindViewById<LinearLayout>(Resource.Id.empty_state)!;
-        var fab = view.FindViewById<FloatingActionButton>(Resource.Id.fab_new_chat)!;
         var chatTabs = view.FindViewById<TabLayout>(Resource.Id.chat_tabs)!;
 
         // Set up tab toggle for Chats / Archived
@@ -92,10 +89,28 @@ public class ChatListFragment : Fragment
             .Subscribe(text => toolbar.Subtitle = text)
             .DisposeWith(_disposables);
 
+        // Tint the toolbar action icon to match the theme's on-surface color
+        var newChatItem = toolbar.Menu?.FindItem(Resource.Id.action_new_chat);
+        if (newChatItem?.Icon != null)
+        {
+            var tinted = AndroidX.Core.Graphics.Drawable.DrawableCompat.Wrap(newChatItem.Icon).Mutate();
+            var tv = new global::Android.Util.TypedValue();
+            if (Context?.Theme?.ResolveAttribute(Resource.Attribute.colorOnSurface, tv, true) == true)
+            {
+                AndroidX.Core.Graphics.Drawable.DrawableCompat.SetTint(tinted, tv.Data);
+            }
+            newChatItem.SetIcon(tinted);
+        }
+
         // Set up toolbar menu (use Java listener for reliable click handling)
         toolbar.SetOnMenuItemClickListener(new ActionMenuItemClickListener(item =>
         {
-            if (item?.ItemId == Resource.Id.action_reconnect_all)
+            if (item?.ItemId == Resource.Id.action_new_chat)
+            {
+                ShowNewOptionsBottomSheet();
+                return true;
+            }
+            else if (item?.ItemId == Resource.Id.action_reconnect_all)
             {
                 _mainViewModel.ReconnectCommand.Execute().Subscribe();
                 return true;
@@ -150,17 +165,21 @@ public class ChatListFragment : Fragment
             ViewModel.RescanInvitesCommand.Execute().Subscribe().DisposeWith(_disposables);
         };
 
-        // FAB - show bottom sheet with options
-        fab.Click += (s, e) =>
+        // Search - hooked to the toolbar SearchView action item
+        var searchItem = toolbar.Menu?.FindItem(Resource.Id.action_search);
+        if (searchItem?.ActionView is AndroidX.AppCompat.Widget.SearchView searchView)
         {
-            ShowNewOptionsBottomSheet();
-        };
-
-        // Search text binding
-        searchInput.TextChanged += (s, e) =>
-        {
-            ViewModel.SearchText = searchInput.Text ?? string.Empty;
-        };
+            searchView.QueryHint = "Search chats...";
+            searchView.QueryTextChange += (s, e) =>
+            {
+                ViewModel.SearchText = e.NewText ?? string.Empty;
+                e.Handled = true;
+            };
+            searchItem.SetOnActionExpandListener(new SearchExpandListener(() =>
+            {
+                ViewModel.SearchText = string.Empty;
+            }));
+        }
 
         // Observe chats collection and switch based on active tab
         void RefreshChatList()
@@ -311,6 +330,8 @@ public class ChatListFragment : Fragment
                 ViewModel.ArchiveChatCommand.Execute(chatItem).Subscribe().DisposeWith(_disposables)));
         }
 
+        options.Add(("Rename", () => ShowRenameDialog(chatItem)));
+
         options.Add((chatItem.IsMuted ? "Unmute" : "Mute", () =>
             ViewModel.ToggleMuteCommand.Execute(chatItem).Subscribe().DisposeWith(_disposables)));
 
@@ -325,6 +346,33 @@ public class ChatListFragment : Fragment
             {
                 options[e.Which].action();
             })!
+            .Show();
+    }
+
+    private void ShowRenameDialog(ChatItemViewModel chatItem)
+    {
+        if (Context == null) return;
+
+        var input = new EditText(Context) { Text = chatItem.Name };
+        input.SetSelection(input.Text?.Length ?? 0);
+
+        var container = new FrameLayout(Context);
+        var padding = (int)(16 * Context.Resources!.DisplayMetrics!.Density);
+        container.SetPadding(padding, padding / 2, padding, 0);
+        container.AddView(input);
+
+        new MaterialAlertDialogBuilder(Context)
+            .SetTitle("Rename Chat")!
+            .SetView(container)!
+            .SetPositiveButton("Save", (s, e) =>
+            {
+                var newName = input.Text?.Trim();
+                if (!string.IsNullOrEmpty(newName) && newName != chatItem.Name)
+                {
+                    _ = ViewModel.RenameChatAsync(chatItem, newName);
+                }
+            })!
+            .SetNegativeButton("Cancel", (s, e) => { })!
             .Show();
     }
 

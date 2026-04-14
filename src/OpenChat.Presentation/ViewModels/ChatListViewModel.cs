@@ -99,6 +99,11 @@ public class ChatListViewModel : ViewModelBase
     [Reactive] public bool ShowResetGroupDialog { get; set; }
     [Reactive] public ChatItemViewModel? GroupToReset { get; set; }
 
+    // Rename Chat Dialog
+    [Reactive] public bool ShowRenameChatDialog { get; set; }
+    [Reactive] public ChatItemViewModel? ChatToRename { get; set; }
+    [Reactive] public string RenameChatInput { get; set; } = string.Empty;
+
     public ReactiveCommand<Unit, Unit> NewChatCommand { get; }
     public ReactiveCommand<Unit, Unit> NewGroupCommand { get; }
     public ReactiveCommand<Unit, Unit> JoinGroupCommand { get; }
@@ -113,6 +118,9 @@ public class ChatListViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> ConfirmDeleteChatCommand { get; }
     public ReactiveCommand<Unit, Unit> CancelDeleteChatCommand { get; }
     public ReactiveCommand<ChatItemViewModel, Unit> ResetGroupCommand { get; }
+    public ReactiveCommand<ChatItemViewModel, Unit> RenameChatCommand { get; }
+    public ReactiveCommand<Unit, Unit> ConfirmRenameChatCommand { get; }
+    public ReactiveCommand<Unit, Unit> CancelRenameChatCommand { get; }
     public ReactiveCommand<ChatItemViewModel, Unit> ArchiveChatCommand { get; }
     public ReactiveCommand<ChatItemViewModel, Unit> UnarchiveChatCommand { get; }
     public ReactiveCommand<ChatItemViewModel, Unit> ToggleMuteCommand { get; }
@@ -265,6 +273,34 @@ public class ChatListViewModel : ViewModelBase
         {
             ShowResetGroupDialog = false;
             GroupToReset = null;
+        });
+
+        RenameChatCommand = ReactiveCommand.Create<ChatItemViewModel>(chat =>
+        {
+            _logger.LogInformation("Opening rename dialog for chat: {ChatId} - {ChatName}", chat.Id, chat.Name);
+            ChatToRename = chat;
+            RenameChatInput = chat.Name;
+            ShowRenameChatDialog = true;
+        });
+
+        ConfirmRenameChatCommand = ReactiveCommand.CreateFromTask(async () =>
+        {
+            var chat = ChatToRename;
+            var newName = RenameChatInput?.Trim() ?? string.Empty;
+            if (chat != null && !string.IsNullOrEmpty(newName) && newName != chat.Name)
+            {
+                await RenameChatAsync(chat, newName);
+            }
+            ShowRenameChatDialog = false;
+            ChatToRename = null;
+            RenameChatInput = string.Empty;
+        });
+
+        CancelRenameChatCommand = ReactiveCommand.Create(() =>
+        {
+            ShowRenameChatDialog = false;
+            ChatToRename = null;
+            RenameChatInput = string.Empty;
         });
 
         ArchiveChatCommand = ReactiveCommand.CreateFromTask<ChatItemViewModel>(async chat =>
@@ -456,18 +492,11 @@ public class ChatListViewModel : ViewModelBase
                 var chatItem = new ChatItemViewModel(chat);
                 chatItem.NeedsRepair = !isParticipant;
 
-                // Resolve avatar for DM/bot chats from the other participant's profile
-                if (chat.Type != ChatType.Group && _currentUserPubKeyHex != null)
+                // Resolve avatar: other participant (DM/bot), or group image / creator / admin (group)
+                if (_currentUserPubKeyHex != null)
                 {
-                    var otherPubKey = chat.ParticipantPublicKeys.FirstOrDefault(p => !string.Equals(p, _currentUserPubKeyHex, StringComparison.OrdinalIgnoreCase));
-                    if (otherPubKey != null)
-                    {
-                        var otherUser = await _storageService.GetUserByPublicKeyAsync(otherPubKey);
-                        if (otherUser?.LocalAvatarPath != null && File.Exists(otherUser.LocalAvatarPath))
-                        {
-                            chatItem.LocalAvatarPath = otherUser.LocalAvatarPath;
-                        }
-                    }
+                    var resolved = await ResolveCachedAvatarAsync(chat);
+                    if (resolved != null) chatItem.LocalAvatarPath = resolved;
                 }
 
                 Chats.Add(chatItem);
@@ -502,14 +531,92 @@ public class ChatListViewModel : ViewModelBase
         }
     }
 
+    private static string AvatarCacheDir => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "OpenChat", "avatars");
+
+    private static string? FindGroupAvatarCachePath(string chatId)
+    {
+        if (!Directory.Exists(AvatarCacheDir)) return null;
+        var prefix = $"group_{chatId[..Math.Min(16, chatId.Length)]}.";
+        return Directory.EnumerateFiles(AvatarCacheDir)
+            .FirstOrDefault(f => Path.GetFileName(f).StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private async Task<string?> ResolveCachedAvatarAsync(Chat chat)
+    {
+        if (chat.Type != ChatType.Group)
+        {
+            var otherPubKey = chat.ParticipantPublicKeys.FirstOrDefault(
+                p => !string.Equals(p, _currentUserPubKeyHex, StringComparison.OrdinalIgnoreCase));
+            if (otherPubKey == null) return null;
+            var otherUser = await _storageService.GetUserByPublicKeyAsync(otherPubKey);
+            return otherUser?.LocalAvatarPath is { } p && File.Exists(p) ? p : null;
+        }
+
+        var groupPath = FindGroupAvatarCachePath(chat.Id);
+        if (groupPath != null) return groupPath;
+
+        var candidates = new List<string>();
+        if (!string.IsNullOrEmpty(chat.CreatorPublicKey)) candidates.Add(chat.CreatorPublicKey);
+        foreach (var a in chat.AdminPublicKeys)
+            if (!candidates.Contains(a, StringComparer.OrdinalIgnoreCase)) candidates.Add(a);
+
+        foreach (var key in candidates)
+        {
+            var user = await _storageService.GetUserByPublicKeyAsync(key);
+            if (user?.LocalAvatarPath is { } p && File.Exists(p)) return p;
+        }
+        return null;
+    }
+
+    private async Task<string?> DownloadAvatarToCacheAsync(string imageUrl, string cacheKey)
+    {
+        if (!Uri.TryCreate(imageUrl, UriKind.Absolute, out var avatarUri) ||
+            (avatarUri.Scheme != "https" && avatarUri.Scheme != "http"))
+            return null;
+        try
+        {
+            var addresses = await System.Net.Dns.GetHostAddressesAsync(avatarUri.Host);
+            foreach (var addr in addresses)
+            {
+                if (System.Net.IPAddress.IsLoopback(addr)) return null;
+                var b = addr.GetAddressBytes();
+                if (addr.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork &&
+                    (b[0] == 10 || (b[0] == 172 && b[1] >= 16 && b[1] <= 31) ||
+                     (b[0] == 192 && b[1] == 168) || b[0] == 127 ||
+                     (b[0] == 169 && b[1] == 254) || b[0] == 0))
+                    return null;
+            }
+        }
+        catch { return null; }
+
+        var imageBytes = await _httpClient.GetByteArrayAsync(imageUrl);
+        if (imageBytes.Length > 2 * 1024 * 1024)
+        {
+            _logger.LogWarning("Avatar too large for {Key}: {Size} bytes", cacheKey, imageBytes.Length);
+            return null;
+        }
+
+        var ext = ".jpg";
+        var urlPath = avatarUri.AbsolutePath;
+        if (urlPath.EndsWith(".png", StringComparison.OrdinalIgnoreCase)) ext = ".png";
+        else if (urlPath.EndsWith(".webp", StringComparison.OrdinalIgnoreCase)) ext = ".webp";
+        else if (urlPath.EndsWith(".gif", StringComparison.OrdinalIgnoreCase)) ext = ".gif";
+
+        Directory.CreateDirectory(AvatarCacheDir);
+        var localPath = Path.Combine(AvatarCacheDir, $"{cacheKey}{ext}");
+        await File.WriteAllBytesAsync(localPath, imageBytes);
+        return localPath;
+    }
+
     private async Task RefreshAvatarsAsync()
     {
         if (_nostrService == null || _currentUserPubKeyHex == null) return;
 
-        var avatarCacheDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "OpenChat", "avatars");
-        Directory.CreateDirectory(avatarCacheDir);
+        Directory.CreateDirectory(AvatarCacheDir);
+
+        await RefreshGroupAvatarsAsync();
 
         // Collect DM/bot chats that need avatar refresh
         var chatsToRefresh = Chats
@@ -536,46 +643,8 @@ public class ChatListViewModel : ViewModelBase
                 var metadata = await _nostrService.FetchUserMetadataAsync(otherPubKey);
                 if (string.IsNullOrEmpty(metadata?.Picture)) continue;
 
-                // Validate avatar URL to prevent SSRF
-                if (!Uri.TryCreate(metadata.Picture, UriKind.Absolute, out var avatarUri) ||
-                    (avatarUri.Scheme != "https" && avatarUri.Scheme != "http"))
-                    continue;
-                try
-                {
-                    var addresses = await System.Net.Dns.GetHostAddressesAsync(avatarUri.Host);
-                    var blocked = false;
-                    foreach (var addr in addresses)
-                    {
-                        if (System.Net.IPAddress.IsLoopback(addr)) { blocked = true; break; }
-                        var b = addr.GetAddressBytes();
-                        if (addr.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork &&
-                            (b[0] == 10 || (b[0] == 172 && b[1] >= 16 && b[1] <= 31) ||
-                             (b[0] == 192 && b[1] == 168) || b[0] == 127 ||
-                             (b[0] == 169 && b[1] == 254) || b[0] == 0))
-                        { blocked = true; break; }
-                    }
-                    if (blocked) continue;
-                }
-                catch { continue; }
-
-                // Download the avatar image (max 2 MB)
-                var imageBytes = await _httpClient.GetByteArrayAsync(metadata.Picture);
-                if (imageBytes.Length > 2 * 1024 * 1024)
-                {
-                    _logger.LogWarning("Avatar too large for {PubKey}: {Size} bytes", otherPubKey[..16], imageBytes.Length);
-                    continue;
-                }
-
-                // Determine file extension from URL or default to .jpg
-                var ext = ".jpg";
-                var uri = new Uri(metadata.Picture);
-                var urlPath = uri.AbsolutePath;
-                if (urlPath.EndsWith(".png", StringComparison.OrdinalIgnoreCase)) ext = ".png";
-                else if (urlPath.EndsWith(".webp", StringComparison.OrdinalIgnoreCase)) ext = ".webp";
-                else if (urlPath.EndsWith(".gif", StringComparison.OrdinalIgnoreCase)) ext = ".gif";
-
-                var localPath = Path.Combine(avatarCacheDir, $"{otherPubKey[..16]}{ext}");
-                await File.WriteAllBytesAsync(localPath, imageBytes);
+                var localPath = await DownloadAvatarToCacheAsync(metadata.Picture, otherPubKey[..16]);
+                if (localPath == null) continue;
 
                 // Update user record in DB
                 if (existingUser != null)
@@ -595,6 +664,73 @@ public class ChatListViewModel : ViewModelBase
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Failed to refresh avatar for chat {ChatId}", chatItem.Id[..Math.Min(8, chatItem.Id.Length)]);
+            }
+        }
+    }
+
+    private async Task RefreshGroupAvatarsAsync()
+    {
+        if (_nostrService == null) return;
+
+        var groupsToRefresh = Chats
+            .Where(c => c.IsGroup && string.IsNullOrEmpty(c.LocalAvatarPath))
+            .ToList();
+
+        foreach (var chatItem in groupsToRefresh)
+        {
+            try
+            {
+                var chat = chatItem.Chat;
+                var cacheKey = $"group_{chat.Id[..Math.Min(16, chat.Id.Length)]}";
+
+                // 1. Group image set on the chat itself
+                if (!string.IsNullOrEmpty(chat.AvatarUrl))
+                {
+                    var localPath = await DownloadAvatarToCacheAsync(chat.AvatarUrl, cacheKey);
+                    if (localPath != null)
+                    {
+                        RxApp.MainThreadScheduler.Schedule(() => chatItem.LocalAvatarPath = localPath);
+                        continue;
+                    }
+                }
+
+                // 2. Fall back to creator / admin profile picture
+                var candidates = new List<string>();
+                if (!string.IsNullOrEmpty(chat.CreatorPublicKey)) candidates.Add(chat.CreatorPublicKey);
+                foreach (var a in chat.AdminPublicKeys)
+                    if (!candidates.Contains(a, StringComparer.OrdinalIgnoreCase)) candidates.Add(a);
+
+                foreach (var pubKey in candidates)
+                {
+                    var user = await _storageService.GetUserByPublicKeyAsync(pubKey);
+                    if (user?.LocalAvatarPath is { } cached && File.Exists(cached))
+                    {
+                        RxApp.MainThreadScheduler.Schedule(() => chatItem.LocalAvatarPath = cached);
+                        break;
+                    }
+
+                    var metadata = await _nostrService.FetchUserMetadataAsync(pubKey);
+                    if (string.IsNullOrEmpty(metadata?.Picture)) continue;
+
+                    var localPath = await DownloadAvatarToCacheAsync(metadata.Picture, pubKey[..16]);
+                    if (localPath == null) continue;
+
+                    if (user != null)
+                    {
+                        user.AvatarUrl = metadata.Picture;
+                        user.LocalAvatarPath = localPath;
+                        user.DisplayName = metadata.GetDisplayName();
+                        user.LastUpdatedAt = DateTime.UtcNow;
+                        await _storageService.SaveUserAsync(user);
+                    }
+
+                    RxApp.MainThreadScheduler.Schedule(() => chatItem.LocalAvatarPath = localPath);
+                    break;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to refresh group avatar for chat {ChatId}", chatItem.Id[..Math.Min(8, chatItem.Id.Length)]);
             }
         }
     }
@@ -1479,6 +1615,21 @@ public class ChatListViewModel : ViewModelBase
         {
             _logger.LogError(ex, "Failed to create bot chat");
             AddBotError = $"Failed: {ex.Message}";
+        }
+    }
+
+    public async Task RenameChatAsync(ChatItemViewModel item, string newName)
+    {
+        try
+        {
+            item.Chat.Name = newName;
+            await _storageService.SaveChatAsync(item.Chat);
+            item.Name = newName;
+            _logger.LogInformation("Renamed chat {ChatId} to '{Name}'", item.Id, newName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to rename chat {ChatId}", item.Id);
         }
     }
 

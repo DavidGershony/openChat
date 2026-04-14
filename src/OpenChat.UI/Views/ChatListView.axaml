@@ -3,9 +3,13 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:OpenChat.Presentation.ViewModels"
+             xmlns:converters="using:OpenChat.UI.Converters"
              mc:Ignorable="d" d:DesignWidth="320" d:DesignHeight="600"
              x:Class="OpenChat.UI.Views.ChatListView"
              x:DataType="vm:ChatListViewModel">
+    <UserControl.Resources>
+        <converters:FilePathToBitmapConverter x:Key="FilePathToBitmap" />
+    </UserControl.Resources>
 
     <Grid>
         <!-- Main Content -->
@@ -205,6 +209,14 @@
                                                   Width="16" Height="16" />
                                     </MenuItem.Icon>
                                 </MenuItem>
+                                <MenuItem Header="Rename"
+                                          Command="{Binding #ChatListBox.DataContext.RenameChatCommand}"
+                                          CommandParameter="{Binding}">
+                                    <MenuItem.Icon>
+                                        <PathIcon Data="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.9959.9959 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"
+                                                  Width="16" Height="16" />
+                                    </MenuItem.Icon>
+                                </MenuItem>
                                 <MenuItem Command="{Binding #ChatListBox.DataContext.ToggleMuteCommand}"
                                           CommandParameter="{Binding}">
                                     <MenuItem.Header>
@@ -240,19 +252,44 @@
                         </Grid.ContextMenu>
                         <!-- Avatar -->
                         <Border Grid.Column="0" Width="48" Height="48" CornerRadius="24"
-                                Background="{DynamicResource NostrPurpleBrush}" Margin="0,0,12,0">
+                                Background="Transparent"
+                                BorderBrush="{DynamicResource NostrPurpleBrush}" BorderThickness="2"
+                                Margin="0,0,12,0">
                             <Panel>
-                                <!-- Group: name initial -->
+                                <!-- Cached avatar image -->
+                                <Ellipse Width="44" Height="44"
+                                         IsVisible="{Binding LocalAvatarPath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                    <Ellipse.Fill>
+                                        <ImageBrush Source="{Binding LocalAvatarPath, Converter={StaticResource FilePathToBitmap}}"
+                                                    Stretch="UniformToFill" />
+                                    </Ellipse.Fill>
+                                </Ellipse>
+
+                                <!-- Name initial fallback (non-bot, no cached image) -->
                                 <TextBlock Text="{Binding Name[0]}"
-                                           FontSize="20" FontWeight="SemiBold" Foreground="White"
-                                           HorizontalAlignment="Center" VerticalAlignment="Center"
-                                           IsVisible="{Binding IsGroup}" />
+                                           FontSize="20" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource NostrPurpleBrush}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <TextBlock.IsVisible>
+                                        <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                            <Binding Path="!IsBot" />
+                                            <Binding Path="LocalAvatarPath" Converter="{x:Static StringConverters.IsNullOrEmpty}" />
+                                        </MultiBinding>
+                                    </TextBlock.IsVisible>
+                                </TextBlock>
 
                                 <!-- Bot / Linked device: plug/connector icon -->
                                 <PathIcon Data="M16,7V3H14V7H10V3H8V7C7,7 6,8 6,9V14.5L9.5,18V21H14.5V18L18,14.5V9C18,8 17,7 16,7Z"
-                                          Width="22" Height="22" Foreground="White"
-                                          HorizontalAlignment="Center" VerticalAlignment="Center"
-                                          IsVisible="{Binding IsBot}" />
+                                          Width="22" Height="22"
+                                          Foreground="{DynamicResource NostrPurpleBrush}"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <PathIcon.IsVisible>
+                                        <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                            <Binding Path="IsBot" />
+                                            <Binding Path="LocalAvatarPath" Converter="{x:Static StringConverters.IsNullOrEmpty}" />
+                                        </MultiBinding>
+                                    </PathIcon.IsVisible>
+                                </PathIcon>
 
                                 <!-- Group Icon Indicator -->
                                 <Border Width="18" Height="18" CornerRadius="9"
@@ -367,10 +404,23 @@
                             </Grid.ContextMenu>
                             <!-- Avatar -->
                             <Border Grid.Column="0" Width="48" Height="48" CornerRadius="24"
-                                    Background="{DynamicResource NostrPurpleBrush}" Margin="0,0,12,0">
-                                <TextBlock Text="{Binding Name[0]}"
-                                           FontSize="20" FontWeight="SemiBold" Foreground="White"
-                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    Background="Transparent"
+                                    BorderBrush="{DynamicResource NostrPurpleBrush}" BorderThickness="2"
+                                    Margin="0,0,12,0">
+                                <Panel>
+                                    <Ellipse Width="44" Height="44"
+                                             IsVisible="{Binding LocalAvatarPath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                        <Ellipse.Fill>
+                                            <ImageBrush Source="{Binding LocalAvatarPath, Converter={StaticResource FilePathToBitmap}}"
+                                                        Stretch="UniformToFill" />
+                                        </Ellipse.Fill>
+                                    </Ellipse>
+                                    <TextBlock Text="{Binding Name[0]}"
+                                               FontSize="20" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource NostrPurpleBrush}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                                               IsVisible="{Binding LocalAvatarPath, Converter={x:Static StringConverters.IsNullOrEmpty}}" />
+                                </Panel>
                             </Border>
                             <!-- Name + last message -->
                             <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
@@ -507,6 +557,41 @@
                                 Background="{DynamicResource ResetButtonBrush}"
                                 Content="Reset"
                                 Command="{Binding ConfirmResetGroupCommand}"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Border>
+        <!-- Rename Chat Dialog -->
+        <Border IsVisible="{Binding ShowRenameChatDialog}"
+                Background="#80000000"
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+            <Border Classes="card"
+                    Background="{DynamicResource BackgroundCardBrush}"
+                    CornerRadius="12"
+                    Padding="20"
+                    Margin="16"
+                    VerticalAlignment="Center"
+                    HorizontalAlignment="Stretch"
+                    MaxWidth="350">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Rename Chat"
+                               FontSize="20" FontWeight="Bold"
+                               HorizontalAlignment="Center" />
+                    <TextBox Text="{Binding RenameChatInput}"
+                             Watermark="Chat name" />
+                    <Grid ColumnDefinitions="*,12,*">
+                        <Button Grid.Column="0"
+                                Classes="secondary"
+                                Content="Cancel"
+                                Command="{Binding CancelRenameChatCommand}"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center" />
+                        <Button Grid.Column="2"
+                                Classes="primary"
+                                Content="Save"
+                                Command="{Binding ConfirmRenameChatCommand}"
                                 HorizontalAlignment="Stretch"
                                 HorizontalContentAlignment="Center" />
                     </Grid>
