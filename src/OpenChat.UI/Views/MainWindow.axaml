@@ -496,7 +496,7 @@
                                     Padding="4"
                                     MaxHeight="180">
                                 <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-                                    <ItemsControl ItemsSource="{Binding Following}">
+                                    <ItemsControl x:Name="FollowingList" ItemsSource="{Binding Following}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="vm:FollowContactViewModel">
                                                 <Button HorizontalAlignment="Stretch"
@@ -504,7 +504,7 @@
                                                         Background="Transparent" BorderThickness="0"
                                                         Padding="8,6"
                                                         IsVisible="{Binding IsVisible}"
-                                                        Command="{Binding $parent[ItemsControl].((vm:ChatListViewModel)DataContext).SelectFollowCommand}"
+                                                        Command="{Binding #FollowingList.DataContext.SelectFollowCommand}"
                                                         CommandParameter="{Binding}">
                                                     <Grid ColumnDefinitions="Auto,*">
                                                         <Border Grid.Column="0" Width="28" Height="28" CornerRadius="14"
