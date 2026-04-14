@@ -2476,6 +2476,136 @@ public class NostrService : INostrService, IDisposable
         return (relays, createdAt);
     }
 
+    public async Task<List<Follow>> FetchFollowingListAsync(string publicKeyHex)
+    {
+        _logger.LogInformation("Fetching NIP-02 following list for {PubKey}", publicKeyHex[..Math.Min(16, publicKeyHex.Length)] + "...");
+
+        // Use user's NIP-65 write relays if available, plus connected relays
+        var relaysToTry = new List<string>();
+        try
+        {
+            var userRelays = await FetchRelayListAsync(publicKeyHex);
+            var writeRelays = userRelays
+                .Where(r => r.Usage == RelayUsage.Write || r.Usage == RelayUsage.Both)
+                .Select(r => r.Url);
+            relaysToTry.AddRange(writeRelays);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "NIP-65 relay discovery failed for follow fetch");
+        }
+
+        if (_connectedRelays.Count > 0)
+            relaysToTry.AddRange(_connectedRelays.Keys);
+        else
+            relaysToTry.AddRange(NostrConstants.DefaultRelays);
+
+        relaysToTry = relaysToTry.Distinct().ToList();
+
+        var tasks = relaysToTry.Select(async relay =>
+        {
+            try { return await FetchFollowingFromRelayAsync(relay, publicKeyHex); }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to fetch follow list from {Relay}", relay);
+                return (new List<Follow>(), 0L);
+            }
+        });
+
+        var results = await Task.WhenAll(tasks);
+
+        // Pick the most recent kind 3 event
+        var follows = new List<Follow>();
+        long latest = 0;
+        foreach (var (found, createdAt) in results)
+        {
+            if (createdAt > latest)
+            {
+                follows = found;
+                latest = createdAt;
+            }
+        }
+
+        _logger.LogInformation("Following list: {Count} contacts", follows.Count);
+        return follows;
+    }
+
+    private async Task<(List<Follow> Follows, long CreatedAt)> FetchFollowingFromRelayAsync(string relayUrl, string publicKeyHex)
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var ws = new ClientWebSocket();
+        await ws.ConnectAsync(new Uri(relayUrl), cts.Token);
+
+        var subId = $"follows_{Guid.NewGuid():N}"[..16];
+        var filter = new { kinds = new[] { 3 }, authors = new[] { publicKeyHex }, limit = 1 };
+        var reqMessage = JsonSerializer.Serialize(new object[] { "REQ", subId, filter });
+        await ws.SendAsync(new ArraySegment<byte>(Encoding.UTF8.GetBytes(reqMessage)),
+            WebSocketMessageType.Text, true, cts.Token);
+
+        var buffer = new byte[32768];
+        var follows = new List<Follow>();
+        long createdAt = 0;
+
+        while (ws.State == WebSocketState.Open)
+        {
+            var msg = await ReceiveFullMessageAsync(ws, buffer, cts.Token);
+            if (msg == null || msg.Value.Type == WebSocketMessageType.Close) break;
+
+            try
+            {
+                using var doc = JsonDocument.Parse(msg.Value.Text);
+                var root = doc.RootElement;
+                if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() < 1) continue;
+
+                var messageType = root[0].GetString();
+                if (messageType == "EVENT" && root.GetArrayLength() >= 3)
+                {
+                    var eventData = root[2];
+                    if (eventData.GetProperty("kind").GetInt32() != 3) continue;
+
+                    createdAt = eventData.GetProperty("created_at").GetInt64();
+                    follows.Clear();
+                    foreach (var tag in eventData.GetProperty("tags").EnumerateArray())
+                    {
+                        if (tag.GetArrayLength() < 2) continue;
+                        if (tag[0].GetString() != "p") continue;
+                        var pub = tag[1].GetString();
+                        if (string.IsNullOrEmpty(pub) || pub.Length != 64) continue;
+
+                        string? relayHint = tag.GetArrayLength() >= 3 ? tag[2].GetString() : null;
+                        string? petname = tag.GetArrayLength() >= 4 ? tag[3].GetString() : null;
+                        follows.Add(new Follow
+                        {
+                            PublicKeyHex = pub.ToLowerInvariant(),
+                            RelayHint = string.IsNullOrWhiteSpace(relayHint) ? null : relayHint,
+                            Petname = string.IsNullOrWhiteSpace(petname) ? null : petname,
+                            AddedAt = DateTime.UtcNow
+                        });
+                    }
+                }
+                else if (messageType == "EOSE") break;
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "Failed to parse follow message from {Relay}", relayUrl);
+            }
+        }
+
+        try
+        {
+            var close = JsonSerializer.Serialize(new object[] { "CLOSE", subId });
+            if (ws.State == WebSocketState.Open)
+            {
+                await ws.SendAsync(new ArraySegment<byte>(Encoding.UTF8.GetBytes(close)),
+                    WebSocketMessageType.Text, true, cts.Token);
+                await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Done", cts.Token);
+            }
+        }
+        catch { }
+
+        return (follows, createdAt);
+    }
+
     public async Task<string> PublishMetadataAsync(string name, string? displayName, string? about, string? picture, string? privateKeyHex)
     {
         _logger.LogInformation("Publishing metadata (kind 0) for {Name}", name);

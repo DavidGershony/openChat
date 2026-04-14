@@ -52,6 +52,10 @@ public interface IStorageService
     Task DismissWelcomeEventAsync(string nostrEventId);
     Task<bool> IsWelcomeEventDismissedAsync(string nostrEventId);
 
+    // Following list (NIP-02 kind 3)
+    Task SaveFollowsAsync(string ownerPublicKey, IEnumerable<Follow> follows);
+    Task<List<Follow>> GetFollowsAsync(string ownerPublicKey);
+
     // User relay list (NIP-65)
     Task SaveUserRelayListAsync(string publicKeyHex, IEnumerable<RelayPreference> relays);
     Task<List<RelayPreference>> GetUserRelayListAsync(string publicKeyHex);

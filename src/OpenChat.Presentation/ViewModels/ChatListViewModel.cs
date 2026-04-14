@@ -7,6 +7,7 @@ using System.Reactive.Linq;
 using Microsoft.Extensions.Logging;
 using ReactiveUI;
 using ReactiveUI.Fody.Helpers;
+using OpenChat.Core.Crypto;
 using OpenChat.Core.Logging;
 using OpenChat.Core.Models;
 using OpenChat.Core.Services;
@@ -30,6 +31,8 @@ public class ChatListViewModel : ViewModelBase
     public ObservableCollection<ChatItemViewModel> Chats { get; } = new();
     public ObservableCollection<ChatItemViewModel> ArchivedChats { get; } = new();
     public ObservableCollection<PendingInviteItemViewModel> PendingInvites { get; } = new();
+    public ObservableCollection<FollowContactViewModel> Following { get; } = new();
+    [Reactive] public bool IsRefreshingFollowing { get; set; }
 
     [Reactive] public ChatItemViewModel? SelectedChat { get; set; }
     [Reactive] public int ArchivedChatsCount { get; set; }
@@ -119,6 +122,8 @@ public class ChatListViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> CancelDeleteChatCommand { get; }
     public ReactiveCommand<ChatItemViewModel, Unit> ResetGroupCommand { get; }
     public ReactiveCommand<ChatItemViewModel, Unit> RenameChatCommand { get; }
+    public ReactiveCommand<FollowContactViewModel, Unit> SelectFollowCommand { get; }
+    public ReactiveCommand<Unit, Unit> RefreshFollowingCommand { get; }
     public ReactiveCommand<Unit, Unit> ConfirmRenameChatCommand { get; }
     public ReactiveCommand<Unit, Unit> CancelRenameChatCommand { get; }
     public ReactiveCommand<ChatItemViewModel, Unit> ArchiveChatCommand { get; }
@@ -302,6 +307,41 @@ public class ChatListViewModel : ViewModelBase
             ChatToRename = null;
             RenameChatInput = string.Empty;
         });
+
+        SelectFollowCommand = ReactiveCommand.Create<FollowContactViewModel>(contact =>
+        {
+            NewChatPublicKey = contact.Npub;
+        });
+
+        // Filter Following list as the user types in the npub / search box
+        this.WhenAnyValue(x => x.NewChatPublicKey)
+            .Throttle(TimeSpan.FromMilliseconds(120))
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(q =>
+            {
+                var query = (q ?? string.Empty).Trim();
+                // If full npub typed, skip filtering (user already has a full key)
+                bool isFullNpub = query.StartsWith("npub1") && query.Length >= 60;
+                foreach (var f in Following)
+                {
+                    if (isFullNpub)
+                    {
+                        f.IsVisible = string.Equals(f.Npub, query, StringComparison.OrdinalIgnoreCase);
+                    }
+                    else if (string.IsNullOrEmpty(query))
+                    {
+                        f.IsVisible = true;
+                    }
+                    else
+                    {
+                        f.IsVisible = (f.DisplayName?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false)
+                            || (f.Petname?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false)
+                            || f.Npub.Contains(query, StringComparison.OrdinalIgnoreCase);
+                    }
+                }
+            });
+
+        RefreshFollowingCommand = ReactiveCommand.CreateFromTask(async () => await RefreshFollowingAsync());
 
         ArchiveChatCommand = ReactiveCommand.CreateFromTask<ChatItemViewModel>(async chat =>
         {
@@ -524,6 +564,10 @@ public class ChatListViewModel : ViewModelBase
 
             // Kick off background avatar refresh for DM chats missing profile images
             _ = Task.Run(() => RefreshAvatarsAsync());
+
+            // Load cached follows + refresh from relays in background
+            await LoadFollowingFromCacheAsync();
+            _ = Task.Run(() => RefreshFollowingAsync());
         }
         finally
         {
@@ -666,6 +710,149 @@ public class ChatListViewModel : ViewModelBase
                 _logger.LogWarning(ex, "Failed to refresh avatar for chat {ChatId}", chatItem.Id[..Math.Min(8, chatItem.Id.Length)]);
             }
         }
+    }
+
+    private async Task LoadFollowingFromCacheAsync()
+    {
+        if (_currentUserPubKeyHex == null) return;
+
+        try
+        {
+            var cached = await _storageService.GetFollowsAsync(_currentUserPubKeyHex);
+            Following.Clear();
+            foreach (var f in cached)
+            {
+                var user = await _storageService.GetUserByPublicKeyAsync(f.PublicKeyHex);
+                var npub = user?.Npub ?? Bech32.Encode("npub", Convert.FromHexString(f.PublicKeyHex));
+                Following.Add(new FollowContactViewModel(
+                    f.PublicKeyHex, npub, f.Petname,
+                    user?.DisplayName,
+                    user?.LocalAvatarPath is { } p && File.Exists(p) ? p : null));
+            }
+            _logger.LogInformation("Loaded {Count} cached follows", Following.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load cached follows");
+        }
+    }
+
+    private async Task RefreshFollowingAsync()
+    {
+        if (_nostrService == null || _currentUserPubKeyHex == null) return;
+
+        IsRefreshingFollowing = true;
+        try
+        {
+            var follows = await _nostrService.FetchFollowingListAsync(_currentUserPubKeyHex);
+            if (follows.Count == 0)
+            {
+                _logger.LogInformation("No remote follow list found");
+                return;
+            }
+
+            await _storageService.SaveFollowsAsync(_currentUserPubKeyHex, follows);
+
+            // Rebuild UI list preserving existing VMs where possible
+            RxApp.MainThreadScheduler.Schedule(() =>
+            {
+                var existing = Following.ToDictionary(f => f.PublicKeyHex, StringComparer.OrdinalIgnoreCase);
+                Following.Clear();
+                foreach (var f in follows)
+                {
+                    if (existing.TryGetValue(f.PublicKeyHex, out var vm))
+                    {
+                        vm.Petname = f.Petname ?? vm.Petname;
+                        Following.Add(vm);
+                    }
+                    else
+                    {
+                        var npub = Bech32.Encode("npub", Convert.FromHexString(f.PublicKeyHex));
+                        Following.Add(new FollowContactViewModel(f.PublicKeyHex, npub, f.Petname, null, null));
+                    }
+                }
+            });
+
+            _ = Task.Run(() => RefreshFollowingMetadataAsync(follows.Select(f => f.PublicKeyHex).ToList()));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to refresh following list");
+        }
+        finally
+        {
+            IsRefreshingFollowing = false;
+        }
+    }
+
+    private async Task RefreshFollowingMetadataAsync(List<string> pubKeys)
+    {
+        if (_nostrService == null) return;
+
+        Directory.CreateDirectory(AvatarCacheDir);
+
+        // Limit concurrency so we don't hammer relays
+        using var gate = new SemaphoreSlim(4);
+        var tasks = pubKeys.Select(async pubKey =>
+        {
+            await gate.WaitAsync();
+            try
+            {
+                var existing = await _storageService.GetUserByPublicKeyAsync(pubKey);
+                UserMetadata? metadata = null;
+
+                if (existing == null || string.IsNullOrEmpty(existing.DisplayName))
+                {
+                    metadata = await _nostrService.FetchUserMetadataAsync(pubKey);
+                }
+
+                string? localPath = existing?.LocalAvatarPath is { } p && File.Exists(p) ? p : null;
+                if (localPath == null && !string.IsNullOrEmpty(metadata?.Picture))
+                {
+                    localPath = await DownloadAvatarToCacheAsync(metadata.Picture, pubKey[..16]);
+                }
+
+                if (metadata != null || localPath != null)
+                {
+                    var user = existing ?? new User
+                    {
+                        Id = pubKey,
+                        PublicKeyHex = pubKey,
+                        Npub = Bech32.Encode("npub", Convert.FromHexString(pubKey)),
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    if (metadata != null)
+                    {
+                        user.DisplayName = metadata.GetDisplayName();
+                        user.AvatarUrl = metadata.Picture ?? user.AvatarUrl;
+                    }
+                    if (localPath != null) user.LocalAvatarPath = localPath;
+                    user.LastUpdatedAt = DateTime.UtcNow;
+                    await _storageService.SaveUserAsync(user);
+
+                    RxApp.MainThreadScheduler.Schedule(() =>
+                    {
+                        var vm = Following.FirstOrDefault(f => string.Equals(f.PublicKeyHex, pubKey, StringComparison.OrdinalIgnoreCase));
+                        if (vm != null)
+                        {
+                            if (metadata != null) vm.DisplayName = metadata.GetDisplayName();
+                            if (localPath != null) vm.LocalAvatarPath = localPath;
+                        }
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Metadata refresh failed for {Pub}", pubKey[..16]);
+            }
+            finally
+            {
+                gate.Release();
+            }
+        });
+
+        await Task.WhenAll(tasks);
+        _logger.LogInformation("Background metadata refresh complete for {Count} follows", pubKeys.Count);
     }
 
     private async Task RefreshGroupAvatarsAsync()
@@ -1969,6 +2156,41 @@ public class ChatItemViewModel : ViewModelBase
         IsMuted = chat.IsMuted;
         IsGroup = chat.Type == ChatType.Group;
         IsBot = chat.Type == ChatType.Bot;
+    }
+}
+
+public class FollowContactViewModel : ViewModelBase
+{
+    public string PublicKeyHex { get; }
+    public string Npub { get; }
+    [Reactive] public string? DisplayName { get; set; }
+    [Reactive] public string? Petname { get; set; }
+    [Reactive] public string? LocalAvatarPath { get; set; }
+    [Reactive] public bool IsVisible { get; set; } = true;
+
+    public string ShownName => !string.IsNullOrWhiteSpace(Petname) ? Petname!
+        : !string.IsNullOrWhiteSpace(DisplayName) ? DisplayName!
+        : $"{Npub[..12]}…";
+
+    public string Initial =>
+        !string.IsNullOrWhiteSpace(ShownName) && char.IsLetterOrDigit(ShownName[0])
+            ? ShownName[..1].ToUpper()
+            : "?";
+
+    public FollowContactViewModel(string publicKeyHex, string npub, string? petname, string? displayName, string? localAvatarPath)
+    {
+        PublicKeyHex = publicKeyHex;
+        Npub = npub;
+        Petname = petname;
+        DisplayName = displayName;
+        LocalAvatarPath = localAvatarPath;
+
+        this.WhenAnyValue(x => x.DisplayName, x => x.Petname)
+            .Subscribe(_ =>
+            {
+                this.RaisePropertyChanged(nameof(ShownName));
+                this.RaisePropertyChanged(nameof(Initial));
+            });
     }
 }
 

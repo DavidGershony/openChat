@@ -4,6 +4,8 @@ using Android.Widget;
 using Google.Android.Material.AppBar;
 using Google.Android.Material.Button;
 using Google.Android.Material.TextField;
+using AndroidX.RecyclerView.Widget;
+using OpenChat.Android.Adapters;
 using OpenChat.Presentation.ViewModels;
 using ReactiveUI;
 using System.Reactive;
@@ -145,6 +147,35 @@ public class NewChatFragment : Fragment
             {
                 statusText.Text = loading ? "Looking up KeyPackage..." : statusText.Text;
             })
+            .DisposeWith(_disposables);
+
+        // Contacts picker: populated from NIP-02 follow list cached in VM
+        var contactsHeader = view.FindViewById<TextView>(Resource.Id.contacts_header)!;
+        var followingList = view.FindViewById<RecyclerView>(Resource.Id.following_list)!;
+        var contactAdapter = new FollowContactAdapter();
+        followingList.SetLayoutManager(new LinearLayoutManager(Context));
+        followingList.SetAdapter(contactAdapter);
+        contactAdapter.ItemClick += (s, contact) =>
+        {
+            pubKeyInput.Text = contact.Npub;
+            pubKeyInput.SetSelection(contact.Npub.Length);
+        };
+
+        void RefreshContactList()
+        {
+            var visible = ViewModel.Following.Where(f => f.IsVisible).ToList();
+            contactAdapter.UpdateItems(visible);
+            var hasAny = ViewModel.Following.Count > 0;
+            contactsHeader.Visibility = hasAny ? ViewStates.Visible : ViewStates.Gone;
+            followingList.Visibility = hasAny ? ViewStates.Visible : ViewStates.Gone;
+        }
+
+        RefreshContactList();
+        ViewModel.Following.CollectionChanged += (s, e) =>
+            Activity?.RunOnUiThread(RefreshContactList);
+        ViewModel.WhenAnyValue(x => x.NewChatPublicKey)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(_ => RefreshContactList())
             .DisposeWith(_disposables);
 
         // Set flag before subscribing to avoid immediate dismiss

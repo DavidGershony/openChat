@@ -24,6 +24,26 @@
             android:orientation="vertical"
             android:padding="20dp">
 
+            <TextView
+                android:id="@+id/contacts_header"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Contacts"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:layout_marginBottom="4dp"
+                android:visibility="gone" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/following_list"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:maxHeight="240dp"
+                android:nestedScrollingEnabled="false"
+                android:layout_marginBottom="12dp"
+                android:visibility="gone" />
+
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/new_chat_pubkey_layout"
                 android:layout_width="match_parent"

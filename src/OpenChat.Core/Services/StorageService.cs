@@ -189,6 +189,15 @@ public class StorageService : IStorageService
                 PRIMARY KEY (PublicKeyHex, RelayUrl)
             );
 
+            CREATE TABLE IF NOT EXISTS Follows (
+                OwnerPublicKey TEXT NOT NULL,
+                FollowedPublicKey TEXT NOT NULL,
+                Petname TEXT,
+                RelayHint TEXT,
+                AddedAt TEXT NOT NULL,
+                PRIMARY KEY (OwnerPublicKey, FollowedPublicKey)
+            );
+
             CREATE TABLE IF NOT EXISTS AppSettings (
                 Key TEXT PRIMARY KEY,
                 Value TEXT NOT NULL
@@ -1050,6 +1059,58 @@ public class StorageService : IStorageService
         }
 
         return relays;
+    }
+
+    public async Task SaveFollowsAsync(string ownerPublicKey, IEnumerable<Follow> follows) => await ExecuteWithWriteLockAsync(async () =>
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        var owner = ownerPublicKey.ToLowerInvariant();
+
+        var delete = connection.CreateCommand();
+        delete.CommandText = "DELETE FROM Follows WHERE OwnerPublicKey = @owner";
+        delete.Parameters.AddWithValue("@owner", owner);
+        await delete.ExecuteNonQueryAsync();
+
+        foreach (var f in follows)
+        {
+            if (string.IsNullOrEmpty(f.PublicKeyHex)) continue;
+            var insert = connection.CreateCommand();
+            insert.CommandText = @"INSERT OR REPLACE INTO Follows
+                (OwnerPublicKey, FollowedPublicKey, Petname, RelayHint, AddedAt)
+                VALUES (@owner, @followed, @petname, @relay, @addedAt)";
+            insert.Parameters.AddWithValue("@owner", owner);
+            insert.Parameters.AddWithValue("@followed", f.PublicKeyHex.ToLowerInvariant());
+            insert.Parameters.AddWithValue("@petname", (object?)f.Petname ?? DBNull.Value);
+            insert.Parameters.AddWithValue("@relay", (object?)f.RelayHint ?? DBNull.Value);
+            insert.Parameters.AddWithValue("@addedAt", f.AddedAt.ToString("O"));
+            await insert.ExecuteNonQueryAsync();
+        }
+    });
+
+    public async Task<List<Follow>> GetFollowsAsync(string ownerPublicKey)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        var command = connection.CreateCommand();
+        command.CommandText = "SELECT FollowedPublicKey, Petname, RelayHint, AddedAt FROM Follows WHERE OwnerPublicKey = @owner";
+        command.Parameters.AddWithValue("@owner", ownerPublicKey.ToLowerInvariant());
+
+        var follows = new List<Follow>();
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            follows.Add(new Follow
+            {
+                PublicKeyHex = reader.GetString(0),
+                Petname = reader.IsDBNull(1) ? null : reader.GetString(1),
+                RelayHint = reader.IsDBNull(2) ? null : reader.GetString(2),
+                AddedAt = DateTime.TryParse(reader.GetString(3), out var dt) ? dt : DateTime.UtcNow
+            });
+        }
+        return follows;
     }
 
     public async Task SaveMlsStateAsync(string groupId, byte[] state) => await ExecuteWithWriteLockAsync(async () =>

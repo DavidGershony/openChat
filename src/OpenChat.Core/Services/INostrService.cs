@@ -181,6 +181,12 @@ public interface INostrService
     Task<List<RelayPreference>> FetchRelayListAsync(string publicKeyHex);
 
     /// <summary>
+    /// Fetch a user's NIP-02 following list (kind 3) from relays.
+    /// Returns the parsed p-tag contacts with optional relay hint and petname.
+    /// </summary>
+    Task<List<Follow>> FetchFollowingListAsync(string publicKeyHex);
+
+    /// <summary>
     /// Publish the current user's NIP-65 relay list (kind 10002).
     /// </summary>
     Task<string> PublishRelayListAsync(List<RelayPreference> relays, string? privateKeyHex);
