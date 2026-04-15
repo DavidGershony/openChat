@@ -59,13 +59,13 @@ public class ChatListViewModel : ViewModelBase
     public ObservableCollection<KeyPackageItemViewModel> FoundKeyPackages { get; } = new();
     [Reactive] public KeyPackageItemViewModel? SelectedKeyPackage { get; set; }
     private IDisposable? _autoLookupSubscription;
-    private IDisposable? _autoGroupLookupSubscription;
 
     // New Group Dialog
     [Reactive] public bool ShowNewGroupDialog { get; set; }
     [Reactive] public string NewGroupName { get; set; } = string.Empty;
     [Reactive] public string NewGroupDescription { get; set; } = string.Empty;
-    [Reactive] public string NewGroupMembers { get; set; } = string.Empty;
+    [Reactive] public string NewGroupParticipantInput { get; set; } = string.Empty;
+    public ObservableCollection<FollowContactViewModel> NewGroupParticipants { get; } = new();
     [Reactive] public string? NewGroupError { get; set; }
     [Reactive] public bool IsLookingUpGroupKeyPackages { get; set; }
     [Reactive] public string? GroupKeyPackageStatus { get; set; }
@@ -115,6 +115,9 @@ public class ChatListViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> CancelNewChatCommand { get; }
     public ReactiveCommand<Unit, Unit> CreateGroupCommand { get; }
     public ReactiveCommand<Unit, Unit> CancelNewGroupCommand { get; }
+    public ReactiveCommand<Unit, Unit> AddGroupParticipantCommand { get; }
+    public ReactiveCommand<string, Unit> AddContactToGroupCommand { get; }
+    public ReactiveCommand<FollowContactViewModel, Unit> RemoveGroupParticipantCommand { get; }
     public ReactiveCommand<Unit, Unit> ConfirmJoinGroupCommand { get; }
     public ReactiveCommand<Unit, Unit> CancelJoinGroupCommand { get; }
     public ReactiveCommand<ChatItemViewModel, Unit> DeleteChatCommand { get; }
@@ -176,10 +179,24 @@ public class ChatListViewModel : ViewModelBase
             _logger.LogInformation("Opening new group dialog");
             NewGroupName = string.Empty;
             NewGroupDescription = string.Empty;
-            NewGroupMembers = string.Empty;
+            NewGroupParticipantInput = string.Empty;
+            NewGroupParticipants.Clear();
             NewGroupError = null;
             PopulateSelectableRelays();
             ShowNewGroupDialog = true;
+        });
+
+        AddGroupParticipantCommand = ReactiveCommand.Create(() =>
+        {
+            TryAddGroupParticipant(NewGroupParticipantInput);
+            NewGroupParticipantInput = string.Empty;
+        });
+
+        AddContactToGroupCommand = ReactiveCommand.Create<string>(pubkeyHex => TryAddGroupParticipant(pubkeyHex));
+
+        RemoveGroupParticipantCommand = ReactiveCommand.Create<FollowContactViewModel>(p =>
+        {
+            if (p != null) NewGroupParticipants.Remove(p);
         });
 
         JoinGroupCommand = ReactiveCommand.Create(() =>
@@ -425,25 +442,10 @@ public class ChatListViewModel : ViewModelBase
                 }
             });
 
-        var canLookupGroupKeyPackages = this.WhenAnyValue(
-            x => x.NewGroupMembers,
-            x => x.IsLookingUpGroupKeyPackages,
-            (members, looking) => !string.IsNullOrWhiteSpace(members) && !looking);
+        var canLookupGroupKeyPackages = this.WhenAnyValue(x => x.IsLookingUpGroupKeyPackages)
+            .Select(looking => !looking && NewGroupParticipants.Count > 0);
 
         LookupGroupKeyPackagesCommand = ReactiveCommand.CreateFromTask(LookupGroupKeyPackagesAsync, canLookupGroupKeyPackages);
-
-        // Auto-trigger group KeyPackage lookup when members field contains valid npubs
-        _autoGroupLookupSubscription = this.WhenAnyValue(x => x.NewGroupMembers)
-            .Throttle(TimeSpan.FromMilliseconds(300))
-            .ObserveOn(RxApp.MainThreadScheduler)
-            .Where(members => !string.IsNullOrWhiteSpace(members) && members.Contains("npub1") && members.Length >= 63)
-            .Subscribe(_ =>
-            {
-                if (!IsLookingUpGroupKeyPackages)
-                {
-                    LookupGroupKeyPackagesCommand.Execute().Subscribe();
-                }
-            });
 
         AcceptInviteCommand = ReactiveCommand.CreateFromTask<PendingInviteItemViewModel>(AcceptInviteAsync);
         DeclineInviteCommand = ReactiveCommand.CreateFromTask<PendingInviteItemViewModel>(DeclineInviteAsync);
@@ -1060,9 +1062,70 @@ public class ChatListViewModel : ViewModelBase
         }
     }
 
+    private void TryAddGroupParticipant(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input)) return;
+        var raw = input.Trim();
+
+        string publicKeyHex;
+        if (raw.StartsWith("npub1", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var data = Core.Crypto.Bech32.Decode(raw, out var hrp);
+                if (hrp != "npub" || data.Length != 32)
+                {
+                    NewGroupError = "Invalid npub";
+                    return;
+                }
+                publicKeyHex = Convert.ToHexString(data).ToLowerInvariant();
+            }
+            catch
+            {
+                NewGroupError = "Invalid npub";
+                return;
+            }
+        }
+        else if (raw.Length == 64 && raw.All(Uri.IsHexDigit))
+        {
+            publicKeyHex = raw.ToLowerInvariant();
+        }
+        else
+        {
+            NewGroupError = "Enter an npub or 64-char hex pubkey";
+            return;
+        }
+
+        if (string.Equals(publicKeyHex, _currentUserPubKeyHex, StringComparison.OrdinalIgnoreCase))
+        {
+            NewGroupError = "You're already a member — no need to add yourself";
+            return;
+        }
+
+        if (NewGroupParticipants.Any(p => string.Equals(p.PublicKeyHex, publicKeyHex, StringComparison.OrdinalIgnoreCase)))
+        {
+            NewGroupError = null;
+            return;
+        }
+
+        var existing = Following.FirstOrDefault(f => string.Equals(f.PublicKeyHex, publicKeyHex, StringComparison.OrdinalIgnoreCase));
+        if (existing != null)
+        {
+            NewGroupParticipants.Add(new FollowContactViewModel(
+                existing.PublicKeyHex, existing.Npub, existing.Petname, existing.DisplayName, existing.LocalAvatarPath));
+        }
+        else
+        {
+            var npub = Bech32.Encode("npub", Convert.FromHexString(publicKeyHex));
+            NewGroupParticipants.Add(new FollowContactViewModel(publicKeyHex, npub, null, null, null));
+        }
+
+        NewGroupError = null;
+    }
+
     private async Task LookupGroupKeyPackagesAsync()
     {
-        if (string.IsNullOrWhiteSpace(NewGroupMembers) || _nostrService == null)
+        if (NewGroupParticipants.Count == 0 || _nostrService == null)
         {
             return;
         }
@@ -1074,48 +1137,25 @@ public class ChatListViewModel : ViewModelBase
 
         try
         {
-            var keys = NewGroupMembers.Split(new[] { ',', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
             var results = new List<string>();
             var foundCount = 0;
             var notFoundCount = 0;
 
-            foreach (var key in keys)
+            foreach (var participant in NewGroupParticipants.ToList())
             {
-                var pubKey = key.Trim();
-                if (string.IsNullOrEmpty(pubKey)) continue;
-
-                // Convert npub to hex if needed
-                var publicKeyHex = pubKey;
-                if (pubKey.StartsWith("npub1"))
-                {
-                    try
-                    {
-                        var data = Core.Crypto.Bech32.Decode(pubKey, out var hrp);
-                        if (hrp == "npub" && data.Length == 32)
-                        {
-                            publicKeyHex = Convert.ToHexString(data).ToLowerInvariant();
-                        }
-                    }
-                    catch
-                    {
-                        results.Add($"{pubKey[..Math.Min(12, pubKey.Length)]}... - Invalid npub");
-                        notFoundCount++;
-                        continue;
-                    }
-                }
-
-                var keyPackages = await _nostrService.FetchKeyPackagesAsync(publicKeyHex);
+                var label = participant.ShownName;
+                var keyPackages = await _nostrService.FetchKeyPackagesAsync(participant.PublicKeyHex);
                 var keyPackageList = keyPackages.ToList();
 
                 if (keyPackageList.Count > 0)
                 {
                     var latest = keyPackageList.OrderByDescending(k => k.CreatedAt).First();
-                    results.Add($"{pubKey[..Math.Min(12, pubKey.Length)]}... - Found (created {latest.CreatedAt:g})");
+                    results.Add($"{label} - Found (created {latest.CreatedAt:g})");
                     foundCount++;
                 }
                 else
                 {
-                    results.Add($"{pubKey[..Math.Min(12, pubKey.Length)]}... - No KeyPackage");
+                    results.Add($"{label} - No KeyPackage");
                     notFoundCount++;
                 }
             }
@@ -1384,20 +1424,8 @@ public class ChatListViewModel : ViewModelBase
 
         try
         {
-            // Parse member public keys (comma or newline separated)
-            var memberKeys = new List<string>();
-            if (!string.IsNullOrWhiteSpace(NewGroupMembers))
-            {
-                var keys = NewGroupMembers.Split(new[] { ',', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
-                foreach (var key in keys)
-                {
-                    var trimmedKey = key.Trim();
-                    if (!string.IsNullOrEmpty(trimmedKey))
-                    {
-                        memberKeys.Add(trimmedKey);
-                    }
-                }
-            }
+            // Collect member public keys from participant chips (already validated + hex)
+            var memberKeys = NewGroupParticipants.Select(p => p.PublicKeyHex).ToList();
 
             Chat chat;
             var invitedMembers = new List<string>();

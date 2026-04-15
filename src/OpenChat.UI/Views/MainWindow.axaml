@@ -716,16 +716,69 @@
                                  AcceptsReturn="False" />
                     </StackPanel>
 
-                    <!-- Initial Members (Optional) -->
+                    <!-- Participants -->
                     <StackPanel Spacing="6">
-                        <TextBlock Text="Invite Members (optional)" Classes="secondary" FontSize="13" />
-                        <TextBox Text="{Binding NewGroupMembers}"
-                                 Watermark="npub1..., npub2... (comma separated)"
-                                 AcceptsReturn="True"
-                                 Height="60"
-                                 TextWrapping="Wrap" />
-                        <TextBlock Text="You can also invite members later"
-                                   Classes="muted" FontSize="11" />
+                        <TextBlock Text="Participants" Classes="secondary" FontSize="13" />
+
+                        <!-- Chip row -->
+                        <ItemsControl ItemsSource="{Binding NewGroupParticipants}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:FollowContactViewModel">
+                                    <Border Background="{DynamicResource SurfaceSecondaryBrush}"
+                                            BorderBrush="{DynamicResource NostrPurpleBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="14" Padding="10,4" Margin="0,0,6,6">
+                                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding ShownName}" VerticalAlignment="Center" />
+                                            <Button Content="✕"
+                                                    Padding="4,0" FontSize="11"
+                                                    Background="Transparent" BorderThickness="0"
+                                                    Command="{Binding $parent[ItemsControl].((vm:ChatListViewModel)DataContext).RemoveGroupParticipantCommand}"
+                                                    CommandParameter="{Binding}" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- Input + Add -->
+                        <Grid ColumnDefinitions="*,8,Auto">
+                            <TextBox Grid.Column="0"
+                                     Text="{Binding NewGroupParticipantInput}"
+                                     Watermark="npub1... or hex pubkey" />
+                            <Button Grid.Column="2"
+                                    Content="Add"
+                                    Classes="secondary"
+                                    Command="{Binding AddGroupParticipantCommand}" />
+                        </Grid>
+
+                        <!-- Contacts picker -->
+                        <TextBlock Text="Tap a contact to add"
+                                   Classes="muted" FontSize="11"
+                                   IsVisible="{Binding Following.Count}" />
+                        <ItemsControl ItemsSource="{Binding Following}" MaxHeight="200">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:FollowContactViewModel">
+                                    <Button Classes="secondary"
+                                            HorizontalAlignment="Stretch"
+                                            HorizontalContentAlignment="Left"
+                                            Margin="0,2"
+                                            Command="{Binding $parent[ItemsControl].((vm:ChatListViewModel)DataContext).AddContactToGroupCommand}"
+                                            CommandParameter="{Binding PublicKeyHex}">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock Text="{Binding ShownName}" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding Npub}" Classes="muted" FontFamily="Consolas" FontSize="11" />
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
                         <StackPanel Spacing="6" IsVisible="{Binding IsLookingUpGroupKeyPackages}"
                                     HorizontalAlignment="Center">
                             <TextBlock Text="Checking KeyPackages..."
