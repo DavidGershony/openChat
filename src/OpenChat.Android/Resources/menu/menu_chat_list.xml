@@ -3,6 +3,23 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
+        android:id="@+id/action_search"
+        android:title="Search"
+        android:icon="@android:drawable/ic_menu_search"
+        android:iconTint="?attr/colorOnSurface"
+        app:iconTint="?attr/colorOnSurface"
+        app:showAsAction="ifRoom|collapseActionView"
+        app:actionViewClass="androidx.appcompat.widget.SearchView" />
+
+    <item
+        android:id="@+id/action_new_chat"
+        android:title="New chat"
+        android:icon="@android:drawable/ic_input_add"
+        android:iconTint="?attr/colorOnSurface"
+        app:iconTint="?attr/colorOnSurface"
+        app:showAsAction="always" />
+
+    <item
         android:id="@+id/action_reconnect_all"
         android:title="Reconnect All Relays"
         app:showAsAction="never" />

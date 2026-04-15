@@ -40,3 +40,21 @@ public class ActionMenuItemClickListener : Java.Lang.Object, AndroidX.AppCompat.
         return _handler(item);
     }
 }
+
+public class SearchExpandListener : Java.Lang.Object, IMenuItemOnActionExpandListener
+{
+    private readonly Action _onCollapse;
+
+    public SearchExpandListener(Action onCollapse)
+    {
+        _onCollapse = onCollapse;
+    }
+
+    public bool OnMenuItemActionExpand(IMenuItem? item) => true;
+
+    public bool OnMenuItemActionCollapse(IMenuItem? item)
+    {
+        _onCollapse();
+        return true;
+    }
+}
