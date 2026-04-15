@@ -145,43 +145,38 @@ public class CrossMdkRelayIntegrationTests : IAsyncLifetime
     /// Mirrors the Rust-side test in FullStackRelayIntegrationTests.
     /// </summary>
     [Fact]
-    public async Task AcceptInvite_RandomBytes_ManagedMls_ThrowsException()
+    public async Task AcceptInvite_RandomBytes_ManagedMls_SkipsAndBumpsCounter()
     {
         _output.WriteLine($"User A pubkey: {_pubKeyA}");
         _output.WriteLine($"User B pubkey: {_pubKeyB}");
 
-        // User B needs stored KeyPackage data for ProcessWelcomeAsync
+        // User B stores a real KeyPackage; the managed CanProcessWelcome gate will still
+        // reject random bytes because PreviewWelcome fails for every stored KeyPackage.
         var keyPackage = await _managedMlsServiceB.GenerateKeyPackageAsync();
         _output.WriteLine($"User B generated KeyPackage ({keyPackage.Data.Length} bytes)");
 
-        // Subscribe User B to welcomes
         await _nostrServiceB.SubscribeToWelcomesAsync(_pubKeyB, _privKeyB);
         await Task.Delay(500);
 
-        // Set up invite listener
         var inviteTcs = new TaskCompletionSource<PendingInvite>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         using var inviteSub = _messageServiceB.NewInvites
             .Take(1)
             .Subscribe(invite => inviteTcs.TrySetResult(invite));
 
-        // User A publishes random bytes as Welcome (not real MLS data)
         var randomData = new byte[256];
         RandomNumberGenerator.Fill(randomData);
-        var eventId = await _nostrServiceA.PublishWelcomeAsync(
-            randomData, _pubKeyB, _privKeyA);
-        _output.WriteLine($"Random welcome published: {eventId}");
+        await _nostrServiceA.PublishWelcomeAsync(randomData, _pubKeyB, _privKeyA);
 
-        // Wait for invite — relay transport should work
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         cts.Token.Register(() => inviteTcs.TrySetCanceled());
-        var invite = await inviteTcs.Task;
-        _output.WriteLine($"Invite received: {invite.Id}");
 
-        // AcceptInvite should fail because random bytes aren't valid MLS Welcome data
-        var ex = await Assert.ThrowsAnyAsync<Exception>(
-            () => _messageServiceB.AcceptInviteAsync(invite.Id));
-        _output.WriteLine($"Correctly rejected random welcome ({ex.GetType().Name}): {ex.Message}");
+        // The gate should silently dismiss the welcome and increment the skipped counter
+        // instead of raising a PendingInvite.
+        await Assert.ThrowsAsync<TaskCanceledException>(() => inviteTcs.Task);
+
+        var skipped = await _storageB.GetSkippedInviteCountAsync();
+        Assert.True(skipped >= 1, "skipped-invite counter should have incremented");
     }
 
     // ═══════════════════════════════════════════════════════════════════

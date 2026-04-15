@@ -152,7 +152,7 @@ public class HeadlessGroupLifecycleTests : HeadlessTestBase
         Dispatcher.UIThread.RunJobs();
 
         chatListVm.NewGroupName = "Group With Bob";
-        chatListVm.NewGroupMembers = bob.User.PublicKeyHex;
+        chatListVm.AddContactToGroupCommand.Execute(bob.User.PublicKeyHex).Subscribe();
         Dispatcher.UIThread.RunJobs();
 
         // Create the group (real MLS + Welcome publishing)

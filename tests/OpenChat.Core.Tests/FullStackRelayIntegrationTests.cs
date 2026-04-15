@@ -164,60 +164,35 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
         _output.WriteLine($"User A pubkey: {_pubKeyA}");
         _output.WriteLine($"User B pubkey: {_pubKeyB}");
 
-        // Step 1: User B subscribes to welcomes via the real relay
+        // Step 1: B generates a real KeyPackage and publishes it so A can invite B for real.
+        // (Required after the CanProcessWelcome gate — random bytes no longer surface as invites.)
+        var keyPackageB = await _mlsServiceB.GenerateKeyPackageAsync();
+        var kpEventId = await _nostrServiceB.PublishKeyPackageAsync(
+            keyPackageB.Data, _privKeyB, keyPackageB.NostrTags);
+        _output.WriteLine($"User B published KeyPackage: {kpEventId}");
+        await Task.Delay(500);
+
+        // Step 2: User B subscribes to welcomes via the real relay
         await _nostrServiceB.SubscribeToWelcomesAsync(_pubKeyB, _privKeyB);
         _output.WriteLine("User B subscribed to welcomes");
         await Task.Delay(500);
 
-        // Step 2: Set up observer for PendingInvite from MessageService
+        // Step 3: Set up observer for PendingInvite from MessageService
         var inviteTcs = new TaskCompletionSource<PendingInvite>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         using var inviteSub = _messageServiceB.NewInvites
             .Take(1)
-            .Subscribe(
-                invite =>
-                {
-                    _output.WriteLine($"PendingInvite received! Id={invite.Id}, Sender={invite.SenderPublicKey[..16]}...");
-                    inviteTcs.TrySetResult(invite);
-                },
-                ex =>
-                {
-                    _output.WriteLine($"NewInvites error: {ex.Message}");
-                    inviteTcs.TrySetException(ex);
-                });
+            .Subscribe(invite => inviteTcs.TrySetResult(invite));
 
-        // Also observe raw Events to see if the event arrives at NostrService level
-        var rawEventTcs = new TaskCompletionSource<NostrEventReceived>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        using var rawSub = _nostrServiceB.Events
-            .Where(e => e.Kind == 444)
-            .Take(1)
-            .Subscribe(
-                e =>
-                {
-                    _output.WriteLine($"Raw kind-444 event received at NostrService! EventId={e.EventId[..16]}..., Sender={e.PublicKey[..16]}...");
-                    rawEventTcs.TrySetResult(e);
-                });
+        // Step 4: User A creates a group and adds B via B's real KeyPackage, producing a real welcome
+        var groupInfoA = await _mlsServiceA.CreateGroupAsync("Arrive Test Group", new[] { RelayUrl });
+        var fetchedKP = (await _nostrServiceA.FetchKeyPackagesAsync(_pubKeyB)).First();
+        var add = await _mlsServiceA.AddMemberAsync(groupInfoA.GroupId, fetchedKP);
+        _output.WriteLine($"User A produced real welcome: {add.WelcomeData.Length} bytes");
 
-        // Step 3: User A publishes a Welcome for User B via the real relay
-        var welcomeData = new byte[128];
-        RandomNumberGenerator.Fill(welcomeData);
-
-        _output.WriteLine("User A publishing Welcome...");
-        var eventId = await _nostrServiceA.PublishWelcomeAsync(
-            welcomeData, _pubKeyB, _privKeyA);
-        _output.WriteLine($"Welcome published with eventId: {eventId}");
-        Assert.NotEmpty(eventId);
+        var eventId = await _nostrServiceA.PublishWelcomeAsync(add.WelcomeData, _pubKeyB, _privKeyA);
         Assert.Equal(64, eventId.Length);
-
-        // Step 4: Verify the raw event arrives at NostrService level
-        using var rawCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        rawCts.Token.Register(() => rawEventTcs.TrySetCanceled());
-
-        var rawEvent = await rawEventTcs.Task;
-        _output.WriteLine($"Raw event confirmed: kind={rawEvent.Kind}, pubkey={rawEvent.PublicKey[..16]}...");
-        Assert.Equal(444, rawEvent.Kind);
-        Assert.Equal(_pubKeyA, rawEvent.PublicKey);
+        _output.WriteLine($"Welcome published with eventId: {eventId}");
 
         // Step 5: Verify the PendingInvite was created by MessageService
         using var inviteCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
@@ -227,19 +202,13 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
         _output.WriteLine($"PendingInvite confirmed: sender={invite.SenderPublicKey[..16]}..., welcomeDataLen={invite.WelcomeData.Length}");
 
         Assert.Equal(_pubKeyA, invite.SenderPublicKey);
-        // NostrEventId is now the rumor's own id (SHA-256 of canonical content),
-        // not the gift wrap event id returned by PublishWelcomeAsync
         Assert.NotEmpty(invite.NostrEventId);
         Assert.Equal(64, invite.NostrEventId.Length);
-        Assert.Equal(welcomeData, invite.WelcomeData);
+        Assert.Equal(add.WelcomeData, invite.WelcomeData);
 
         // Step 6: Verify invite was persisted to storage
         var storedInvites = (await _storageB.GetPendingInvitesAsync()).ToList();
-        _output.WriteLine($"Stored invites count: {storedInvites.Count}");
-        // NostrEventId is the rumor's own id, not the gift wrap event id
         Assert.Contains(storedInvites, i => !string.IsNullOrEmpty(i.NostrEventId) && i.NostrEventId.Length == 64);
-
-        _output.WriteLine("FULL STACK TEST PASSED: Welcome → Relay → NostrService → MessageService → PendingInvite → Storage");
     }
 
     /// <summary>
@@ -256,35 +225,28 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
         _output.WriteLine($"User A pubkey: {_pubKeyA}");
         _output.WriteLine($"User B pubkey: {_pubKeyB}");
 
-        // Step 1: User A publishes a Welcome BEFORE User B subscribes
-        var welcomeData = new byte[128];
-        RandomNumberGenerator.Fill(welcomeData);
+        // B needs a stored KeyPackage so CanProcessWelcome can succeed during rescan.
+        var keyPackageB = await _mlsServiceB.GenerateKeyPackageAsync();
+        await _nostrServiceB.PublishKeyPackageAsync(keyPackageB.Data, _privKeyB, keyPackageB.NostrTags);
+        await Task.Delay(500);
 
-        _output.WriteLine("User A publishing Welcome (before User B subscribes)...");
-        var eventId = await _nostrServiceA.PublishWelcomeAsync(
-            welcomeData, _pubKeyB, _privKeyA);
+        // Step 1: A creates a group and publishes a real welcome for B BEFORE B subscribes.
+        var groupInfoA = await _mlsServiceA.CreateGroupAsync("Rescan Test Group", new[] { RelayUrl });
+        var fetchedKP = (await _nostrServiceA.FetchKeyPackagesAsync(_pubKeyB)).First();
+        var add = await _mlsServiceA.AddMemberAsync(groupInfoA.GroupId, fetchedKP);
+
+        var eventId = await _nostrServiceA.PublishWelcomeAsync(add.WelcomeData, _pubKeyB, _privKeyA);
         _output.WriteLine($"Welcome published with eventId: {eventId}");
 
         await Task.Delay(1000); // Let relay store it
 
         // Step 2: User B rescans for invites (fetches historical events)
-        _output.WriteLine("User B rescanning for invites...");
         await _messageServiceB.RescanInvitesAsync();
 
         // Step 3: Verify the invite was found and stored
         var storedInvites = (await _storageB.GetPendingInvitesAsync()).ToList();
-        _output.WriteLine($"Stored invites after rescan: {storedInvites.Count}");
-
-        foreach (var inv in storedInvites)
-        {
-            _output.WriteLine($"  Invite: sender={inv.SenderPublicKey[..16]}..., nostrEventId={inv.NostrEventId?[..16]}...");
-        }
-
         Assert.NotEmpty(storedInvites);
-        // NostrEventId is the rumor's own id, not the gift wrap event id
         Assert.Contains(storedInvites, i => !string.IsNullOrEmpty(i.NostrEventId) && i.NostrEventId.Length == 64);
-
-        _output.WriteLine("RESCAN TEST PASSED: Historical Welcome found via FetchWelcomeEventsAsync");
     }
 
     /// <summary>
@@ -299,37 +261,36 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
     {
         await SetupUsers(backend);
 
-        _output.WriteLine($"User A pubkey: {_pubKeyA}");
-        _output.WriteLine($"User B pubkey: {_pubKeyB}");
-
-        // Step 1: Subscribe User B to welcomes
+        // Under managed, the CanProcessWelcome gate in MessageService filters random welcomes
+        // before they become PendingInvites (and bumps the skipped-invite counter). Only the
+        // rust backend's pass-through gate lets the garbage through to AcceptInvite.
         await _nostrServiceB.SubscribeToWelcomesAsync(_pubKeyB, _privKeyB);
         await Task.Delay(500);
 
-        // Step 2: Set up invite listener
         var inviteTcs = new TaskCompletionSource<PendingInvite>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         using var inviteSub = _messageServiceB.NewInvites
             .Take(1)
             .Subscribe(invite => inviteTcs.TrySetResult(invite));
 
-        // Step 3: User A publishes random bytes as Welcome (not real MLS data)
         var welcomeData = new byte[256];
         RandomNumberGenerator.Fill(welcomeData);
-        var eventId = await _nostrServiceA.PublishWelcomeAsync(
-            welcomeData, _pubKeyB, _privKeyA);
-        _output.WriteLine($"Welcome published: {eventId}");
+        await _nostrServiceA.PublishWelcomeAsync(welcomeData, _pubKeyB, _privKeyA);
 
-        // Step 4: Wait for invite — relay transport should work
+        if (backend == "managed")
+        {
+            using var skipCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            skipCts.Token.Register(() => inviteTcs.TrySetCanceled());
+            await Assert.ThrowsAsync<TaskCanceledException>(() => inviteTcs.Task);
+            var skipped = await _storageB.GetSkippedInviteCountAsync();
+            Assert.True(skipped >= 1, "skipped-invite counter should have incremented");
+            return;
+        }
+
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         cts.Token.Register(() => inviteTcs.TrySetCanceled());
         var invite = await inviteTcs.Task;
-        _output.WriteLine($"Invite received: {invite.Id}");
-
-        // Step 5: AcceptInvite should fail because random bytes aren't valid MLS Welcome data
-        var ex = await Assert.ThrowsAnyAsync<Exception>(
-            () => _messageServiceB.AcceptInviteAsync(invite.Id));
-        _output.WriteLine($"Correctly rejected random welcome ({ex.GetType().Name}): {ex.Message}");
+        await Assert.ThrowsAnyAsync<Exception>(() => _messageServiceB.AcceptInviteAsync(invite.Id));
     }
 
     /// <summary>
