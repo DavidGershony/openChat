@@ -565,6 +565,37 @@ public class ChatListViewModel : ViewModelBase
             // Kick off background avatar refresh for DM chats missing profile images
             _ = Task.Run(() => RefreshAvatarsAsync());
 
+            // Seed contacts table from every participant we know about (DM partners + group members)
+            if (_currentUserPubKeyHex != null)
+            {
+                try
+                {
+                    var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    var contacts = new List<Contact>();
+                    foreach (var chat in chats.Concat(archivedChats))
+                    {
+                        foreach (var pk in chat.ParticipantPublicKeys)
+                        {
+                            if (string.IsNullOrEmpty(pk)) continue;
+                            if (string.Equals(pk, _currentUserPubKeyHex, StringComparison.OrdinalIgnoreCase)) continue;
+                            if (!seen.Add(pk)) continue;
+                            contacts.Add(new Contact
+                            {
+                                PublicKeyHex = pk,
+                                Source = "group",
+                                LastInteractedAt = chat.LastActivityAt
+                            });
+                        }
+                    }
+                    if (contacts.Count > 0)
+                        await _storageService.UpsertContactsAsync(_currentUserPubKeyHex, contacts);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to seed contacts from chats");
+                }
+            }
+
             // Load cached follows + refresh from relays in background
             await LoadFollowingFromCacheAsync();
             _ = Task.Run(() => RefreshFollowingAsync());
@@ -718,18 +749,18 @@ public class ChatListViewModel : ViewModelBase
 
         try
         {
-            var cached = await _storageService.GetFollowsAsync(_currentUserPubKeyHex);
+            var cached = await _storageService.GetContactsAsync(_currentUserPubKeyHex);
             Following.Clear();
-            foreach (var f in cached)
+            foreach (var c in cached)
             {
-                var user = await _storageService.GetUserByPublicKeyAsync(f.PublicKeyHex);
-                var npub = user?.Npub ?? Bech32.Encode("npub", Convert.FromHexString(f.PublicKeyHex));
+                var user = await _storageService.GetUserByPublicKeyAsync(c.PublicKeyHex);
+                var npub = user?.Npub ?? Bech32.Encode("npub", Convert.FromHexString(c.PublicKeyHex));
                 Following.Add(new FollowContactViewModel(
-                    f.PublicKeyHex, npub, f.Petname,
+                    c.PublicKeyHex, npub, c.Petname,
                     user?.DisplayName,
                     user?.LocalAvatarPath is { } p && File.Exists(p) ? p : null));
             }
-            _logger.LogInformation("Loaded {Count} cached follows", Following.Count);
+            _logger.LogInformation("Loaded {Count} cached contacts", Following.Count);
         }
         catch (Exception ex)
         {

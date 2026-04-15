@@ -198,6 +198,18 @@ public class StorageService : IStorageService
                 PRIMARY KEY (OwnerPublicKey, FollowedPublicKey)
             );
 
+            CREATE TABLE IF NOT EXISTS Contacts (
+                OwnerPublicKey TEXT NOT NULL,
+                ContactPublicKey TEXT NOT NULL,
+                Petname TEXT,
+                Source TEXT NOT NULL,
+                FirstSeenAt TEXT NOT NULL,
+                LastInteractedAt TEXT NOT NULL,
+                PRIMARY KEY (OwnerPublicKey, ContactPublicKey)
+            );
+
+            CREATE INDEX IF NOT EXISTS IX_Contacts_LastInteractedAt ON Contacts(OwnerPublicKey, LastInteractedAt DESC);
+
             CREATE TABLE IF NOT EXISTS AppSettings (
                 Key TEXT PRIMARY KEY,
                 Value TEXT NOT NULL
@@ -1086,6 +1098,19 @@ public class StorageService : IStorageService
             insert.Parameters.AddWithValue("@relay", (object?)f.RelayHint ?? DBNull.Value);
             insert.Parameters.AddWithValue("@addedAt", f.AddedAt.ToString("O"));
             await insert.ExecuteNonQueryAsync();
+
+            var upsertContact = connection.CreateCommand();
+            upsertContact.CommandText = @"
+                INSERT INTO Contacts (OwnerPublicKey, ContactPublicKey, Petname, Source, FirstSeenAt, LastInteractedAt)
+                VALUES (@owner, @contact, @petname, 'follow', @now, @now)
+                ON CONFLICT(OwnerPublicKey, ContactPublicKey) DO UPDATE SET
+                    Petname = COALESCE(excluded.Petname, Contacts.Petname),
+                    Source = 'follow'";
+            upsertContact.Parameters.AddWithValue("@owner", owner);
+            upsertContact.Parameters.AddWithValue("@contact", f.PublicKeyHex.ToLowerInvariant());
+            upsertContact.Parameters.AddWithValue("@petname", (object?)f.Petname ?? DBNull.Value);
+            upsertContact.Parameters.AddWithValue("@now", DateTime.UtcNow.ToString("O"));
+            await upsertContact.ExecuteNonQueryAsync();
         }
     });
 
@@ -1111,6 +1136,78 @@ public class StorageService : IStorageService
             });
         }
         return follows;
+    }
+
+    public async Task UpsertContactsAsync(string ownerPublicKey, IEnumerable<Contact> contacts) => await ExecuteWithWriteLockAsync(async () =>
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        var owner = ownerPublicKey.ToLowerInvariant();
+        var now = DateTime.UtcNow.ToString("O");
+
+        foreach (var c in contacts)
+        {
+            if (string.IsNullOrEmpty(c.PublicKeyHex)) continue;
+            var key = c.PublicKeyHex.ToLowerInvariant();
+            if (string.Equals(key, owner, StringComparison.OrdinalIgnoreCase)) continue;
+
+            var cmd = connection.CreateCommand();
+            cmd.CommandText = @"
+                INSERT INTO Contacts (OwnerPublicKey, ContactPublicKey, Petname, Source, FirstSeenAt, LastInteractedAt)
+                VALUES (@owner, @contact, @petname, @source, @firstSeen, @lastInter)
+                ON CONFLICT(OwnerPublicKey, ContactPublicKey) DO UPDATE SET
+                    Petname = COALESCE(excluded.Petname, Contacts.Petname),
+                    Source = CASE WHEN Contacts.Source = 'follow' THEN Contacts.Source ELSE excluded.Source END";
+            cmd.Parameters.AddWithValue("@owner", owner);
+            cmd.Parameters.AddWithValue("@contact", key);
+            cmd.Parameters.AddWithValue("@petname", (object?)c.Petname ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@source", c.Source);
+            cmd.Parameters.AddWithValue("@firstSeen", c.FirstSeenAt == default ? now : c.FirstSeenAt.ToString("O"));
+            cmd.Parameters.AddWithValue("@lastInter", c.LastInteractedAt == default ? now : c.LastInteractedAt.ToString("O"));
+            await cmd.ExecuteNonQueryAsync();
+        }
+    });
+
+    public async Task TouchContactAsync(string ownerPublicKey, string contactPublicKey) => await ExecuteWithWriteLockAsync(async () =>
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        var cmd = connection.CreateCommand();
+        cmd.CommandText = @"UPDATE Contacts SET LastInteractedAt = @now
+            WHERE OwnerPublicKey = @owner AND ContactPublicKey = @contact";
+        cmd.Parameters.AddWithValue("@now", DateTime.UtcNow.ToString("O"));
+        cmd.Parameters.AddWithValue("@owner", ownerPublicKey.ToLowerInvariant());
+        cmd.Parameters.AddWithValue("@contact", contactPublicKey.ToLowerInvariant());
+        await cmd.ExecuteNonQueryAsync();
+    });
+
+    public async Task<List<Contact>> GetContactsAsync(string ownerPublicKey)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        var command = connection.CreateCommand();
+        command.CommandText = @"SELECT ContactPublicKey, Petname, Source, FirstSeenAt, LastInteractedAt
+            FROM Contacts WHERE OwnerPublicKey = @owner
+            ORDER BY LastInteractedAt DESC";
+        command.Parameters.AddWithValue("@owner", ownerPublicKey.ToLowerInvariant());
+
+        var result = new List<Contact>();
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            result.Add(new Contact
+            {
+                PublicKeyHex = reader.GetString(0),
+                Petname = reader.IsDBNull(1) ? null : reader.GetString(1),
+                Source = reader.GetString(2),
+                FirstSeenAt = DateTime.TryParse(reader.GetString(3), out var fs) ? fs : DateTime.UtcNow,
+                LastInteractedAt = DateTime.TryParse(reader.GetString(4), out var li) ? li : DateTime.UtcNow
+            });
+        }
+        return result;
     }
 
     public async Task SaveMlsStateAsync(string groupId, byte[] state) => await ExecuteWithWriteLockAsync(async () =>

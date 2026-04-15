@@ -56,6 +56,11 @@ public interface IStorageService
     Task SaveFollowsAsync(string ownerPublicKey, IEnumerable<Follow> follows);
     Task<List<Follow>> GetFollowsAsync(string ownerPublicKey);
 
+    // Local contacts table (union of follows + group members + manually-added)
+    Task UpsertContactsAsync(string ownerPublicKey, IEnumerable<Contact> contacts);
+    Task TouchContactAsync(string ownerPublicKey, string contactPublicKey);
+    Task<List<Contact>> GetContactsAsync(string ownerPublicKey);
+
     // User relay list (NIP-65)
     Task SaveUserRelayListAsync(string publicKeyHex, IEnumerable<RelayPreference> relays);
     Task<List<RelayPreference>> GetUserRelayListAsync(string publicKeyHex);
