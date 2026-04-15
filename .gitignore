@@ -34,3 +34,7 @@ Desktop.ini
 # Misc
 nul
 *.log
+
+# Test runner output
+TestResults/
+*.trx
