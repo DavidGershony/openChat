@@ -25,7 +25,7 @@ public class FollowContactAdapter : RecyclerView.Adapter
     {
         var view = LayoutInflater.From(parent.Context)!
             .Inflate(Resource.Layout.item_contact, parent, false)!;
-        return new ContactViewHolder(view);
+        return new ContactViewHolder(view, this);
     }
 
     public override void OnBindViewHolder(RecyclerView.ViewHolder holder, int position)
@@ -34,9 +34,7 @@ public class FollowContactAdapter : RecyclerView.Adapter
         {
             var item = _items[position];
             vh.Bind(item);
-            vh.ItemView.Click -= vh.OnClick;
-            vh.OnClick = (s, e) => ItemClick?.Invoke(this, item);
-            vh.ItemView.Click += vh.OnClick;
+            vh.Current = item;
         }
     }
 
@@ -46,10 +44,14 @@ public class FollowContactAdapter : RecyclerView.Adapter
         private readonly ShapeableImageView _avatarImage;
         private readonly TextView _name;
         private readonly TextView _npub;
-        public EventHandler<View.ClickEventArgs> OnClick = (_, _) => { };
+        public FollowContactViewModel? Current;
 
-        public ContactViewHolder(View itemView) : base(itemView)
+        public ContactViewHolder(View itemView, FollowContactAdapter adapter) : base(itemView)
         {
+            itemView.Click += (s, e) =>
+            {
+                if (Current is not null) adapter.ItemClick?.Invoke(adapter, Current);
+            };
             _avatarText = itemView.FindViewById<TextView>(Resource.Id.contact_avatar_text)!;
             _avatarImage = itemView.FindViewById<ShapeableImageView>(Resource.Id.contact_avatar_image)!;
             _name = itemView.FindViewById<TextView>(Resource.Id.contact_name)!;
