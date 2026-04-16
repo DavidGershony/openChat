@@ -281,25 +281,25 @@ public class HeadlessIntegrationTests
 
         var chatListVm = new ChatListViewModel(mockMessage.Object, mockStorage.Object, mockMls.Object, mockNostr.Object);
 
-        Assert.False(chatListVm.ShowNewGroupDialog);
+        Assert.False(chatListVm.ShowNewChatDialog);
 
-        // Execute the NewGroupCommand
-        chatListVm.NewGroupCommand.Execute().Subscribe();
+        // Execute the NewChatCommand
+        chatListVm.NewChatCommand.Execute().Subscribe();
         Dispatcher.UIThread.RunJobs();
 
-        Assert.True(chatListVm.ShowNewGroupDialog);
+        Assert.True(chatListVm.ShowNewChatDialog);
 
         // Set group name
-        chatListVm.NewGroupName = "My Test Group";
+        chatListVm.NewChatName = "My Test Group";
         Dispatcher.UIThread.RunJobs();
 
-        Assert.Equal("My Test Group", chatListVm.NewGroupName);
+        Assert.Equal("My Test Group", chatListVm.NewChatName);
 
         // Cancel
-        chatListVm.CancelNewGroupCommand.Execute().Subscribe();
+        chatListVm.CancelNewChatCommand.Execute().Subscribe();
         Dispatcher.UIThread.RunJobs();
 
-        Assert.False(chatListVm.ShowNewGroupDialog);
+        Assert.False(chatListVm.ShowNewChatDialog);
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -386,15 +386,15 @@ public class HeadlessIntegrationTests
         Assert.True(mainVm.IsLoggedIn);
 
         // Open new group dialog
-        mainVm.ChatListViewModel.NewGroupCommand.Execute().Subscribe();
+        mainVm.ChatListViewModel.NewChatCommand.Execute().Subscribe();
         Dispatcher.UIThread.RunJobs();
-        Assert.True(mainVm.ChatListViewModel.ShowNewGroupDialog);
+        Assert.True(mainVm.ChatListViewModel.ShowNewChatDialog);
 
         // Set group name and create
-        mainVm.ChatListViewModel.NewGroupName = "End-to-End Group";
+        mainVm.ChatListViewModel.NewChatName = "End-to-End Group";
         Dispatcher.UIThread.RunJobs();
 
-        await mainVm.ChatListViewModel.CreateGroupCommand.Execute();
+        await mainVm.ChatListViewModel.CreateChatCommand.Execute();
         Dispatcher.UIThread.RunJobs();
 
         // Group should appear in chat list
@@ -403,7 +403,7 @@ public class HeadlessIntegrationTests
         Assert.True(mainVm.ChatListViewModel.Chats.First(c => c.Name == "End-to-End Group").IsGroup);
 
         // Dialog should be closed
-        Assert.False(mainVm.ChatListViewModel.ShowNewGroupDialog);
+        Assert.False(mainVm.ChatListViewModel.ShowNewChatDialog);
     }
 
     // ═══════════════════════════════════════════════════════════════════

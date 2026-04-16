@@ -194,21 +194,21 @@ public class HeadlessRealMlsIntegrationTests : IDisposable
 
         var chatListVm = new ChatListViewModel(ctx.MessageService, ctx.Storage, ctx.MlsService, ctx.MockNostr.Object);
 
-        Assert.False(chatListVm.ShowNewGroupDialog);
+        Assert.False(chatListVm.ShowNewChatDialog);
 
-        chatListVm.NewGroupCommand.Execute().Subscribe();
+        chatListVm.NewChatCommand.Execute().Subscribe();
         Dispatcher.UIThread.RunJobs();
 
-        Assert.True(chatListVm.ShowNewGroupDialog);
+        Assert.True(chatListVm.ShowNewChatDialog);
 
-        chatListVm.NewGroupName = "My Test Group";
+        chatListVm.NewChatName = "My Test Group";
         Dispatcher.UIThread.RunJobs();
-        Assert.Equal("My Test Group", chatListVm.NewGroupName);
+        Assert.Equal("My Test Group", chatListVm.NewChatName);
 
-        chatListVm.CancelNewGroupCommand.Execute().Subscribe();
+        chatListVm.CancelNewChatCommand.Execute().Subscribe();
         Dispatcher.UIThread.RunJobs();
 
-        Assert.False(chatListVm.ShowNewGroupDialog);
+        Assert.False(chatListVm.ShowNewChatDialog);
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -262,15 +262,15 @@ public class HeadlessRealMlsIntegrationTests : IDisposable
         Assert.True(mainVm.IsLoggedIn);
 
         // Open new group dialog
-        mainVm.ChatListViewModel.NewGroupCommand.Execute().Subscribe();
+        mainVm.ChatListViewModel.NewChatCommand.Execute().Subscribe();
         Dispatcher.UIThread.RunJobs();
-        Assert.True(mainVm.ChatListViewModel.ShowNewGroupDialog);
+        Assert.True(mainVm.ChatListViewModel.ShowNewChatDialog);
 
         // Set group name and create (real MLS CreateGroupAsync!)
-        mainVm.ChatListViewModel.NewGroupName = "Real MLS Group";
+        mainVm.ChatListViewModel.NewChatName = "Real MLS Group";
         Dispatcher.UIThread.RunJobs();
 
-        await mainVm.ChatListViewModel.CreateGroupCommand.Execute();
+        await mainVm.ChatListViewModel.CreateChatCommand.Execute();
         Dispatcher.UIThread.RunJobs();
 
         // Group should appear in chat list
@@ -278,7 +278,7 @@ public class HeadlessRealMlsIntegrationTests : IDisposable
         Assert.Contains(mainVm.ChatListViewModel.Chats, c => c.Name == "Real MLS Group");
         Assert.True(mainVm.ChatListViewModel.Chats.First(c => c.Name == "Real MLS Group").IsGroup);
 
-        Assert.False(mainVm.ChatListViewModel.ShowNewGroupDialog);
+        Assert.False(mainVm.ChatListViewModel.ShowNewChatDialog);
     }
 
     // ═══════════════════════════════════════════════════════════════════

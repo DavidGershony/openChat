@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Net.Http;
 using System.Reactive;
 using System.Reactive.Concurrency;
@@ -43,34 +44,18 @@ public class ChatListViewModel : ViewModelBase
     [Reactive] public int SkippedInviteCount { get; set; }
     [Reactive] public string? StatusMessage { get; set; }
 
-    // New Chat Dialog
+    // New Chat Dialog (unified: 1+ participants, optional name)
     [Reactive] public bool ShowNewChatDialog { get; set; }
-    [Reactive] public string NewChatPublicKey { get; set; } = string.Empty;
     [Reactive] public string NewChatName { get; set; } = string.Empty;
+    [Reactive] public string NewChatDescription { get; set; } = string.Empty;
+    [Reactive] public string NewChatParticipantInput { get; set; } = string.Empty;
+    public ObservableCollection<FollowContactViewModel> NewChatParticipants { get; } = new();
     [Reactive] public string? NewChatError { get; set; }
-    [Reactive] public bool IsNpubInvalid { get; set; }
-    [Reactive] public bool IsLookingUpKeyPackage { get; set; }
+    [Reactive] public bool IsLookingUpKeyPackages { get; set; }
     [Reactive] public string? KeyPackageStatus { get; set; }
-    [Reactive] public bool HasKeyPackage { get; set; }
-    [Reactive] public bool HasMultipleKeyPackages { get; set; }
-    [Reactive] public DateTime? KeyPackageCreatedAt { get; set; }
-    [Reactive] public string? KeyPackageRelays { get; set; }
     [Reactive] public string? CreateProgress { get; set; }
-    public ObservableCollection<KeyPackageItemViewModel> FoundKeyPackages { get; } = new();
-    [Reactive] public KeyPackageItemViewModel? SelectedKeyPackage { get; set; }
-    private IDisposable? _autoLookupSubscription;
 
-    // New Group Dialog
-    [Reactive] public bool ShowNewGroupDialog { get; set; }
-    [Reactive] public string NewGroupName { get; set; } = string.Empty;
-    [Reactive] public string NewGroupDescription { get; set; } = string.Empty;
-    [Reactive] public string NewGroupParticipantInput { get; set; } = string.Empty;
-    public ObservableCollection<FollowContactViewModel> NewGroupParticipants { get; } = new();
-    [Reactive] public string? NewGroupError { get; set; }
-    [Reactive] public bool IsLookingUpGroupKeyPackages { get; set; }
-    [Reactive] public string? GroupKeyPackageStatus { get; set; }
-
-    // Relay Selection (shared by both dialogs)
+    // Relay Selection
     public ObservableCollection<RelaySelectionItemViewModel> SelectableRelays { get; } = new();
     [Reactive] public int SelectedRelayCount { get; set; }
 
@@ -108,16 +93,13 @@ public class ChatListViewModel : ViewModelBase
     [Reactive] public string RenameChatInput { get; set; } = string.Empty;
 
     public ReactiveCommand<Unit, Unit> NewChatCommand { get; }
-    public ReactiveCommand<Unit, Unit> NewGroupCommand { get; }
     public ReactiveCommand<Unit, Unit> JoinGroupCommand { get; }
     public ReactiveCommand<Unit, Unit> RefreshCommand { get; }
     public ReactiveCommand<Unit, Unit> CreateChatCommand { get; }
     public ReactiveCommand<Unit, Unit> CancelNewChatCommand { get; }
-    public ReactiveCommand<Unit, Unit> CreateGroupCommand { get; }
-    public ReactiveCommand<Unit, Unit> CancelNewGroupCommand { get; }
-    public ReactiveCommand<Unit, Unit> AddGroupParticipantCommand { get; }
-    public ReactiveCommand<string, Unit> AddContactToGroupCommand { get; }
-    public ReactiveCommand<FollowContactViewModel, Unit> RemoveGroupParticipantCommand { get; }
+    public ReactiveCommand<Unit, Unit> AddChatParticipantCommand { get; }
+    public ReactiveCommand<string, Unit> AddContactToChatCommand { get; }
+    public ReactiveCommand<FollowContactViewModel, Unit> RemoveChatParticipantCommand { get; }
     public ReactiveCommand<Unit, Unit> ConfirmJoinGroupCommand { get; }
     public ReactiveCommand<Unit, Unit> CancelJoinGroupCommand { get; }
     public ReactiveCommand<ChatItemViewModel, Unit> DeleteChatCommand { get; }
@@ -125,7 +107,6 @@ public class ChatListViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> CancelDeleteChatCommand { get; }
     public ReactiveCommand<ChatItemViewModel, Unit> ResetGroupCommand { get; }
     public ReactiveCommand<ChatItemViewModel, Unit> RenameChatCommand { get; }
-    public ReactiveCommand<FollowContactViewModel, Unit> SelectFollowCommand { get; }
     public ReactiveCommand<Unit, Unit> RefreshFollowingCommand { get; }
     public ReactiveCommand<Unit, Unit> ConfirmRenameChatCommand { get; }
     public ReactiveCommand<Unit, Unit> CancelRenameChatCommand { get; }
@@ -135,8 +116,7 @@ public class ChatListViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> ToggleArchivedViewCommand { get; }
     public ReactiveCommand<Unit, Unit> ConfirmResetGroupCommand { get; }
     public ReactiveCommand<Unit, Unit> CancelResetGroupCommand { get; }
-    public ReactiveCommand<Unit, Unit> LookupKeyPackageCommand { get; }
-    public ReactiveCommand<Unit, Unit> LookupGroupKeyPackagesCommand { get; }
+    public ReactiveCommand<Unit, Unit> LookupKeyPackagesCommand { get; }
     public ReactiveCommand<Unit, Unit> DismissSkippedInviteNoticeCommand { get; }
     public ReactiveCommand<PendingInviteItemViewModel, Unit> AcceptInviteCommand { get; }
     public ReactiveCommand<PendingInviteItemViewModel, Unit> DeclineInviteCommand { get; }
@@ -158,45 +138,28 @@ public class ChatListViewModel : ViewModelBase
         NewChatCommand = ReactiveCommand.Create(() =>
         {
             _logger.LogInformation("Opening new chat dialog");
-            NewChatPublicKey = string.Empty;
             NewChatName = string.Empty;
+            NewChatDescription = string.Empty;
+            NewChatParticipantInput = string.Empty;
+            NewChatParticipants.Clear();
             NewChatError = null;
-            IsNpubInvalid = false;
             KeyPackageStatus = null;
-            HasKeyPackage = false;
-            KeyPackageCreatedAt = null;
-            KeyPackageRelays = null;
-            FoundKeyPackages.Clear();
-            SelectedKeyPackage = null;
-            HasMultipleKeyPackages = false;
             CreateProgress = null;
             PopulateSelectableRelays();
             ShowNewChatDialog = true;
         });
 
-        NewGroupCommand = ReactiveCommand.Create(() =>
+        AddChatParticipantCommand = ReactiveCommand.Create(() =>
         {
-            _logger.LogInformation("Opening new group dialog");
-            NewGroupName = string.Empty;
-            NewGroupDescription = string.Empty;
-            NewGroupParticipantInput = string.Empty;
-            NewGroupParticipants.Clear();
-            NewGroupError = null;
-            PopulateSelectableRelays();
-            ShowNewGroupDialog = true;
+            TryAddChatParticipant(NewChatParticipantInput);
+            NewChatParticipantInput = string.Empty;
         });
 
-        AddGroupParticipantCommand = ReactiveCommand.Create(() =>
-        {
-            TryAddGroupParticipant(NewGroupParticipantInput);
-            NewGroupParticipantInput = string.Empty;
-        });
+        AddContactToChatCommand = ReactiveCommand.Create<string>(pubkeyHex => TryAddChatParticipant(pubkeyHex));
 
-        AddContactToGroupCommand = ReactiveCommand.Create<string>(pubkeyHex => TryAddGroupParticipant(pubkeyHex));
-
-        RemoveGroupParticipantCommand = ReactiveCommand.Create<FollowContactViewModel>(p =>
+        RemoveChatParticipantCommand = ReactiveCommand.Create<FollowContactViewModel>(p =>
         {
-            if (p != null) NewGroupParticipants.Remove(p);
+            if (p != null) NewChatParticipants.Remove(p);
         });
 
         JoinGroupCommand = ReactiveCommand.Create(() =>
@@ -205,19 +168,6 @@ public class ChatListViewModel : ViewModelBase
             JoinGroupId = string.Empty;
             JoinGroupError = null;
             ShowJoinGroupDialog = true;
-        });
-
-        var canCreateGroup = this.WhenAnyValue(
-            x => x.NewGroupName,
-            x => x.SelectedRelayCount,
-            (name, relayCount) => !string.IsNullOrWhiteSpace(name) && name.Length >= 1 && relayCount > 0);
-
-        CreateGroupCommand = ReactiveCommand.CreateFromTask(CreateNewGroupAsync, canCreateGroup);
-
-        CancelNewGroupCommand = ReactiveCommand.Create(() =>
-        {
-            ShowNewGroupDialog = false;
-            NewGroupError = null;
         });
 
         var canJoinGroup = this.WhenAnyValue(
@@ -325,19 +275,13 @@ public class ChatListViewModel : ViewModelBase
             RenameChatInput = string.Empty;
         });
 
-        SelectFollowCommand = ReactiveCommand.Create<FollowContactViewModel>(contact =>
-        {
-            NewChatPublicKey = contact.Npub;
-        });
-
-        // Filter Following list as the user types in the npub / search box
-        this.WhenAnyValue(x => x.NewChatPublicKey)
+        // Filter Following list as the user types in the participant input
+        this.WhenAnyValue(x => x.NewChatParticipantInput)
             .Throttle(TimeSpan.FromMilliseconds(120))
             .ObserveOn(RxApp.MainThreadScheduler)
             .Subscribe(q =>
             {
                 var query = (q ?? string.Empty).Trim();
-                // If full npub typed, skip filtering (user already has a full key)
                 bool isFullNpub = query.StartsWith("npub1") && query.Length >= 60;
                 foreach (var f in Following)
                 {
@@ -395,57 +339,10 @@ public class ChatListViewModel : ViewModelBase
             chat.IsMuted = newMuted;
         });
 
-        var canLookupKeyPackage = this.WhenAnyValue(
-            x => x.NewChatPublicKey,
-            x => x.IsLookingUpKeyPackage,
-            (key, looking) => !string.IsNullOrWhiteSpace(key) && key.Length >= 8 && !looking);
+        var canLookupKeyPackages = this.WhenAnyValue(x => x.IsLookingUpKeyPackages)
+            .Select(looking => !looking && NewChatParticipants.Count > 0);
 
-        LookupKeyPackageCommand = ReactiveCommand.CreateFromTask(LookupKeyPackageAsync, canLookupKeyPackage);
-
-        // Auto-trigger KeyPackage lookup when a valid npub is entered
-        _autoLookupSubscription = this.WhenAnyValue(x => x.NewChatPublicKey)
-            .ObserveOn(RxApp.MainThreadScheduler)
-            .Subscribe(key =>
-            {
-                if (string.IsNullOrWhiteSpace(key) || key.Length < 63)
-                {
-                    // Not long enough yet — no validation, no lookup
-                    IsNpubInvalid = false;
-                    return;
-                }
-
-                // Length is right — validate format
-                if (!key.StartsWith("npub1") || key.Trim().Length != 63)
-                {
-                    IsNpubInvalid = true;
-                    NewChatError = null;
-                    return;
-                }
-
-                // Check self-invite
-                var hex = _nostrService?.NpubToHex(key.Trim());
-                if (hex != null && _currentUserPubKeyHex != null &&
-                    hex.Equals(_currentUserPubKeyHex, StringComparison.OrdinalIgnoreCase))
-                {
-                    IsNpubInvalid = true;
-                    NewChatError = "You can't invite yourself";
-                    _logger.LogWarning("Auto-lookup: user attempted to invite themselves");
-                    return;
-                }
-
-                // Valid npub — trigger lookup immediately
-                IsNpubInvalid = false;
-                NewChatError = null;
-                if (!IsLookingUpKeyPackage)
-                {
-                    LookupKeyPackageCommand.Execute().Subscribe();
-                }
-            });
-
-        var canLookupGroupKeyPackages = this.WhenAnyValue(x => x.IsLookingUpGroupKeyPackages)
-            .Select(looking => !looking && NewGroupParticipants.Count > 0);
-
-        LookupGroupKeyPackagesCommand = ReactiveCommand.CreateFromTask(LookupGroupKeyPackagesAsync, canLookupGroupKeyPackages);
+        LookupKeyPackagesCommand = ReactiveCommand.CreateFromTask(LookupKeyPackagesAsync, canLookupKeyPackages);
 
         AcceptInviteCommand = ReactiveCommand.CreateFromTask<PendingInviteItemViewModel>(AcceptInviteAsync);
         DeclineInviteCommand = ReactiveCommand.CreateFromTask<PendingInviteItemViewModel>(DeclineInviteAsync);
@@ -453,10 +350,16 @@ public class ChatListViewModel : ViewModelBase
         var canRescan = this.WhenAnyValue(x => x.IsRescanningInvites, scanning => !scanning);
         RescanInvitesCommand = ReactiveCommand.CreateFromTask(RescanInvitesAsync, canRescan);
 
-        var canCreateChat = this.WhenAnyValue(
-                x => x.SelectedKeyPackage,
-                x => x.SelectedRelayCount)
-            .Select(t => t.Item1 != null && t.Item2 > 0);
+        var participantsChanged = Observable.FromEventPattern<NotifyCollectionChangedEventHandler, NotifyCollectionChangedEventArgs>(
+                h => NewChatParticipants.CollectionChanged += h,
+                h => NewChatParticipants.CollectionChanged -= h)
+            .Select(_ => Unit.Default)
+            .StartWith(Unit.Default);
+
+        var canCreateChat = Observable.CombineLatest(
+            this.WhenAnyValue(x => x.SelectedRelayCount),
+            participantsChanged,
+            (relayCount, _) => relayCount > 0 && NewChatParticipants.Count > 0);
 
         CreateChatCommand = ReactiveCommand.CreateFromTask(CreateNewChatAsync, canCreateChat);
 
@@ -971,108 +874,7 @@ public class ChatListViewModel : ViewModelBase
         SelectedChat = null;
     }
 
-    private async Task LookupKeyPackageAsync()
-    {
-        if (string.IsNullOrWhiteSpace(NewChatPublicKey) || _nostrService == null)
-        {
-            return;
-        }
-
-        var pubKey = NewChatPublicKey.Trim();
-        _logger.LogInformation("Looking up KeyPackage for: {PubKey}", pubKey[..Math.Min(16, pubKey.Length)] + "...");
-
-        IsLookingUpKeyPackage = true;
-        KeyPackageStatus = "Looking up KeyPackages...";
-        HasKeyPackage = false;
-        KeyPackageCreatedAt = null;
-        KeyPackageRelays = null;
-        FoundKeyPackages.Clear();
-        SelectedKeyPackage = null;
-
-        try
-        {
-            // Convert npub to hex if needed
-            var publicKeyHex = pubKey;
-            if (pubKey.StartsWith("npub1"))
-            {
-                try
-                {
-                    var data = Core.Crypto.Bech32.Decode(pubKey, out var hrp);
-                    if (hrp == "npub" && data.Length == 32)
-                    {
-                        publicKeyHex = Convert.ToHexString(data).ToLowerInvariant();
-                    }
-                }
-                catch
-                {
-                    KeyPackageStatus = "Invalid npub format";
-                    return;
-                }
-            }
-
-            var keyPackages = await _nostrService.FetchKeyPackagesAsync(publicKeyHex);
-            var keyPackageList = keyPackages.OrderByDescending(k => k.CreatedAt).ToList();
-
-            if (keyPackageList.Count > 0)
-            {
-                HasKeyPackage = true;
-                foreach (var kp in keyPackageList)
-                {
-                    FoundKeyPackages.Add(new KeyPackageItemViewModel(kp));
-                }
-
-                // Auto-select the most recent SUPPORTED KeyPackage
-                var supportedKp = FoundKeyPackages.FirstOrDefault(kp => kp.IsSupported);
-                SelectedKeyPackage = supportedKp;
-                HasMultipleKeyPackages = FoundKeyPackages.Count(kp => kp.IsSupported) > 1;
-
-                var supportedCount = keyPackageList.Count(kp => kp.IsCipherSuiteSupported);
-                var unsupportedCount = keyPackageList.Count - supportedCount;
-
-                var latestPackage = keyPackageList.First();
-                KeyPackageCreatedAt = latestPackage.CreatedAt;
-                KeyPackageRelays = latestPackage.RelayUrls.Count > 0
-                    ? string.Join(", ", latestPackage.RelayUrls.Take(3))
-                    : "Unknown relay";
-
-                if (unsupportedCount > 0 && supportedCount == 0)
-                {
-                    KeyPackageStatus = $"Found {keyPackageList.Count} KeyPackage(s) — none use a supported cipher suite";
-                    _logger.LogWarning("Found {Count} KeyPackage(s) for {PubKey} but none use a supported cipher suite (all use unsupported suites)",
-                        keyPackageList.Count, pubKey[..Math.Min(16, pubKey.Length)]);
-                }
-                else if (unsupportedCount > 0)
-                {
-                    KeyPackageStatus = $"Found {keyPackageList.Count} KeyPackage(s) ({unsupportedCount} unsupported)";
-                    _logger.LogInformation("Found {Count} KeyPackage(s) for {PubKey} ({Unsupported} unsupported cipher suite(s))",
-                        keyPackageList.Count, pubKey[..Math.Min(16, pubKey.Length)], unsupportedCount);
-                }
-                else
-                {
-                    KeyPackageStatus = $"Found {keyPackageList.Count} KeyPackage(s)";
-                    _logger.LogInformation("Found {Count} KeyPackage(s) for {PubKey}", keyPackageList.Count, pubKey[..Math.Min(16, pubKey.Length)]);
-                }
-            }
-            else
-            {
-                HasKeyPackage = false;
-                KeyPackageStatus = "No KeyPackages found - user cannot join MLS groups";
-                _logger.LogWarning("No KeyPackage found for {PubKey}", pubKey[..Math.Min(16, pubKey.Length)]);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to lookup KeyPackage");
-            KeyPackageStatus = $"Lookup failed: {ex.Message}";
-            HasKeyPackage = false;
-        }
-        finally
-        {
-            IsLookingUpKeyPackage = false;
-        }
-    }
-
-    private void TryAddGroupParticipant(string input)
+    private void TryAddChatParticipant(string input)
     {
         if (string.IsNullOrWhiteSpace(input)) return;
         var raw = input.Trim();
@@ -1085,14 +887,14 @@ public class ChatListViewModel : ViewModelBase
                 var data = Core.Crypto.Bech32.Decode(raw, out var hrp);
                 if (hrp != "npub" || data.Length != 32)
                 {
-                    NewGroupError = "Invalid npub";
+                    NewChatError = "Invalid npub";
                     return;
                 }
                 publicKeyHex = Convert.ToHexString(data).ToLowerInvariant();
             }
             catch
             {
-                NewGroupError = "Invalid npub";
+                NewChatError = "Invalid npub";
                 return;
             }
         }
@@ -1102,48 +904,48 @@ public class ChatListViewModel : ViewModelBase
         }
         else
         {
-            NewGroupError = "Enter an npub or 64-char hex pubkey";
+            NewChatError = "Enter an npub or 64-char hex pubkey";
             return;
         }
 
         if (string.Equals(publicKeyHex, _currentUserPubKeyHex, StringComparison.OrdinalIgnoreCase))
         {
-            NewGroupError = "You're already a member — no need to add yourself";
+            NewChatError = "You're already a member — no need to add yourself";
             return;
         }
 
-        if (NewGroupParticipants.Any(p => string.Equals(p.PublicKeyHex, publicKeyHex, StringComparison.OrdinalIgnoreCase)))
+        if (NewChatParticipants.Any(p => string.Equals(p.PublicKeyHex, publicKeyHex, StringComparison.OrdinalIgnoreCase)))
         {
-            NewGroupError = null;
+            NewChatError = null;
             return;
         }
 
         var existing = Following.FirstOrDefault(f => string.Equals(f.PublicKeyHex, publicKeyHex, StringComparison.OrdinalIgnoreCase));
         if (existing != null)
         {
-            NewGroupParticipants.Add(new FollowContactViewModel(
+            NewChatParticipants.Add(new FollowContactViewModel(
                 existing.PublicKeyHex, existing.Npub, existing.Petname, existing.DisplayName, existing.LocalAvatarPath));
         }
         else
         {
             var npub = Bech32.Encode("npub", Convert.FromHexString(publicKeyHex));
-            NewGroupParticipants.Add(new FollowContactViewModel(publicKeyHex, npub, null, null, null));
+            NewChatParticipants.Add(new FollowContactViewModel(publicKeyHex, npub, null, null, null));
         }
 
-        NewGroupError = null;
+        NewChatError = null;
     }
 
-    private async Task LookupGroupKeyPackagesAsync()
+    private async Task LookupKeyPackagesAsync()
     {
-        if (NewGroupParticipants.Count == 0 || _nostrService == null)
+        if (NewChatParticipants.Count == 0 || _nostrService == null)
         {
             return;
         }
 
-        _logger.LogInformation("Looking up KeyPackages for group members");
+        _logger.LogInformation("Looking up KeyPackages for chat participants");
 
-        IsLookingUpGroupKeyPackages = true;
-        GroupKeyPackageStatus = "Looking up KeyPackages...";
+        IsLookingUpKeyPackages = true;
+        KeyPackageStatus = "Looking up KeyPackages...";
 
         try
         {
@@ -1151,7 +953,7 @@ public class ChatListViewModel : ViewModelBase
             var foundCount = 0;
             var notFoundCount = 0;
 
-            foreach (var participant in NewGroupParticipants.ToList())
+            foreach (var participant in NewChatParticipants.ToList())
             {
                 var label = participant.ShownName;
                 var keyPackages = await _nostrService.FetchKeyPackagesAsync(participant.PublicKeyHex);
@@ -1170,17 +972,17 @@ public class ChatListViewModel : ViewModelBase
                 }
             }
 
-            GroupKeyPackageStatus = $"Found: {foundCount}, Missing: {notFoundCount}\n" + string.Join("\n", results);
-            _logger.LogInformation("Group KeyPackage lookup complete: {Found} found, {Missing} missing", foundCount, notFoundCount);
+            KeyPackageStatus = $"Found: {foundCount}, Missing: {notFoundCount}\n" + string.Join("\n", results);
+            _logger.LogInformation("KeyPackage lookup complete: {Found} found, {Missing} missing", foundCount, notFoundCount);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to lookup group KeyPackages");
-            GroupKeyPackageStatus = $"Lookup failed: {ex.Message}";
+            _logger.LogError(ex, "Failed to lookup KeyPackages");
+            KeyPackageStatus = $"Lookup failed: {ex.Message}";
         }
         finally
         {
-            IsLookingUpGroupKeyPackages = false;
+            IsLookingUpKeyPackages = false;
         }
     }
 
@@ -1221,10 +1023,9 @@ public class ChatListViewModel : ViewModelBase
 
     private async Task CreateNewChatAsync()
     {
-        if (string.IsNullOrWhiteSpace(NewChatPublicKey))
+        if (NewChatParticipants.Count == 0)
         {
-            NewChatError = "Please enter a public key (npub or hex)";
-            _logger.LogWarning("CreateNewChat: empty public key");
+            NewChatError = "Add at least one participant";
             return;
         }
 
@@ -1235,91 +1036,45 @@ public class ChatListViewModel : ViewModelBase
             return;
         }
 
-        var pubKey = NewChatPublicKey.Trim();
-        _logger.LogInformation("Creating new chat with public key: {PubKey}", pubKey[..Math.Min(16, pubKey.Length)] + "...");
+        var participantKeys = NewChatParticipants.Select(p => p.PublicKeyHex).ToList();
+        _logger.LogInformation("Creating new chat with {Count} participant(s)", participantKeys.Count);
 
         try
         {
-            // Convert npub to hex if needed
-            var publicKeyHex = pubKey;
-            if (pubKey.StartsWith("npub1"))
+            var selectedRelays = GetSelectedRelayUrls();
+            if (selectedRelays.Length == 0)
             {
-                try
-                {
-                    var data = Core.Crypto.Bech32.Decode(pubKey, out var hrp);
-                    if (hrp == "npub" && data.Length == 32)
-                    {
-                        publicKeyHex = Convert.ToHexString(data).ToLowerInvariant();
-                    }
-                }
-                catch (Exception ex)
-                {
-                    NewChatError = "Invalid npub format";
-                    _logger.LogWarning(ex, "CreateNewChat: failed to decode npub");
-                    return;
-                }
+                NewChatError = "Select at least one relay";
+                return;
             }
 
-            CreateProgress = "Resolving identity...";
-
-            // Resolve chat name: user-provided > profile metadata > truncated key
-            var chatName = NewChatName;
-            if (string.IsNullOrWhiteSpace(chatName))
-            {
-                try
-                {
-                    var metadata = await _messageService.FetchAndCacheProfileAsync(publicKeyHex);
-                    chatName = metadata?.DisplayName ?? metadata?.Name;
-                }
-                catch
-                {
-                    // Metadata fetch is optional
-                }
-                if (string.IsNullOrWhiteSpace(chatName))
-                {
-                    chatName = $"Chat with {pubKey[..Math.Min(12, pubKey.Length)]}...";
-                }
-            }
-
-            // Get current user for signing
             var currentUser = await _storageService.GetCurrentUserAsync();
             if (currentUser == null || string.IsNullOrEmpty(currentUser.PublicKeyHex))
             {
                 NewChatError = "Not logged in";
-                _logger.LogWarning("CreateNewChat: no current user");
                 return;
             }
 
-            // Use the pre-selected KeyPackage from auto-lookup
-            var keyPackage = SelectedKeyPackage?.KeyPackage;
-            if (keyPackage == null)
+            // Resolve chat name: user-provided > (1 participant) profile metadata > fallback
+            CreateProgress = "Resolving identity...";
+            var chatName = NewChatName.Trim();
+            if (string.IsNullOrEmpty(chatName) && participantKeys.Count == 1)
             {
-                NewChatError = "No KeyPackage selected — look up the user's KeyPackages first";
-                _logger.LogWarning("CreateNewChat: no KeyPackage selected");
-                return;
+                try
+                {
+                    var metadata = await _messageService.FetchAndCacheProfileAsync(participantKeys[0]);
+                    chatName = metadata?.DisplayName ?? metadata?.Name ?? string.Empty;
+                }
+                catch { /* metadata fetch is optional */ }
             }
-
-            if (!keyPackage.IsCipherSuiteSupported)
+            if (string.IsNullOrEmpty(chatName))
             {
-                NewChatError = $"Unsupported cipher suite 0x{keyPackage.CiphersuiteId:x4} ({keyPackage.CipherSuiteName}). Select a KeyPackage with a supported cipher suite.";
-                _logger.LogWarning("CreateNewChat: unsupported cipher suite 0x{CipherSuite:x4} on selected KeyPackage",
-                    keyPackage.CiphersuiteId);
-                return;
+                chatName = participantKeys.Count == 1
+                    ? $"Chat with {participantKeys[0][..Math.Min(12, participantKeys[0].Length)]}..."
+                    : $"Chat ({participantKeys.Count + 1} members)";
             }
-            _logger.LogDebug("Using pre-selected KeyPackage {EventId} for {PubKey}",
-                keyPackage.NostrEventId?[..Math.Min(16, keyPackage.NostrEventId?.Length ?? 0)] ?? "unknown",
-                publicKeyHex[..Math.Min(16, publicKeyHex.Length)]);
 
-            // Create MLS group (only after we've confirmed a KeyPackage exists)
             CreateProgress = "Creating MLS group...";
-            _logger.LogDebug("Creating MLS group for chat...");
-            var selectedRelays = GetSelectedRelayUrls();
-            if (selectedRelays.Length == 0)
-            {
-                _logger.LogError("Cannot create group: no relays selected");
-                NewChatError = "Select at least one relay";
-                return;
-            }
             var groupInfo = await _mlsService.CreateGroupAsync(chatName, selectedRelays);
             var nostrGroupId = _mlsService.GetNostrGroupId(groupInfo.GroupId);
             var groupIdHex = Convert.ToHexString(groupInfo.GroupId).ToLowerInvariant();
@@ -1328,6 +1083,7 @@ public class ChatListViewModel : ViewModelBase
             {
                 Id = groupIdHex,
                 Name = chatName,
+                Description = string.IsNullOrWhiteSpace(NewChatDescription) ? null : NewChatDescription.Trim(),
                 Type = ChatType.Group,
                 ParticipantPublicKeys = new List<string>(groupInfo.MemberPublicKeys),
                 MlsGroupId = groupInfo.GroupId,
@@ -1336,305 +1092,106 @@ public class ChatListViewModel : ViewModelBase
                 CreatedAt = DateTime.UtcNow,
                 LastActivityAt = DateTime.UtcNow
             };
+            _logger.LogInformation("Created MLS group {GroupId}", groupIdHex[..Math.Min(16, groupIdHex.Length)]);
 
-            _logger.LogInformation("Created MLS group with ID: {GroupId}", groupIdHex[..Math.Min(16, groupIdHex.Length)]);
+            var invited = new List<string>();
+            var inviteErrors = new List<string>();
 
-            // Add member to MLS group
-            CreateProgress = "Adding member...";
-            _logger.LogDebug("Adding member to MLS group");
-            var welcome = await _mlsService.AddMemberAsync(chat.MlsGroupId, keyPackage);
-
-            // MIP-02: For initial group creation (epoch 0), do NOT publish the Commit.
-            // There are no existing members who need it — the joiner gets full state via Welcome.
-            // Publishing it would confuse the joiner (encrypted with epoch 0 key they don't have).
-            // For adding members to existing groups (epoch > 0), publish Commit first and wait.
-            if (groupInfo.Epoch > 0 && welcome.CommitData != null && welcome.CommitData.Length > 0)
+            for (int i = 0; i < participantKeys.Count; i++)
             {
-                _logger.LogDebug("Publishing Commit to Nostr (kind 445) — existing group, epoch {Epoch}", groupInfo.Epoch);
+                var publicKeyHex = participantKeys[i];
+                CreateProgress = participantKeys.Count > 1
+                    ? $"Inviting {i + 1}/{participantKeys.Count}..."
+                    : "Inviting...";
+
                 try
                 {
-                    var commitEventJson = await _mlsService.EncryptCommitAsync(
-                        chat.MlsGroupId, welcome.CommitData);
-                    var commitEventId = await _nostrService.PublishRawEventJsonAsync(commitEventJson);
-                    _logger.LogInformation("Published Commit {EventId} for group {GroupId}",
-                        commitEventId[..Math.Min(16, commitEventId.Length)], groupIdHex[..Math.Min(16, groupIdHex.Length)]);
-                    await _nostrService.WaitForRelayOkAsync(commitEventId);
+                    var keyPackages = await _nostrService.FetchKeyPackagesAsync(publicKeyHex);
+                    var keyPackage = keyPackages
+                        .OrderByDescending(k => k.CreatedAt)
+                        .FirstOrDefault(k => k.IsCipherSuiteSupported)
+                        ?? keyPackages.FirstOrDefault();
+
+                    if (keyPackage == null)
+                    {
+                        inviteErrors.Add($"{publicKeyHex[..Math.Min(12, publicKeyHex.Length)]}... - No KeyPackage");
+                        continue;
+                    }
+                    if (!keyPackage.IsCipherSuiteSupported)
+                    {
+                        inviteErrors.Add($"{publicKeyHex[..Math.Min(12, publicKeyHex.Length)]}... - Unsupported cipher suite 0x{keyPackage.CiphersuiteId:x4}");
+                        continue;
+                    }
+
+                    var welcome = await _mlsService.AddMemberAsync(chat.MlsGroupId, keyPackage);
+
+                    // MIP-02: epoch 0 (initial creation) sends Welcome only — existing-group invites publish Commit first.
+                    if (groupInfo.Epoch + (ulong)i > 0 && welcome.CommitData != null && welcome.CommitData.Length > 0)
+                    {
+                        try
+                        {
+                            var commitEventJson = await _mlsService.EncryptCommitAsync(chat.MlsGroupId, welcome.CommitData);
+                            var commitEventId = await _nostrService.PublishRawEventJsonAsync(commitEventJson);
+                            await _nostrService.WaitForRelayOkAsync(commitEventId);
+                        }
+                        catch (NotSupportedException)
+                        {
+                            var commitEventId = await _nostrService.PublishCommitAsync(
+                                welcome.CommitData, groupIdHex, currentUser.PrivateKeyHex);
+                            await _nostrService.WaitForRelayOkAsync(commitEventId);
+                        }
+                    }
+
+                    var welcomeEventId = await _nostrService.PublishWelcomeAsync(
+                        welcome.WelcomeData, publicKeyHex, currentUser.PrivateKeyHex, welcome.KeyPackageEventId);
+                    _logger.LogInformation("Published Welcome {EventId} for {PubKey}",
+                        welcomeEventId[..Math.Min(16, welcomeEventId.Length)],
+                        publicKeyHex[..Math.Min(16, publicKeyHex.Length)]);
+
+                    if (!chat.ParticipantPublicKeys.Any(p => string.Equals(p, publicKeyHex, StringComparison.OrdinalIgnoreCase)))
+                        chat.ParticipantPublicKeys.Add(publicKeyHex);
+                    invited.Add(publicKeyHex[..Math.Min(12, publicKeyHex.Length)] + "...");
                 }
-                catch (NotSupportedException)
+                catch (Exception ex)
                 {
-                    // Rust backend: publish commit data directly (handles its own encryption)
-                    var commitEventId = await _nostrService.PublishCommitAsync(
-                        welcome.CommitData, groupIdHex, currentUser.PrivateKeyHex);
-                    _logger.LogInformation("Published Commit {EventId} for group {GroupId} (legacy)",
-                        commitEventId[..Math.Min(16, commitEventId.Length)], groupIdHex[..Math.Min(16, groupIdHex.Length)]);
-                    await _nostrService.WaitForRelayOkAsync(commitEventId);
+                    _logger.LogError(ex, "Failed to invite {Key}", publicKeyHex[..Math.Min(16, publicKeyHex.Length)]);
+                    inviteErrors.Add($"{publicKeyHex[..Math.Min(12, publicKeyHex.Length)]}... - {ex.Message}");
                 }
-            }
-            else
-            {
-                _logger.LogInformation("Skipping Commit publish for initial group creation (epoch 0)");
-            }
-
-            // Publish Welcome (kind 444)
-            CreateProgress = "Publishing invite...";
-            _logger.LogDebug("Publishing Welcome message to Nostr (kind 444)");
-            var welcomeEventId = await _nostrService.PublishWelcomeAsync(
-                welcome.WelcomeData, publicKeyHex, currentUser.PrivateKeyHex,
-                welcome.KeyPackageEventId);
-            _logger.LogInformation("Published Welcome {EventId} for {PubKey}",
-                welcomeEventId[..Math.Min(16, welcomeEventId.Length)],
-                publicKeyHex[..Math.Min(16, publicKeyHex.Length)]);
-
-            // Add recipient to participant list
-            if (!chat.ParticipantPublicKeys.Any(p => string.Equals(p, publicKeyHex, StringComparison.OrdinalIgnoreCase)))
-            {
-                chat.ParticipantPublicKeys.Add(publicKeyHex);
             }
 
             CreateProgress = "Saving chat...";
             await _storageService.SaveChatAsync(chat);
-            _logger.LogInformation("Saved chat: {ChatId} - {ChatName}", chat.Id, chatName);
 
-            // Subscribe to group messages using NostrGroupId (from MarmotGroupData extension)
             var subIdHex = nostrGroupId != null
                 ? Convert.ToHexString(nostrGroupId).ToLowerInvariant()
-                : groupIdHex; // Rust backend: NostrGroupId not available from C# side
-            if (nostrGroupId == null)
-                _logger.LogWarning("NostrGroupId unavailable for group {GroupId} — using MLS GroupId for subscription (Rust backend)", groupIdHex[..Math.Min(16, groupIdHex.Length)]);
+                : groupIdHex;
             await _nostrService.SubscribeToGroupMessagesAsync(new[] { subIdHex });
 
-            // Add to list and select it
             var chatItem = new ChatItemViewModel(chat);
             Chats.Insert(0, chatItem);
             SelectedChat = chatItem;
 
-            // Close dialog
             CreateProgress = null;
-            ShowNewChatDialog = false;
-            NewChatError = null;
+
+            if (inviteErrors.Count > 0 && invited.Count == 0)
+            {
+                NewChatError = $"Chat created but failed to invite participants:\n{string.Join("\n", inviteErrors)}";
+            }
+            else if (inviteErrors.Count > 0)
+            {
+                NewChatError = $"Invited {invited.Count}, failed {inviteErrors.Count}:\n{string.Join("\n", inviteErrors)}";
+            }
+            else
+            {
+                ShowNewChatDialog = false;
+                NewChatError = null;
+            }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to create new chat");
             CreateProgress = null;
             NewChatError = $"Failed to create chat: {ex.Message}";
-        }
-    }
-
-    private async Task CreateNewGroupAsync()
-    {
-        if (string.IsNullOrWhiteSpace(NewGroupName))
-        {
-            NewGroupError = "Please enter a group name";
-            _logger.LogWarning("CreateNewGroup: empty group name");
-            return;
-        }
-
-        _logger.LogInformation("Creating new group: {GroupName}", NewGroupName);
-
-        try
-        {
-            // Collect member public keys from participant chips (already validated + hex)
-            var memberKeys = NewGroupParticipants.Select(p => p.PublicKeyHex).ToList();
-
-            Chat chat;
-            var invitedMembers = new List<string>();
-            var inviteErrors = new List<string>();
-
-            // Get current user for signing
-            var currentUser = await _storageService.GetCurrentUserAsync();
-
-            // Try to create group with MLS if available
-            if (_mlsService != null)
-            {
-                _logger.LogDebug("Creating MLS group...");
-                var selectedRelays = GetSelectedRelayUrls();
-                if (selectedRelays.Length == 0)
-                {
-                    _logger.LogError("Cannot create group: no relays selected");
-                    NewGroupError = "Select at least one relay";
-                    return;
-                }
-                var groupInfo = await _mlsService.CreateGroupAsync(NewGroupName.Trim(), selectedRelays);
-                var nostrGroupId = _mlsService.GetNostrGroupId(groupInfo.GroupId);
-
-                chat = new Chat
-                {
-                    Id = Convert.ToHexString(groupInfo.GroupId).ToLowerInvariant(),
-                    Name = NewGroupName.Trim(),
-                    Description = string.IsNullOrWhiteSpace(NewGroupDescription) ? null : NewGroupDescription.Trim(),
-                    Type = ChatType.Group,
-                    ParticipantPublicKeys = new List<string>(groupInfo.MemberPublicKeys),
-                    MlsGroupId = groupInfo.GroupId,
-                    NostrGroupId = nostrGroupId,
-                    MlsEpoch = groupInfo.Epoch,
-                    CreatedAt = DateTime.UtcNow,
-                    LastActivityAt = DateTime.UtcNow
-                };
-
-                _logger.LogInformation("Created MLS group with ID: {GroupId}", chat.Id);
-
-                // Invite members if we have MLS and Nostr
-                if (_nostrService != null && currentUser != null && memberKeys.Count > 0)
-                {
-                    _logger.LogInformation("Inviting {Count} members to group", memberKeys.Count);
-
-                    foreach (var memberKey in memberKeys)
-                    {
-                        try
-                        {
-                            // Convert npub to hex if needed
-                            var publicKeyHex = memberKey;
-                            if (memberKey.StartsWith("npub1"))
-                            {
-                                var data = Core.Crypto.Bech32.Decode(memberKey, out var hrp);
-                                if (hrp == "npub" && data.Length == 32)
-                                {
-                                    publicKeyHex = Convert.ToHexString(data).ToLowerInvariant();
-                                }
-                            }
-
-                            _logger.LogDebug("Fetching KeyPackage for {PubKey}", publicKeyHex[..Math.Min(16, publicKeyHex.Length)]);
-
-                            // Fetch their KeyPackage
-                            var keyPackages = await _nostrService.FetchKeyPackagesAsync(publicKeyHex);
-                            var keyPackage = keyPackages.FirstOrDefault();
-
-                            if (keyPackage == null)
-                            {
-                                _logger.LogWarning("No KeyPackage found for {PubKey}", publicKeyHex[..Math.Min(16, publicKeyHex.Length)]);
-                                inviteErrors.Add($"{memberKey[..Math.Min(12, memberKey.Length)]}... - No KeyPackage");
-                                continue;
-                            }
-
-                            _logger.LogDebug("Adding member to MLS group");
-
-                            // Add them to the MLS group
-                            var welcome = await _mlsService.AddMemberAsync(chat.MlsGroupId, keyPackage);
-
-                            // MIP-02: For initial group creation (epoch 0), skip the Commit — only send Welcome.
-                            // For existing groups (epoch > 0), publish Commit first so existing members advance.
-                            if (groupInfo.Epoch > 0 && welcome.CommitData != null && welcome.CommitData.Length > 0)
-                            {
-                                _logger.LogDebug("Publishing Commit to Nostr (kind 445) — existing group, epoch {Epoch}", groupInfo.Epoch);
-                                try
-                                {
-                                    var commitEventJson = await _mlsService.EncryptCommitAsync(
-                                        chat.MlsGroupId, welcome.CommitData);
-                                    var commitEventId = await _nostrService.PublishRawEventJsonAsync(commitEventJson);
-                                    _logger.LogInformation("Published Commit {EventId} for group {GroupId}",
-                                        commitEventId[..Math.Min(16, commitEventId.Length)], chat.Id[..Math.Min(16, chat.Id.Length)]);
-                                    await _nostrService.WaitForRelayOkAsync(commitEventId);
-                                }
-                                catch (NotSupportedException)
-                                {
-                                    var commitEventId = await _nostrService.PublishCommitAsync(
-                                        welcome.CommitData, chat.Id, currentUser.PrivateKeyHex);
-                                    _logger.LogInformation("Published Commit {EventId} for group {GroupId} (legacy)",
-                                        commitEventId[..Math.Min(16, commitEventId.Length)], chat.Id[..Math.Min(16, chat.Id.Length)]);
-                                    await _nostrService.WaitForRelayOkAsync(commitEventId);
-                                }
-                            }
-                            else if (welcome.CommitData != null && welcome.CommitData.Length > 0)
-                            {
-                                _logger.LogInformation("Skipping Commit publish for initial group creation (epoch {Epoch})", groupInfo.Epoch);
-                            }
-
-                            _logger.LogDebug("Publishing Welcome message to Nostr (kind 444)");
-
-                            // Publish Welcome message to Nostr (kind 444) with KeyPackage event ID
-                            var eventId = await _nostrService.PublishWelcomeAsync(
-                                welcome.WelcomeData,
-                                publicKeyHex,
-                                currentUser.PrivateKeyHex,
-                                welcome.KeyPackageEventId);  // MIP-02 requires 'e' tag with KeyPackage event ID
-
-                            _logger.LogInformation("Published Welcome {EventId} for {PubKey} (KeyPackage: {KpId})",
-                                eventId[..Math.Min(16, eventId.Length)],
-                                publicKeyHex[..Math.Min(16, publicKeyHex.Length)],
-                                welcome.KeyPackageEventId?[..Math.Min(16, welcome.KeyPackageEventId.Length)] ?? "none");
-
-                            // Add to participant list
-                            if (!chat.ParticipantPublicKeys.Any(p => string.Equals(p, publicKeyHex, StringComparison.OrdinalIgnoreCase)))
-                            {
-                                chat.ParticipantPublicKeys.Add(publicKeyHex);
-                            }
-                            invitedMembers.Add(memberKey[..Math.Min(12, memberKey.Length)] + "...");
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "Failed to invite member {Key}", memberKey[..Math.Min(16, memberKey.Length)]);
-                            inviteErrors.Add($"{memberKey[..Math.Min(12, memberKey.Length)]}... - {ex.Message}");
-                        }
-                    }
-
-                    if (invitedMembers.Count > 0)
-                    {
-                        _logger.LogInformation("Successfully invited {Count} members", invitedMembers.Count);
-                    }
-                    if (inviteErrors.Count > 0)
-                    {
-                        _logger.LogWarning("Failed to invite {Count} members", inviteErrors.Count);
-                    }
-                }
-            }
-            else
-            {
-                // Fallback to local-only group
-                var groupId = Guid.NewGuid().ToString();
-                chat = new Chat
-                {
-                    Id = groupId,
-                    Name = NewGroupName.Trim(),
-                    Description = string.IsNullOrWhiteSpace(NewGroupDescription) ? null : NewGroupDescription.Trim(),
-                    Type = ChatType.Group,
-                    ParticipantPublicKeys = memberKeys,
-                    MlsGroupId = Guid.Parse(groupId).ToByteArray(),
-                    CreatedAt = DateTime.UtcNow,
-                    LastActivityAt = DateTime.UtcNow
-                };
-            }
-
-            await _storageService.SaveChatAsync(chat);
-            _logger.LogInformation("Saved group: {GroupId} - {GroupName} with {MemberCount} members",
-                chat.Id, chat.Name, chat.ParticipantPublicKeys.Count);
-
-            // Subscribe to group messages for the new group
-            // Use NostrGroupId for relay subscriptions when available
-            if (chat.MlsGroupId != null && chat.MlsGroupId.Length > 0 && _nostrService != null)
-            {
-                var subGroupIdHex = chat.NostrGroupId != null && chat.NostrGroupId.Length > 0
-                    ? Convert.ToHexString(chat.NostrGroupId).ToLowerInvariant()
-                    : Convert.ToHexString(chat.MlsGroupId).ToLowerInvariant();
-                await _nostrService.SubscribeToGroupMessagesAsync(new[] { subGroupIdHex });
-            }
-
-            // Show invite results if there were any issues
-            if (inviteErrors.Count > 0 && invitedMembers.Count == 0)
-            {
-                NewGroupError = $"Group created but failed to invite members:\n{string.Join("\n", inviteErrors)}";
-            }
-            else if (inviteErrors.Count > 0)
-            {
-                NewGroupError = $"Invited {invitedMembers.Count}, failed {inviteErrors.Count}:\n{string.Join("\n", inviteErrors)}";
-            }
-
-            // Add to list and select it
-            var chatItem = new ChatItemViewModel(chat);
-            Chats.Insert(0, chatItem);
-            SelectedChat = chatItem;
-
-            // Close dialog only if there were no invite errors
-            if (inviteErrors.Count == 0)
-            {
-                ShowNewGroupDialog = false;
-                NewGroupError = null;
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to create new group");
-            NewGroupError = $"Failed to create group: {ex.Message}";
         }
     }
 

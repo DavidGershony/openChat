@@ -54,11 +54,25 @@ public class NewChatFragment : Fragment
             ParentFragmentManager.PopBackStack();
         };
 
-        // Create button
+        // Create button. For the 1:1 DM flow the user types a single npub in
+        // pubKeyInput but the unified ChatListViewModel requires participants to
+        // be committed to NewChatParticipants before CreateChatCommand can run.
+        // If the collection is empty, commit the typed value first.
         createButton.Click += (s, e) =>
         {
             ViewModel.NewChatName = nameInput.Text ?? string.Empty;
-            ViewModel.CreateChatCommand.Execute().Subscribe().DisposeWith(_disposables);
+            if (ViewModel.NewChatParticipants.Count == 0)
+            {
+                ViewModel.NewChatParticipantInput = pubKeyInput.Text ?? string.Empty;
+                ViewModel.AddChatParticipantCommand.Execute().Subscribe(_ =>
+                {
+                    ViewModel.CreateChatCommand.Execute().Subscribe().DisposeWith(_disposables);
+                }).DisposeWith(_disposables);
+            }
+            else
+            {
+                ViewModel.CreateChatCommand.Execute().Subscribe().DisposeWith(_disposables);
+            }
         };
 
         // Hide manual lookup button — auto-lookup triggers on valid npub input
@@ -67,7 +81,7 @@ public class NewChatFragment : Fragment
         // Bind text input reactively to ViewModel (triggers validation + auto-lookup)
         pubKeyInput.TextChanged += (s, e) =>
         {
-            ViewModel.NewChatPublicKey = pubKeyInput.Text ?? string.Empty;
+            ViewModel.NewChatParticipantInput = pubKeyInput.Text ?? string.Empty;
         };
 
         // Show sending overlay while creating
@@ -121,27 +135,18 @@ public class NewChatFragment : Fragment
 
         // Show validation error on input field
         var pubKeyLayout = view.FindViewById<TextInputLayout>(Resource.Id.new_chat_pubkey_layout);
-        ViewModel.WhenAnyValue(x => x.IsNpubInvalid, x => x.NewChatError)
+        ViewModel.WhenAnyValue(x => x.NewChatError)
             .ObserveOn(RxApp.MainThreadScheduler)
-            .Subscribe(t =>
+            .Subscribe(error =>
             {
-                var (invalid, error) = t;
-                if (!string.IsNullOrEmpty(error))
+                if (pubKeyLayout != null)
                 {
-                    if (pubKeyLayout != null) pubKeyLayout.Error = error;
-                }
-                else if (invalid)
-                {
-                    if (pubKeyLayout != null) pubKeyLayout.Error = "Invalid npub format";
-                }
-                else
-                {
-                    if (pubKeyLayout != null) pubKeyLayout.Error = null;
+                    pubKeyLayout.Error = string.IsNullOrEmpty(error) ? null : error;
                 }
             })
             .DisposeWith(_disposables);
 
-        ViewModel.WhenAnyValue(x => x.IsLookingUpKeyPackage)
+        ViewModel.WhenAnyValue(x => x.IsLookingUpKeyPackages)
             .ObserveOn(RxApp.MainThreadScheduler)
             .Subscribe(loading =>
             {
@@ -173,7 +178,7 @@ public class NewChatFragment : Fragment
         RefreshContactList();
         ViewModel.Following.CollectionChanged += (s, e) =>
             Activity?.RunOnUiThread(RefreshContactList);
-        ViewModel.WhenAnyValue(x => x.NewChatPublicKey)
+        ViewModel.WhenAnyValue(x => x.NewChatParticipantInput)
             .ObserveOn(RxApp.MainThreadScheduler)
             .Subscribe(_ => RefreshContactList())
             .DisposeWith(_disposables);

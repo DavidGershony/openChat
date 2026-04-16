@@ -217,27 +217,17 @@
                                     <TextBlock Text="New Chat" FontSize="13" />
                                 </StackPanel>
                             </Button>
-                            <!-- Group Buttons Row -->
-                            <Grid ColumnDefinitions="*,8,*">
-                                <Button Grid.Column="0" Classes="secondary" HorizontalAlignment="Stretch"
-                                        Command="{Binding ChatListViewModel.NewGroupCommand}"
-                                        HorizontalContentAlignment="Center">
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <PathIcon Data="M12 12.75c1.63 0 3.07.39 4.24.9 1.08.48 1.76 1.56 1.76 2.73V18H6v-1.61c0-1.18.68-2.26 1.76-2.73 1.17-.52 2.61-.91 4.24-.91zM4 13c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm1.13 1.1c-.37-.06-.74-.1-1.13-.1-.99 0-1.93.21-2.78.58A2.01 2.01 0 0 0 0 16.43V18h4.5v-1.61c0-.83.23-1.61.63-2.29zM20 13c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm4 3.43c0-.81-.48-1.53-1.22-1.85A6.95 6.95 0 0 0 20 14c-.39 0-.76.04-1.13.1.4.68.63 1.46.63 2.29V18H24v-1.57zM12 6c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3z"
-                                                  Width="16" Height="16" />
-                                        <TextBlock Text="New Group" FontSize="12" />
-                                    </StackPanel>
-                                </Button>
-                                <Button Grid.Column="2" Classes="secondary" HorizontalAlignment="Stretch"
-                                        Command="{Binding ChatListViewModel.AddBotCommand}"
-                                        HorizontalContentAlignment="Center">
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <PathIcon Data="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1.07A7.001 7.001 0 0 1 14 23h-4a7.001 7.001 0 0 1-6.93-6H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2M7.5 13A2.5 2.5 0 0 0 5 15.5A2.5 2.5 0 0 0 7.5 18A2.5 2.5 0 0 0 10 15.5A2.5 2.5 0 0 0 7.5 13m9 0a2.5 2.5 0 0 0-2.5 2.5a2.5 2.5 0 0 0 2.5 2.5a2.5 2.5 0 0 0 2.5-2.5a2.5 2.5 0 0 0-2.5-2.5Z"
-                                                  Width="16" Height="16" />
-                                        <TextBlock Text="Link Device" FontSize="12" />
-                                    </StackPanel>
-                                </Button>
-                            </Grid>
+                            <!-- Link Device Button -->
+                            <Button Classes="secondary" HorizontalAlignment="Stretch"
+                                    Command="{Binding ChatListViewModel.AddBotCommand}"
+                                    HorizontalContentAlignment="Center"
+                                    Padding="8,6">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <PathIcon Data="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1.07A7.001 7.001 0 0 1 14 23h-4a7.001 7.001 0 0 1-6.93-6H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2M7.5 13A2.5 2.5 0 0 0 5 15.5A2.5 2.5 0 0 0 7.5 18A2.5 2.5 0 0 0 10 15.5A2.5 2.5 0 0 0 7.5 13m9 0a2.5 2.5 0 0 0-2.5 2.5a2.5 2.5 0 0 0 2.5 2.5a2.5 2.5 0 0 0 2.5-2.5a2.5 2.5 0 0 0-2.5-2.5Z"
+                                              Width="16" Height="16" />
+                                    <TextBlock Text="Link Device" FontSize="12" />
+                                </StackPanel>
+                            </Button>
                         </StackPanel>
                     </Border>
                 </Grid>
@@ -451,8 +441,9 @@
                     MinWidth="500" MaxWidth="650">
                 <Panel>
                     <!-- Form content (hidden during progress) -->
-                    <StackPanel Spacing="16"
-                                IsVisible="{Binding CreateProgress, Converter={x:Static StringConverters.IsNullOrEmpty}}">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="600"
+                                  IsVisible="{Binding CreateProgress, Converter={x:Static StringConverters.IsNullOrEmpty}}">
+                    <StackPanel Spacing="16">
                         <!-- Header -->
                         <Grid ColumnDefinitions="*,Auto">
                             <TextBlock Text="New Chat"
@@ -466,10 +457,26 @@
                             </Button>
                         </Grid>
 
-                        <!-- Public Key Input -->
+                        <!-- Name (optional) -->
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Name (optional)" Classes="secondary" FontSize="13" />
+                            <TextBox Text="{Binding NewChatName}"
+                                     Watermark="Chat or group name"
+                                     AcceptsReturn="False" />
+                        </StackPanel>
+
+                        <!-- Description (optional) -->
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Description (optional)" Classes="secondary" FontSize="13" />
+                            <TextBox Text="{Binding NewChatDescription}"
+                                     Watermark="What's this chat about?"
+                                     AcceptsReturn="False" />
+                        </StackPanel>
+
+                        <!-- Participants -->
                         <StackPanel Spacing="6">
                             <Grid ColumnDefinitions="*,Auto">
-                                <TextBlock Grid.Column="0" Text="Public Key" Classes="secondary" FontSize="13"
+                                <TextBlock Grid.Column="0" Text="Participants" Classes="secondary" FontSize="13"
                                            VerticalAlignment="Center" />
                                 <Button Grid.Column="1" Classes="icon"
                                         Padding="4"
@@ -479,13 +486,43 @@
                                               Width="16" Height="16" />
                                 </Button>
                             </Grid>
-                            <TextBox Text="{Binding NewChatPublicKey}"
-                                     Watermark="npub1... or search contacts"
-                                     AcceptsReturn="False" />
-                            <TextBlock Text="Invalid npub format"
-                                       Foreground="{DynamicResource StatusErrorBrush}"
-                                       FontSize="11"
-                                       IsVisible="{Binding IsNpubInvalid}" />
+
+                            <!-- Chip row of added participants -->
+                            <ItemsControl ItemsSource="{Binding NewChatParticipants}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:FollowContactViewModel">
+                                        <Border Background="{DynamicResource SurfaceSecondaryBrush}"
+                                                BorderBrush="{DynamicResource NostrPurpleBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="14" Padding="10,4" Margin="0,0,6,6">
+                                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding ShownName}" VerticalAlignment="Center" />
+                                                <Button Content="✕"
+                                                        Padding="4,0" FontSize="11"
+                                                        Background="Transparent" BorderThickness="0"
+                                                        Command="{Binding $parent[ItemsControl].((vm:ChatListViewModel)DataContext).RemoveChatParticipantCommand}"
+                                                        CommandParameter="{Binding}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <!-- Input + Add -->
+                            <Grid ColumnDefinitions="*,8,Auto">
+                                <TextBox Grid.Column="0"
+                                         Text="{Binding NewChatParticipantInput}"
+                                         Watermark="npub1... or hex pubkey" />
+                                <Button Grid.Column="2"
+                                        Content="Add"
+                                        Classes="secondary"
+                                        Command="{Binding AddChatParticipantCommand}" />
+                            </Grid>
 
                             <!-- Following picker -->
                             <Border IsVisible="{Binding Following.Count}"
@@ -502,8 +539,8 @@
                                                         Background="Transparent" BorderThickness="0"
                                                         Padding="8,6"
                                                         IsVisible="{Binding IsVisible}"
-                                                        Command="{Binding #FollowingList.DataContext.SelectFollowCommand}"
-                                                        CommandParameter="{Binding}">
+                                                        Command="{Binding #FollowingList.DataContext.AddContactToChatCommand}"
+                                                        CommandParameter="{Binding PublicKeyHex}">
                                                     <Grid ColumnDefinitions="Auto,*">
                                                         <Border Grid.Column="0" Width="28" Height="28" CornerRadius="14"
                                                                 Background="Transparent"
@@ -539,15 +576,14 @@
                                     </ItemsControl>
                                 </ScrollViewer>
                             </Border>
-                        </StackPanel>
 
-                        <!-- Loading Indicator -->
-                        <StackPanel Spacing="6" IsVisible="{Binding IsLookingUpKeyPackage}"
-                                    HorizontalAlignment="Center">
-                            <TextBlock Text="Looking up KeyPackages..."
-                                       Classes="muted" FontSize="12" HorizontalAlignment="Center" />
-                            <ProgressBar IsIndeterminate="True" Width="120" Height="3"
-                                         Foreground="{DynamicResource NostrPurpleBrush}" />
+                            <StackPanel Spacing="6" IsVisible="{Binding IsLookingUpKeyPackages}"
+                                        HorizontalAlignment="Center">
+                                <TextBlock Text="Checking KeyPackages..."
+                                           Classes="muted" FontSize="11" HorizontalAlignment="Center" />
+                                <ProgressBar IsIndeterminate="True" Width="120" Height="3"
+                                             Foreground="{DynamicResource NostrPurpleBrush}" />
+                            </StackPanel>
                         </StackPanel>
 
                         <!-- KeyPackage Status -->
@@ -555,50 +591,12 @@
                                 CornerRadius="8" Padding="12"
                                 IsVisible="{Binding KeyPackageStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
                             <StackPanel Spacing="4">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <PathIcon IsVisible="{Binding HasKeyPackage}"
-                                              Data="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"
-                                              Width="16" Height="16" Foreground="{DynamicResource StatusOnlineBrush}" />
-                                    <PathIcon IsVisible="{Binding !HasKeyPackage}"
-                                              Data="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"
-                                              Width="16" Height="16" Foreground="{DynamicResource StatusWarningBrush}" />
-                                    <TextBlock Text="{Binding KeyPackageStatus}"
-                                               FontSize="13" VerticalAlignment="Center" />
-                                </StackPanel>
-                                <!-- Selected package summary -->
-                                <TextBlock IsVisible="{Binding SelectedKeyPackage, Converter={x:Static ObjectConverters.IsNotNull}}"
-                                           Text="{Binding SelectedKeyPackage.Summary}"
-                                           Classes="muted" FontSize="12" Margin="24,0,0,0" />
-                                <!-- Multiple packages: show selection list -->
-                                <ListBox ItemsSource="{Binding FoundKeyPackages}"
-                                         SelectedItem="{Binding SelectedKeyPackage}"
-                                         IsVisible="{Binding HasMultipleKeyPackages}"
-                                         MaxHeight="100"
-                                         Background="Transparent"
-                                         Padding="0" Margin="0,4,0,0">
-                                    <ListBox.ItemTemplate>
-                                        <DataTemplate x:DataType="vm:KeyPackageItemViewModel">
-                                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2">
-                                                <TextBlock Text="{Binding CreatedAtDisplay}"
-                                                           FontSize="12" FontWeight="SemiBold" />
-                                                <TextBlock Text="{Binding RelaySource}"
-                                                           Classes="muted" FontSize="11"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           MaxWidth="250" />
-                                            </StackPanel>
-                                        </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
+                                <TextBlock Text="KeyPackage Status:" FontWeight="SemiBold" FontSize="12" />
+                                <TextBlock Text="{Binding KeyPackageStatus}"
+                                           FontSize="11" FontFamily="Consolas"
+                                           TextWrapping="Wrap" />
                             </StackPanel>
                         </Border>
-
-                        <!-- Name Input (Optional) -->
-                        <StackPanel Spacing="6">
-                            <TextBlock Text="Name (optional)" Classes="secondary" FontSize="13" />
-                            <TextBox Text="{Binding NewChatName}"
-                                     Watermark="Contact name"
-                                     AcceptsReturn="False" />
-                        </StackPanel>
 
                         <!-- Relay Selection (compact chips) -->
                         <StackPanel Spacing="6">
@@ -650,6 +648,7 @@
                                     HorizontalContentAlignment="Center" />
                         </Grid>
                     </StackPanel>
+                    </ScrollViewer>
 
                     <!-- Progress overlay (shown during creation) -->
                     <StackPanel IsVisible="{Binding CreateProgress, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
@@ -667,182 +666,6 @@
                                    HorizontalAlignment="Center" />
                     </StackPanel>
                 </Panel>
-            </Border>
-        </Border>
-
-        <!-- New Group Dialog Overlay (window-level, over both panels) -->
-        <Border DataContext="{Binding MainViewModel.ChatListViewModel}" x:DataType="vm:ChatListViewModel"
-                IsVisible="{Binding ShowNewGroupDialog, FallbackValue=False}"
-                Background="#80000000"
-                HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
-            <Border Classes="card"
-                    Background="{DynamicResource BackgroundCardBrush}"
-                    CornerRadius="16"
-                    Padding="24"
-                    Margin="20"
-                    VerticalAlignment="Center"
-                    HorizontalAlignment="Center"
-                    MinWidth="400" MaxWidth="500">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="600">
-                <StackPanel Spacing="16">
-                    <!-- Header -->
-                    <Grid ColumnDefinitions="*,Auto">
-                        <TextBlock Text="Create New Group"
-                                   FontSize="22" FontWeight="Bold"
-                                   VerticalAlignment="Center" />
-                        <Button Grid.Column="1" Classes="icon"
-                                Command="{Binding CancelNewGroupCommand}"
-                                ToolTip.Tip="Close">
-                            <PathIcon Data="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
-                                      Width="20" Height="20" />
-                        </Button>
-                    </Grid>
-
-                    <!-- Group Name -->
-                    <StackPanel Spacing="6">
-                        <TextBlock Text="Group Name" Classes="secondary" FontSize="13" />
-                        <TextBox Text="{Binding NewGroupName}"
-                                 Watermark="My Awesome Group"
-                                 AcceptsReturn="False" />
-                    </StackPanel>
-
-                    <!-- Description (Optional) -->
-                    <StackPanel Spacing="6">
-                        <TextBlock Text="Description (optional)" Classes="secondary" FontSize="13" />
-                        <TextBox Text="{Binding NewGroupDescription}"
-                                 Watermark="What's this group about?"
-                                 AcceptsReturn="False" />
-                    </StackPanel>
-
-                    <!-- Participants -->
-                    <StackPanel Spacing="6">
-                        <TextBlock Text="Participants" Classes="secondary" FontSize="13" />
-
-                        <!-- Chip row -->
-                        <ItemsControl ItemsSource="{Binding NewGroupParticipants}">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <WrapPanel Orientation="Horizontal" />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:FollowContactViewModel">
-                                    <Border Background="{DynamicResource SurfaceSecondaryBrush}"
-                                            BorderBrush="{DynamicResource NostrPurpleBrush}"
-                                            BorderThickness="1"
-                                            CornerRadius="14" Padding="10,4" Margin="0,0,6,6">
-                                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding ShownName}" VerticalAlignment="Center" />
-                                            <Button Content="✕"
-                                                    Padding="4,0" FontSize="11"
-                                                    Background="Transparent" BorderThickness="0"
-                                                    Command="{Binding $parent[ItemsControl].((vm:ChatListViewModel)DataContext).RemoveGroupParticipantCommand}"
-                                                    CommandParameter="{Binding}" />
-                                        </StackPanel>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-
-                        <!-- Input + Add -->
-                        <Grid ColumnDefinitions="*,8,Auto">
-                            <TextBox Grid.Column="0"
-                                     Text="{Binding NewGroupParticipantInput}"
-                                     Watermark="npub1... or hex pubkey" />
-                            <Button Grid.Column="2"
-                                    Content="Add"
-                                    Classes="secondary"
-                                    Command="{Binding AddGroupParticipantCommand}" />
-                        </Grid>
-
-                        <!-- Contacts picker -->
-                        <TextBlock Text="Tap a contact to add"
-                                   Classes="muted" FontSize="11"
-                                   IsVisible="{Binding Following.Count}" />
-                        <ItemsControl ItemsSource="{Binding Following}" MaxHeight="200">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:FollowContactViewModel">
-                                    <Button Classes="secondary"
-                                            HorizontalAlignment="Stretch"
-                                            HorizontalContentAlignment="Left"
-                                            Margin="0,2"
-                                            Command="{Binding $parent[ItemsControl].((vm:ChatListViewModel)DataContext).AddContactToGroupCommand}"
-                                            CommandParameter="{Binding PublicKeyHex}">
-                                        <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <TextBlock Text="{Binding ShownName}" FontWeight="SemiBold" />
-                                            <TextBlock Text="{Binding Npub}" Classes="muted" FontFamily="Consolas" FontSize="11" />
-                                        </StackPanel>
-                                    </Button>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-
-                        <StackPanel Spacing="6" IsVisible="{Binding IsLookingUpGroupKeyPackages}"
-                                    HorizontalAlignment="Center">
-                            <TextBlock Text="Checking KeyPackages..."
-                                       Classes="muted" FontSize="11" HorizontalAlignment="Center" />
-                            <ProgressBar IsIndeterminate="True" Width="120" Height="3"
-                                         Foreground="{DynamicResource NostrPurpleBrush}" />
-                        </StackPanel>
-                    </StackPanel>
-
-                    <!-- Group KeyPackage Status -->
-                    <Border Background="{DynamicResource SurfaceSecondaryBrush}"
-                            CornerRadius="8" Padding="12"
-                            IsVisible="{Binding GroupKeyPackageStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                        <StackPanel Spacing="4">
-                            <TextBlock Text="KeyPackage Status:" FontWeight="SemiBold" FontSize="12" />
-                            <TextBlock Text="{Binding GroupKeyPackageStatus}"
-                                       FontSize="11" FontFamily="Consolas"
-                                       TextWrapping="Wrap" />
-                        </StackPanel>
-                    </Border>
-
-                    <!-- Relay Selection -->
-                    <StackPanel Spacing="6">
-                        <TextBlock Text="Relays" Classes="secondary" FontSize="13" />
-                        <ItemsControl ItemsSource="{Binding SelectableRelays}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:RelaySelectionItemViewModel">
-                                    <Border Background="{DynamicResource SurfaceSecondaryBrush}"
-                                            CornerRadius="8" Padding="8,6" Margin="0,2">
-                                        <CheckBox IsChecked="{Binding IsSelected}">
-                                            <TextBlock Text="{Binding Url}"
-                                                       FontFamily="Consolas" FontSize="12"
-                                                       VerticalAlignment="Center" />
-                                        </CheckBox>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                        <TextBlock Text="Select relays to include in the group"
-                                   Classes="muted" FontSize="11" />
-                    </StackPanel>
-
-                    <!-- Error Message -->
-                    <TextBlock Text="{Binding NewGroupError}"
-                               Foreground="{DynamicResource StatusErrorBrush}"
-                               FontSize="13"
-                               TextWrapping="Wrap"
-                               IsVisible="{Binding NewGroupError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-
-                    <!-- Buttons -->
-                    <Grid ColumnDefinitions="*,12,*" Margin="0,8,0,0">
-                        <Button Grid.Column="0"
-                                Classes="secondary"
-                                Content="Cancel"
-                                Command="{Binding CancelNewGroupCommand}"
-                                HorizontalAlignment="Stretch"
-                                HorizontalContentAlignment="Center" />
-                        <Button Grid.Column="2"
-                                Classes="primary"
-                                Content="Create Group"
-                                Command="{Binding CreateGroupCommand}"
-                                HorizontalAlignment="Stretch"
-                                HorizontalContentAlignment="Center" />
-                    </Grid>
-                </StackPanel>
-                </ScrollViewer>
             </Border>
         </Border>
 

@@ -253,12 +253,15 @@ public class HeadlessDmAndBotTests : HeadlessTestBase
         var chatListVm = new ChatListViewModel(ctx.MessageService, ctx.Storage, ctx.MlsService, ctx.MockNostr.Object);
         Dispatcher.UIThread.RunJobs();
 
-        chatListVm.NewChatPublicKey = targetPubKey;
-        await chatListVm.LookupKeyPackageCommand.Execute();
+        chatListVm.NewChatParticipantInput = targetPubKey;
+        await chatListVm.AddChatParticipantCommand.Execute();
         Dispatcher.UIThread.RunJobs();
 
-        Assert.True(chatListVm.HasKeyPackage);
-        Assert.NotEmpty(chatListVm.FoundKeyPackages);
+        await chatListVm.LookupKeyPackagesCommand.Execute();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Contains("Found: 1", chatListVm.KeyPackageStatus ?? "");
+        Assert.Single(chatListVm.NewChatParticipants);
     }
 
     [AvaloniaTheory]
@@ -277,11 +280,13 @@ public class HeadlessDmAndBotTests : HeadlessTestBase
         var chatListVm = new ChatListViewModel(ctx.MessageService, ctx.Storage, ctx.MlsService, ctx.MockNostr.Object);
         Dispatcher.UIThread.RunJobs();
 
-        chatListVm.NewChatPublicKey = targetPubKey;
-        await chatListVm.LookupKeyPackageCommand.Execute();
+        chatListVm.NewChatParticipantInput = targetPubKey;
+        await chatListVm.AddChatParticipantCommand.Execute();
         Dispatcher.UIThread.RunJobs();
 
-        Assert.False(chatListVm.HasKeyPackage);
+        await chatListVm.LookupKeyPackagesCommand.Execute();
+        Dispatcher.UIThread.RunJobs();
+
         Assert.Contains("No KeyPackage", chatListVm.KeyPackageStatus ?? "");
     }
 }

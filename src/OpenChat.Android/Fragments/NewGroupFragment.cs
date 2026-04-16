@@ -54,7 +54,7 @@ public class NewGroupFragment : Fragment
 
         toolbar.NavigationClick += (s, e) =>
         {
-            ViewModel.CancelNewGroupCommand.Execute().Subscribe().DisposeWith(_disposables);
+            ViewModel.CancelNewChatCommand.Execute().Subscribe().DisposeWith(_disposables);
             ParentFragmentManager.PopBackStack();
         };
 
@@ -64,7 +64,7 @@ public class NewGroupFragment : Fragment
         contactsList.SetAdapter(contactsAdapter);
         contactsAdapter.ItemClick += (s, contact) =>
         {
-            ViewModel.AddContactToGroupCommand.Execute(contact.PublicKeyHex).Subscribe().DisposeWith(_disposables);
+            ViewModel.AddContactToChatCommand.Execute(contact.PublicKeyHex).Subscribe().DisposeWith(_disposables);
         };
         contactsAdapter.UpdateItems(ViewModel.Following);
         var showContacts = ViewModel.Following.Count > 0;
@@ -84,8 +84,8 @@ public class NewGroupFragment : Fragment
         // Add participant — button or IME action
         void AddFromInput()
         {
-            ViewModel.NewGroupParticipantInput = participantInput.Text ?? string.Empty;
-            ViewModel.AddGroupParticipantCommand.Execute().Subscribe().DisposeWith(_disposables);
+            ViewModel.NewChatParticipantInput = participantInput.Text ?? string.Empty;
+            ViewModel.AddChatParticipantCommand.Execute().Subscribe().DisposeWith(_disposables);
             participantInput.Text = string.Empty;
         }
         addParticipantButton.Click += (s, e) => AddFromInput();
@@ -103,21 +103,21 @@ public class NewGroupFragment : Fragment
         // Render chips mirroring the ViewModel collection
         RenderChips();
         _participantsChangedHandler = (s, e) => Activity?.RunOnUiThread(RenderChips);
-        ViewModel.NewGroupParticipants.CollectionChanged += _participantsChangedHandler;
+        ViewModel.NewChatParticipants.CollectionChanged += _participantsChangedHandler;
 
         createButton.Click += (s, e) =>
         {
-            ViewModel.NewGroupName = nameInput.Text ?? string.Empty;
-            ViewModel.NewGroupDescription = descInput.Text ?? string.Empty;
-            ViewModel.CreateGroupCommand.Execute().Subscribe().DisposeWith(_disposables);
+            ViewModel.NewChatName = nameInput.Text ?? string.Empty;
+            ViewModel.NewChatDescription = descInput.Text ?? string.Empty;
+            ViewModel.CreateChatCommand.Execute().Subscribe().DisposeWith(_disposables);
         };
 
         lookupButton.Click += (s, e) =>
         {
-            ViewModel.LookupGroupKeyPackagesCommand.Execute().Subscribe().DisposeWith(_disposables);
+            ViewModel.LookupKeyPackagesCommand.Execute().Subscribe().DisposeWith(_disposables);
         };
 
-        ViewModel.WhenAnyValue(x => x.NewGroupError)
+        ViewModel.WhenAnyValue(x => x.NewChatError)
             .ObserveOn(RxApp.MainThreadScheduler)
             .Subscribe(error =>
             {
@@ -126,7 +126,7 @@ public class NewGroupFragment : Fragment
             })
             .DisposeWith(_disposables);
 
-        ViewModel.WhenAnyValue(x => x.GroupKeyPackageStatus)
+        ViewModel.WhenAnyValue(x => x.KeyPackageStatus)
             .ObserveOn(RxApp.MainThreadScheduler)
             .Subscribe(status =>
             {
@@ -135,7 +135,7 @@ public class NewGroupFragment : Fragment
             })
             .DisposeWith(_disposables);
 
-        ViewModel.WhenAnyValue(x => x.IsLookingUpGroupKeyPackages)
+        ViewModel.WhenAnyValue(x => x.IsLookingUpKeyPackages)
             .ObserveOn(RxApp.MainThreadScheduler)
             .Subscribe(loading =>
             {
@@ -144,7 +144,7 @@ public class NewGroupFragment : Fragment
             })
             .DisposeWith(_disposables);
 
-        ViewModel.ShowNewGroupDialog = true;
+        ViewModel.ShowNewChatDialog = true;
 
         relayContainer.RemoveAllViews();
         foreach (var relay in ViewModel.SelectableRelays)
@@ -160,7 +160,7 @@ public class NewGroupFragment : Fragment
             relayContainer.AddView(checkBox);
         }
 
-        ViewModel.WhenAnyValue(x => x.ShowNewGroupDialog)
+        ViewModel.WhenAnyValue(x => x.ShowNewChatDialog)
             .ObserveOn(RxApp.MainThreadScheduler)
             .Where(show => !show)
             .Subscribe(_ => ParentFragmentManager.PopBackStack())
@@ -171,7 +171,7 @@ public class NewGroupFragment : Fragment
     {
         if (_chipGroup == null || Context == null) return;
         _chipGroup.RemoveAllViews();
-        foreach (var p in ViewModel.NewGroupParticipants.ToList())
+        foreach (var p in ViewModel.NewChatParticipants.ToList())
         {
             var chip = new Chip(Context)
             {
@@ -181,7 +181,7 @@ public class NewGroupFragment : Fragment
             };
             var captured = p;
             chip.SetOnCloseIconClickListener(new ActionClickListener(() =>
-                ViewModel.RemoveGroupParticipantCommand.Execute(captured).Subscribe().DisposeWith(_disposables)));
+                ViewModel.RemoveChatParticipantCommand.Execute(captured).Subscribe().DisposeWith(_disposables)));
             _chipGroup.AddView(chip);
         }
     }
@@ -190,7 +190,7 @@ public class NewGroupFragment : Fragment
     {
         if (_participantsChangedHandler != null)
         {
-            ViewModel.NewGroupParticipants.CollectionChanged -= _participantsChangedHandler;
+            ViewModel.NewChatParticipants.CollectionChanged -= _participantsChangedHandler;
             _participantsChangedHandler = null;
         }
         _chipGroup = null;

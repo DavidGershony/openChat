@@ -19,7 +19,7 @@ public class HeadlessGroupParticipantTests : HeadlessTestBase
         var ctx = await CreateRealContext("managed");
         var vm = new ChatListViewModel(ctx.MessageService, ctx.Storage, ctx.MlsService, ctx.MockNostr.Object);
         await vm.LoadChatsAsync();
-        vm.NewGroupCommand.Execute().Subscribe();
+        vm.NewChatCommand.Execute().Subscribe();
         return vm;
     }
 
@@ -29,13 +29,13 @@ public class HeadlessGroupParticipantTests : HeadlessTestBase
         var vm = await CreateVmAsync();
         var hex = RandomHex64();
 
-        vm.NewGroupParticipantInput = hex;
-        vm.AddGroupParticipantCommand.Execute().Subscribe();
+        vm.NewChatParticipantInput = hex;
+        vm.AddChatParticipantCommand.Execute().Subscribe();
 
-        Assert.Single(vm.NewGroupParticipants);
-        Assert.Equal(hex, vm.NewGroupParticipants[0].PublicKeyHex);
-        Assert.Equal(string.Empty, vm.NewGroupParticipantInput);
-        Assert.Null(vm.NewGroupError);
+        Assert.Single(vm.NewChatParticipants);
+        Assert.Equal(hex, vm.NewChatParticipants[0].PublicKeyHex);
+        Assert.Equal(string.Empty, vm.NewChatParticipantInput);
+        Assert.Null(vm.NewChatError);
     }
 
     [AvaloniaFact]
@@ -45,11 +45,11 @@ public class HeadlessGroupParticipantTests : HeadlessTestBase
         var hex = RandomHex64();
         var npub = Bech32.Encode("npub", Convert.FromHexString(hex));
 
-        vm.NewGroupParticipantInput = npub;
-        vm.AddGroupParticipantCommand.Execute().Subscribe();
+        vm.NewChatParticipantInput = npub;
+        vm.AddChatParticipantCommand.Execute().Subscribe();
 
-        Assert.Single(vm.NewGroupParticipants);
-        Assert.Equal(hex, vm.NewGroupParticipants[0].PublicKeyHex);
+        Assert.Single(vm.NewChatParticipants);
+        Assert.Equal(hex, vm.NewChatParticipants[0].PublicKeyHex);
     }
 
     [AvaloniaFact]
@@ -57,11 +57,11 @@ public class HeadlessGroupParticipantTests : HeadlessTestBase
     {
         var vm = await CreateVmAsync();
 
-        vm.NewGroupParticipantInput = "not-a-key";
-        vm.AddGroupParticipantCommand.Execute().Subscribe();
+        vm.NewChatParticipantInput = "not-a-key";
+        vm.AddChatParticipantCommand.Execute().Subscribe();
 
-        Assert.Empty(vm.NewGroupParticipants);
-        Assert.NotNull(vm.NewGroupError);
+        Assert.Empty(vm.NewChatParticipants);
+        Assert.NotNull(vm.NewChatError);
     }
 
     [AvaloniaFact]
@@ -69,11 +69,11 @@ public class HeadlessGroupParticipantTests : HeadlessTestBase
     {
         var vm = await CreateVmAsync();
 
-        vm.NewGroupParticipantInput = "npub1garbage";
-        vm.AddGroupParticipantCommand.Execute().Subscribe();
+        vm.NewChatParticipantInput = "npub1garbage";
+        vm.AddChatParticipantCommand.Execute().Subscribe();
 
-        Assert.Empty(vm.NewGroupParticipants);
-        Assert.NotNull(vm.NewGroupError);
+        Assert.Empty(vm.NewChatParticipants);
+        Assert.NotNull(vm.NewChatError);
     }
 
     [AvaloniaFact]
@@ -82,12 +82,12 @@ public class HeadlessGroupParticipantTests : HeadlessTestBase
         var vm = await CreateVmAsync();
         var hex = RandomHex64();
 
-        vm.NewGroupParticipantInput = hex;
-        vm.AddGroupParticipantCommand.Execute().Subscribe();
-        vm.NewGroupParticipantInput = hex;
-        vm.AddGroupParticipantCommand.Execute().Subscribe();
+        vm.NewChatParticipantInput = hex;
+        vm.AddChatParticipantCommand.Execute().Subscribe();
+        vm.NewChatParticipantInput = hex;
+        vm.AddChatParticipantCommand.Execute().Subscribe();
 
-        Assert.Single(vm.NewGroupParticipants);
+        Assert.Single(vm.NewChatParticipants);
     }
 
     [AvaloniaFact]
@@ -96,12 +96,12 @@ public class HeadlessGroupParticipantTests : HeadlessTestBase
         var vm = await CreateVmAsync();
         var hex = RandomHex64();
 
-        vm.NewGroupParticipantInput = hex;
-        vm.AddGroupParticipantCommand.Execute().Subscribe();
-        vm.NewGroupParticipantInput = hex.ToUpperInvariant();
-        vm.AddGroupParticipantCommand.Execute().Subscribe();
+        vm.NewChatParticipantInput = hex;
+        vm.AddChatParticipantCommand.Execute().Subscribe();
+        vm.NewChatParticipantInput = hex.ToUpperInvariant();
+        vm.AddChatParticipantCommand.Execute().Subscribe();
 
-        Assert.Single(vm.NewGroupParticipants);
+        Assert.Single(vm.NewChatParticipants);
     }
 
     [AvaloniaFact]
@@ -110,37 +110,37 @@ public class HeadlessGroupParticipantTests : HeadlessTestBase
         var vm = await CreateVmAsync();
         var hex = RandomHex64();
 
-        vm.NewGroupParticipantInput = hex;
-        vm.AddGroupParticipantCommand.Execute().Subscribe();
-        var chip = vm.NewGroupParticipants[0];
+        vm.NewChatParticipantInput = hex;
+        vm.AddChatParticipantCommand.Execute().Subscribe();
+        var chip = vm.NewChatParticipants[0];
 
-        vm.RemoveGroupParticipantCommand.Execute(chip).Subscribe();
+        vm.RemoveChatParticipantCommand.Execute(chip).Subscribe();
 
-        Assert.Empty(vm.NewGroupParticipants);
+        Assert.Empty(vm.NewChatParticipants);
     }
 
     [AvaloniaFact]
-    public async Task AddContactToGroupCommand_AddsByHex()
+    public async Task AddContactToChatCommand_AddsByHex()
     {
         var vm = await CreateVmAsync();
         var hex = RandomHex64();
 
-        vm.AddContactToGroupCommand.Execute(hex).Subscribe();
+        vm.AddContactToChatCommand.Execute(hex).Subscribe();
 
-        Assert.Single(vm.NewGroupParticipants);
-        Assert.Equal(hex, vm.NewGroupParticipants[0].PublicKeyHex);
+        Assert.Single(vm.NewChatParticipants);
+        Assert.Equal(hex, vm.NewChatParticipants[0].PublicKeyHex);
     }
 
     [AvaloniaFact]
-    public async Task NewGroupCommand_ResetsParticipants()
+    public async Task NewChatCommand_ResetsParticipants()
     {
         var vm = await CreateVmAsync();
-        vm.AddContactToGroupCommand.Execute(RandomHex64()).Subscribe();
-        Assert.Single(vm.NewGroupParticipants);
+        vm.AddContactToChatCommand.Execute(RandomHex64()).Subscribe();
+        Assert.Single(vm.NewChatParticipants);
 
-        vm.NewGroupCommand.Execute().Subscribe();
+        vm.NewChatCommand.Execute().Subscribe();
 
-        Assert.Empty(vm.NewGroupParticipants);
-        Assert.Equal(string.Empty, vm.NewGroupParticipantInput);
+        Assert.Empty(vm.NewChatParticipants);
+        Assert.Equal(string.Empty, vm.NewChatParticipantInput);
     }
 }

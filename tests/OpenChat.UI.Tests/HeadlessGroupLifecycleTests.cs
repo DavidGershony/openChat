@@ -148,21 +148,21 @@ public class HeadlessGroupLifecycleTests : HeadlessTestBase
         Dispatcher.UIThread.RunJobs();
 
         // Open new group dialog
-        chatListVm.NewGroupCommand.Execute().Subscribe();
+        chatListVm.NewChatCommand.Execute().Subscribe();
         Dispatcher.UIThread.RunJobs();
 
-        chatListVm.NewGroupName = "Group With Bob";
-        chatListVm.AddContactToGroupCommand.Execute(bob.User.PublicKeyHex).Subscribe();
+        chatListVm.NewChatName = "Group With Bob";
+        chatListVm.AddContactToChatCommand.Execute(bob.User.PublicKeyHex).Subscribe();
         Dispatcher.UIThread.RunJobs();
 
         // Create the group (real MLS + Welcome publishing)
-        await chatListVm.CreateGroupCommand.Execute();
+        await chatListVm.CreateChatCommand.Execute();
         Dispatcher.UIThread.RunJobs();
 
         // Group should appear in chat list
         Assert.NotEmpty(chatListVm.Chats);
         Assert.Contains(chatListVm.Chats, c => c.Name == "Group With Bob");
-        Assert.False(chatListVm.ShowNewGroupDialog);
+        Assert.False(chatListVm.ShowNewChatDialog);
 
         // Welcome should have been published
         alice.MockNostr.Verify(n => n.PublishWelcomeAsync(
