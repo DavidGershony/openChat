@@ -786,27 +786,37 @@ public class ChatListViewModel : ViewModelBase
 
             await _storageService.SaveFollowsAsync(_currentUserPubKeyHex, follows);
 
-            // Rebuild UI list preserving existing VMs where possible
+            // Re-read the merged Contacts set (follows + chat/group sources) so
+            // refresh doesn't drop contacts that came from chats but aren't in NIP-02.
+            var merged = await _storageService.GetContactsAsync(_currentUserPubKeyHex);
+            var users = new Dictionary<string, User?>(StringComparer.OrdinalIgnoreCase);
+            foreach (var c in merged)
+                users[c.PublicKeyHex] = await _storageService.GetUserByPublicKeyAsync(c.PublicKeyHex);
+
             RxApp.MainThreadScheduler.Schedule(() =>
             {
                 var existing = Following.ToDictionary(f => f.PublicKeyHex, StringComparer.OrdinalIgnoreCase);
                 Following.Clear();
-                foreach (var f in follows)
+                foreach (var c in merged)
                 {
-                    if (existing.TryGetValue(f.PublicKeyHex, out var vm))
+                    if (existing.TryGetValue(c.PublicKeyHex, out var vm))
                     {
-                        vm.Petname = f.Petname ?? vm.Petname;
+                        vm.Petname = c.Petname ?? vm.Petname;
                         Following.Add(vm);
                     }
                     else
                     {
-                        var npub = Bech32.Encode("npub", Convert.FromHexString(f.PublicKeyHex));
-                        Following.Add(new FollowContactViewModel(f.PublicKeyHex, npub, f.Petname, null, null));
+                        var user = users.GetValueOrDefault(c.PublicKeyHex);
+                        var npub = user?.Npub ?? Bech32.Encode("npub", Convert.FromHexString(c.PublicKeyHex));
+                        Following.Add(new FollowContactViewModel(
+                            c.PublicKeyHex, npub, c.Petname,
+                            user?.DisplayName,
+                            user?.LocalAvatarPath is { } p && File.Exists(p) ? p : null));
                     }
                 }
             });
 
-            _ = Task.Run(() => RefreshFollowingMetadataAsync(follows.Select(f => f.PublicKeyHex).ToList()));
+            _ = Task.Run(() => RefreshFollowingMetadataAsync(merged.Select(c => c.PublicKeyHex).ToList()));
         }
         catch (Exception ex)
         {

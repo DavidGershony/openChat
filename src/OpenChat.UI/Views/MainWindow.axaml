@@ -254,8 +254,7 @@
                                 IsVisible="{Binding #MainGrid.DataContext.CurrentView, Converter={x:Static ObjectConverters.IsNull}}" />
 
                 <!-- Empty State (when no chat selected and not in settings) -->
-                <StackPanel IsVisible="{Binding !ChatViewModel.HasChat}"
-                            VerticalAlignment="Center" HorizontalAlignment="Center"
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
                             Spacing="16">
                     <StackPanel.IsVisible>
                         <MultiBinding Converter="{x:Static BoolConverters.And}">
@@ -344,8 +343,7 @@
                     <!-- Fallback to just name if no display name -->
                     <TextBlock Text="{Binding MyName}"
                                FontSize="18" FontWeight="SemiBold"
-                               HorizontalAlignment="Center"
-                               IsVisible="{Binding MyDisplayName, Converter={x:Static StringConverters.IsNullOrEmpty}}">
+                               HorizontalAlignment="Center">
                         <TextBlock.IsVisible>
                             <MultiBinding Converter="{x:Static BoolConverters.And}">
                                 <Binding Path="MyDisplayName" Converter="{x:Static StringConverters.IsNullOrEmpty}" />
