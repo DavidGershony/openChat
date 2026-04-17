@@ -465,12 +465,12 @@ public class ManagedMlsService : IMlsService
         var nostrGroupId = GetNostrGroupId(groupId);
         var (base64Content, mip03Tags) = GroupEventBuilder.BuildGroupEvent(mlsBytes, nostrGroupId, exporterSecret);
 
-        // Step 4: Build signed kind 445 Nostr event with EPHEMERAL key (MIP-03 privacy)
-        // MIP-03: kind 445 events SHOULD use ephemeral keys so relay operators
-        // cannot link group messages to user identities. The sender identity is
-        // inside the MLS-encrypted rumor, not in the Nostr event pubkey.
+        // Step 4: Build signed kind 445 Nostr event with exporter-derived key (MIP-03)
+        // The key is derived from the group's exporter secret so group members
+        // can verify the event was signed by someone who knows the group secret.
+        // Sender identity is inside the MLS-encrypted rumor, not in the Nostr event pubkey.
         var tags = mip03Tags.Select(t => t.ToList()).ToList();
-        var eventJson = BuildEphemeralSignedEvent(445, base64Content, tags);
+        var eventJson = BuildEphemeralSignedEvent(445, base64Content, tags, exporterSecret);
 
         _logger.LogDebug("EncryptMessage: produced {Len} bytes event JSON (managed)", eventJson.Length);
 
@@ -508,7 +508,7 @@ public class ManagedMlsService : IMlsService
         var (base64Content, mip03Tags) = GroupEventBuilder.BuildGroupEvent(mlsBytes, nostrGroupId, exporterSecret);
 
         var tags = mip03Tags.Select(t => t.ToList()).ToList();
-        var eventJson = BuildEphemeralSignedEvent(445, base64Content, tags);
+        var eventJson = BuildEphemeralSignedEvent(445, base64Content, tags, exporterSecret);
 
         await SaveGroupStateAsync(groupId);
 
@@ -1356,7 +1356,8 @@ public class ManagedMlsService : IMlsService
 
         var hTagValue = Convert.ToHexString(GetNostrGroupId(groupId)).ToLowerInvariant();
         var tags = new List<List<string>> { new() { "h", hTagValue }, new() { "encoding", "base64" } };
-        var eventJson = BuildEphemeralSignedEvent(445, base64Content, tags);
+        var exporterSecret = _mdk!.GetExporterSecret(groupId);
+        var eventJson = BuildEphemeralSignedEvent(445, base64Content, tags, exporterSecret);
 
         _logger.LogDebug("EncryptCommit: produced {Len} bytes event JSON", eventJson.Length);
         return Task.FromResult(eventJson);
@@ -1366,13 +1367,25 @@ public class ManagedMlsService : IMlsService
     /// Signs a Nostr event with a randomly generated ephemeral keypair.
     /// Used for kind 445 group messages per MIP-03 to prevent linking messages to user identity.
     /// </summary>
-    private byte[] BuildEphemeralSignedEvent(int kind, string content, List<List<string>> tags)
+    private byte[] BuildEphemeralSignedEvent(int kind, string content, List<List<string>> tags,
+        byte[]? exporterSecret = null)
     {
-        // Generate ephemeral keypair
-        var ephemeralPrivKey = new byte[32];
-        System.Security.Cryptography.RandomNumberGenerator.Fill(ephemeralPrivKey);
+        // MIP-03: Derive ephemeral keypair from the group's exporter secret so group members
+        // can verify the event was signed by someone who knows the group secret.
+        // Falls back to random key if exporter secret is not available.
+        byte[] ephemeralPrivKey;
+        if (exporterSecret != null)
+        {
+            (ephemeralPrivKey, _) = ExporterSecretKeyDerivation.DeriveKeyPair(exporterSecret);
+        }
+        else
+        {
+            ephemeralPrivKey = new byte[32];
+            System.Security.Cryptography.RandomNumberGenerator.Fill(ephemeralPrivKey);
+        }
+
         if (!Context.Instance.TryCreateECPrivKey(ephemeralPrivKey, out var ecPrivKey) || ecPrivKey is null)
-            throw new InvalidOperationException("Failed to generate ephemeral key");
+            throw new InvalidOperationException("Failed to create ephemeral signing key");
         var ephemeralPubKey = ecPrivKey.CreateXOnlyPubKey();
         var ephPubBytes = new byte[32];
         ephemeralPubKey.WriteToSpan(ephPubBytes);
