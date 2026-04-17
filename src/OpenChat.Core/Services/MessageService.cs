@@ -531,12 +531,18 @@ public class MessageService : IMessageService, IDisposable
         if (adminPubkeys.Count == 0)
             adminPubkeys = new List<string> { _currentUser.PublicKeyHex.ToLowerInvariant() };
 
+        // Get the NostrGroupId from the 0xF2EE extension for relay subscriptions
+        byte[]? nostrGroupId = null;
+        try { nostrGroupId = _mlsService.GetNostrGroupId(groupInfo.GroupId); }
+        catch { _logger.LogWarning("CreateGroup: NostrGroupId not available from 0xF2EE extension"); }
+
         var chat = new Chat
         {
             Id = Guid.NewGuid().ToString(),
             Name = name,
             Type = ChatType.Group,
             MlsGroupId = groupInfo.GroupId,
+            NostrGroupId = nostrGroupId,
             MlsEpoch = groupInfo.Epoch,
             ParticipantPublicKeys = new List<string> { _currentUser.PublicKeyHex },
             AdminPublicKeys = adminPubkeys,

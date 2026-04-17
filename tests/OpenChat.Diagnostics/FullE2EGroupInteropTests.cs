@@ -25,7 +25,7 @@ namespace OpenChat.Diagnostics;
 [Trait("Category", "FullE2E")]
 public class FullE2EGroupInteropTests : IAsyncLifetime
 {
-    private const string RelayUrl = "wss://test.thedude.cloud";
+    private const string RelayUrl = "wss://nos.lol";
 
     private readonly ITestOutputHelper _output;
     private readonly List<string> _dbPaths = new();
@@ -506,6 +506,31 @@ public class FullE2EGroupInteropTests : IAsyncLifetime
         var events = await FetchRawEventsFromRelay(RelayUrl,
             new { kinds = new[] { 445 }, @__h = new[] { nostrGroupIdHex }, limit = 50 });
 
+        _output.WriteLine($"  Found {events.Count} kind-445 events with h-tag filter");
+        // Also try without h-tag filter to see if WN uses a different group ID
+        if (events.Count == 0)
+        {
+            var allEvents = await FetchRawEventsFromRelay(RelayUrl,
+                new { kinds = new[] { 445 }, limit = 20 });
+            _output.WriteLine($"  Found {allEvents.Count} kind-445 events WITHOUT h-tag filter");
+            foreach (var e in allEvents)
+            {
+                try
+                {
+                    using var d = JsonDocument.Parse(e);
+                    var tags = d.RootElement.GetProperty("tags");
+                    var hTags = new List<string>();
+                    foreach (var t in tags.EnumerateArray())
+                    {
+                        if (t.GetArrayLength() >= 2 && t[0].GetString() == "h")
+                            hTags.Add(t[1].GetString() ?? "?");
+                    }
+                    _output.WriteLine($"    event h-tags: [{string.Join(", ", hTags)}] (expected: {nostrGroupIdHex})");
+                }
+                catch { }
+            }
+            events = allEvents;
+        }
         bool aliceGotWn = false, bobGotWn = false;
         foreach (var ev in events)
         {
@@ -514,20 +539,22 @@ public class FullE2EGroupInteropTests : IAsyncLifetime
                 using var doc = JsonDocument.Parse(ev);
                 var content = doc.RootElement.GetProperty("content").GetString()!;
                 var bytes = Convert.FromBase64String(content);
+                _output.WriteLine($"  Trying event ({bytes.Length} bytes)...");
 
                 if (!aliceGotWn) try
                 {
                     var r = await alice.MlsService.DecryptMessageAsync(chat.MlsGroupId!, bytes);
                     if (!r.IsCommit && r.Plaintext.Contains("Charlie WN"))
                     { aliceGotWn = true; _output.WriteLine($"  Alice decrypted WN: \"{r.Plaintext}\""); }
-                } catch { }
+                    else _output.WriteLine($"  Alice got: isCommit={r.IsCommit}, text=\"{r.Plaintext}\"");
+                } catch (Exception ex) { _output.WriteLine($"  Alice error: {ex.Message[..Math.Min(100, ex.Message.Length)]}"); }
 
                 if (!bobGotWn) try
                 {
                     var r = await bob.MlsService.DecryptMessageAsync(chatBob.MlsGroupId!, bytes);
                     if (!r.IsCommit && r.Plaintext.Contains("Charlie WN"))
                     { bobGotWn = true; _output.WriteLine($"  Bob decrypted WN: \"{r.Plaintext}\""); }
-                } catch { }
+                } catch (Exception ex) { _output.WriteLine($"  Bob error: {ex.Message[..Math.Min(100, ex.Message.Length)]}"); }
             }
             catch { }
         }
