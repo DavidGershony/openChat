@@ -403,8 +403,10 @@ public class FullE2EGroupInteropTests : IAsyncLifetime
         _output.WriteLine("\n[Step 2] Alice creates group");
         var chat = await alice.MessageService.CreateGroupAsync("E2E OC+WN Group",
             new[] { bob.PubKeyHex, wnPubkey });
+        var aliceEpochAfterCreate = (await alice.MlsService.GetGroupInfoAsync(chat.MlsGroupId!))?.Epoch;
         _output.WriteLine($"  Group: {Convert.ToHexString(chat.MlsGroupId!).ToLowerInvariant()[..16]}...");
         _output.WriteLine($"  Participants: {chat.ParticipantPublicKeys.Count}");
+        _output.WriteLine($"  Alice epoch after create+add: {aliceEpochAfterCreate}");
         await Task.Delay(3000);
 
         // Step 3: Bob accepts
@@ -440,29 +442,21 @@ public class FullE2EGroupInteropTests : IAsyncLifetime
         _output.WriteLine($"  WN groups: {wnGroups.Count}");
         Assert.NotEmpty(wnGroups);
 
-        // Step 5: Sync commits — Bob processes the commit adding WN
-        _output.WriteLine("\n[Step 5] Syncing commits for Bob");
+        // Step 5: Bob re-subscribes with since to pick up the commit that added WN.
+        // This simulates what the real app does via the since fix in ChatListViewModel.
+        _output.WriteLine("\n[Step 5] Syncing Bob — re-subscribe with since to catch WN commit");
+        var bobSubGroupId = chatBob.NostrGroupId != null
+            ? Convert.ToHexString(chatBob.NostrGroupId).ToLowerInvariant()
+            : Convert.ToHexString(chatBob.MlsGroupId!).ToLowerInvariant();
+        await bob.NostrService.SubscribeToGroupMessagesAsync(
+            new[] { bobSubGroupId },
+            DateTimeOffset.UtcNow.AddMinutes(-5));
+        // Wait for the subscription to deliver the commit event
+        await Task.Delay(5000);
+
         var nostrGroupIdHex = chat.NostrGroupId != null
             ? Convert.ToHexString(chat.NostrGroupId).ToLowerInvariant()
             : Convert.ToHexString(chat.MlsGroupId!).ToLowerInvariant();
-
-        await Task.Delay(2000);
-        var events = await FetchRawEventsFromRelay(RelayUrl,
-            new { kinds = new[] { 445 }, @__h = new[] { nostrGroupIdHex }, limit = 50 });
-        _output.WriteLine($"  {events.Count} kind-445 events");
-
-        foreach (var ev in events)
-        {
-            try
-            {
-                using var doc = JsonDocument.Parse(ev);
-                var content = doc.RootElement.GetProperty("content").GetString()!;
-                var bytes = Convert.FromBase64String(content);
-                var r = await bob.MlsService.DecryptMessageAsync(chatBob.MlsGroupId!, bytes);
-                if (r.IsCommit) _output.WriteLine($"  Bob processed commit");
-            }
-            catch { }
-        }
 
         // Epoch check
         var aliceEpoch = (await alice.MlsService.GetGroupInfoAsync(chat.MlsGroupId!))?.Epoch;
@@ -509,7 +503,7 @@ public class FullE2EGroupInteropTests : IAsyncLifetime
         await _wnClient.SendMessageAsync(wnGroups[0].GroupIdHex, "Charlie WN E2E!");
         await Task.Delay(5000);
 
-        events = await FetchRawEventsFromRelay(RelayUrl,
+        var events = await FetchRawEventsFromRelay(RelayUrl,
             new { kinds = new[] { 445 }, @__h = new[] { nostrGroupIdHex }, limit = 50 });
 
         bool aliceGotWn = false, bobGotWn = false;

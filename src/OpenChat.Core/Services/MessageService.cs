@@ -687,6 +687,21 @@ public class MessageService : IMessageService, IDisposable
                 welcome.CommitData, commitGroupId, _currentUser.PrivateKeyHex);
             _logger.LogInformation("AddMember: published kind 445 commit event {EventId} for group {GroupId}",
                 commitEventId, commitGroupId[..Math.Min(16, commitGroupId.Length)]);
+
+            // Mark the commit event as processed so we don't re-process our own relay echo.
+            // Without this, our subscription picks up the commit we just published and
+            // tries to apply it again, corrupting the MLS group state.
+            await _storageService.SaveMessageAsync(new Message
+            {
+                Id = Guid.NewGuid().ToString(),
+                ChatId = chatId,
+                Content = "[commit]",
+                SenderPublicKey = _currentUser.PublicKeyHex,
+                NostrEventId = commitEventId,
+                Timestamp = DateTime.UtcNow,
+                Type = MessageType.System,
+                Status = MessageStatus.Sent
+            });
         }
 
         // Publish Welcome message (NIP-59 gift wrapped kind 444)

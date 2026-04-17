@@ -128,8 +128,11 @@ public class ManagedMlsService : IMlsService
             }
             else
             {
+                // Derive MLS DB name from the main DB name to keep them 1:1
+                // e.g., "openchat.db" → "openchat_mls.db"
                 var dir = Path.GetDirectoryName(baseDbPath) ?? ".";
-                var mlsDbPath = Path.Combine(dir, "mls_state.db");
+                var baseName = Path.GetFileNameWithoutExtension(baseDbPath);
+                var mlsDbPath = Path.Combine(dir, $"{baseName}_mls.db");
                 connStr = $"Data Source={mlsDbPath}";
             }
             var secureStorage = _storageService?.SecureStorage ?? new NoOpSecureStorage();
