@@ -129,19 +129,6 @@ public class MainActivity : AppCompatActivity, IActivatableView
             .Commit();
     }
 
-    public void NavigateToNewGroup()
-    {
-        if (_shellViewModel?.MainViewModel == null) return;
-        // Execute command to clear state and populate relay selection list
-        // Unified NewChatCommand is used for both 1:1 and group creation.
-        _shellViewModel.MainViewModel.ChatListViewModel.NewChatCommand.Execute().Subscribe();
-        var fragment = new NewGroupFragment(_shellViewModel.MainViewModel);
-        SupportFragmentManager.BeginTransaction()
-            .Replace(Resource.Id.fragment_container, fragment, "newgroup")
-            .AddToBackStack("newgroup")
-            .Commit();
-    }
-
     public void NavigateToAddBot()
     {
         if (_shellViewModel?.MainViewModel == null) return;

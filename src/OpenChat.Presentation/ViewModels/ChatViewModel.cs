@@ -349,7 +349,8 @@ public class ChatViewModel : ViewModelBase
         ChatId = chat.Id;
         ChatName = chat.Name;
         ChatAvatarUrl = chat.AvatarUrl;
-        IsGroup = chat.Type == ChatType.Group;
+        IsGroup = chat.Type == ChatType.Group &&
+            (chat.ParticipantPublicKeys.Count > 2 || !string.IsNullOrEmpty(chat.Description));
 
         // Reset send state — IsSending/UploadStatus belong to the shared VM instance, not
         // the specific chat. Any pending send on the previous chat will still complete in

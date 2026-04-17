@@ -1,14 +1,15 @@
 using Android.OS;
 using Android.Views;
 using Android.Widget;
+using AndroidX.RecyclerView.Widget;
 using Google.Android.Material.AppBar;
 using Google.Android.Material.Button;
+using Google.Android.Material.Chip;
 using Google.Android.Material.TextField;
-using AndroidX.RecyclerView.Widget;
 using OpenChat.Android.Adapters;
 using OpenChat.Presentation.ViewModels;
 using ReactiveUI;
-using System.Reactive;
+using System.Collections.Specialized;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using Fragment = AndroidX.Fragment.App.Fragment;
@@ -20,6 +21,8 @@ public class NewChatFragment : Fragment
     private readonly MainViewModel _mainViewModel;
     private ChatListViewModel ViewModel => _mainViewModel.ChatListViewModel;
     private CompositeDisposable _disposables = new();
+    private ChipGroup? _chipGroup;
+    private NotifyCollectionChangedEventHandler? _participantsChangedHandler;
 
     public NewChatFragment(MainViewModel mainViewModel)
     {
@@ -39,49 +42,82 @@ public class NewChatFragment : Fragment
         var formSection = view.FindViewById<LinearLayout>(Resource.Id.new_chat_form)!;
         var sendingOverlay = view.FindViewById<LinearLayout>(Resource.Id.new_chat_sending_overlay)!;
         var sendingStatusText = view.FindViewById<TextView>(Resource.Id.new_chat_sending_status)!;
-        var pubKeyInput = view.FindViewById<TextInputEditText>(Resource.Id.new_chat_pubkey_input)!;
         var nameInput = view.FindViewById<TextInputEditText>(Resource.Id.new_chat_name_input)!;
-        var lookupButton = view.FindViewById<MaterialButton>(Resource.Id.lookup_keypackage_button)!;
+        var descInput = view.FindViewById<TextInputEditText>(Resource.Id.new_chat_desc_input)!;
+        var participantInput = view.FindViewById<TextInputEditText>(Resource.Id.new_chat_participant_input)!;
+        var addParticipantButton = view.FindViewById<MaterialButton>(Resource.Id.new_chat_add_participant_button)!;
+        _chipGroup = view.FindViewById<ChipGroup>(Resource.Id.new_chat_participant_chips)!;
+        var contactsHeader = view.FindViewById<TextView>(Resource.Id.contacts_header)!;
+        var contactsList = view.FindViewById<RecyclerView>(Resource.Id.following_list)!;
+        var lookupButton = view.FindViewById<MaterialButton>(Resource.Id.lookup_keypackages_button)!;
         var statusText = view.FindViewById<TextView>(Resource.Id.keypackage_status_text)!;
         var errorText = view.FindViewById<TextView>(Resource.Id.new_chat_error)!;
         var relayContainer = view.FindViewById<LinearLayout>(Resource.Id.relay_selection_container)!;
         var createButton = view.FindViewById<MaterialButton>(Resource.Id.create_chat_button)!;
 
-        // Back navigation
         toolbar.NavigationClick += (s, e) =>
         {
             ViewModel.CancelNewChatCommand.Execute().Subscribe().DisposeWith(_disposables);
             ParentFragmentManager.PopBackStack();
         };
 
-        // Create button. For the 1:1 DM flow the user types a single npub in
-        // pubKeyInput but the unified ChatListViewModel requires participants to
-        // be committed to NewChatParticipants before CreateChatCommand can run.
-        // If the collection is empty, commit the typed value first.
-        createButton.Click += (s, e) =>
+        // Contacts picker
+        var contactsAdapter = new FollowContactAdapter();
+        contactsList.SetLayoutManager(new LinearLayoutManager(Context));
+        contactsList.SetAdapter(contactsAdapter);
+        contactsAdapter.ItemClick += (s, contact) =>
         {
-            ViewModel.NewChatName = nameInput.Text ?? string.Empty;
-            if (ViewModel.NewChatParticipants.Count == 0)
+            ViewModel.AddContactToChatCommand.Execute(contact.PublicKeyHex).Subscribe().DisposeWith(_disposables);
+        };
+        contactsAdapter.UpdateItems(ViewModel.Following);
+        var showContacts = ViewModel.Following.Count > 0;
+        contactsList.Visibility = showContacts ? ViewStates.Visible : ViewStates.Gone;
+        contactsHeader.Visibility = showContacts ? ViewStates.Visible : ViewStates.Gone;
+        ViewModel.Following.CollectionChanged += (s, e) =>
+        {
+            Activity?.RunOnUiThread(() =>
             {
-                ViewModel.NewChatParticipantInput = pubKeyInput.Text ?? string.Empty;
-                ViewModel.AddChatParticipantCommand.Execute().Subscribe(_ =>
-                {
-                    ViewModel.CreateChatCommand.Execute().Subscribe().DisposeWith(_disposables);
-                }).DisposeWith(_disposables);
-            }
-            else
+                contactsAdapter.UpdateItems(ViewModel.Following);
+                var show = ViewModel.Following.Count > 0;
+                contactsList.Visibility = show ? ViewStates.Visible : ViewStates.Gone;
+                contactsHeader.Visibility = show ? ViewStates.Visible : ViewStates.Gone;
+            });
+        };
+
+        // Add participant — button or IME action
+        void AddFromInput()
+        {
+            ViewModel.NewChatParticipantInput = participantInput.Text ?? string.Empty;
+            ViewModel.AddChatParticipantCommand.Execute().Subscribe().DisposeWith(_disposables);
+            participantInput.Text = string.Empty;
+        }
+        addParticipantButton.Click += (s, e) => AddFromInput();
+        participantInput.EditorAction += (s, e) =>
+        {
+            if (e.ActionId == global::Android.Views.InputMethods.ImeAction.Done ||
+                e.ActionId == global::Android.Views.InputMethods.ImeAction.Next ||
+                e.Event?.KeyCode == global::Android.Views.Keycode.Enter)
             {
-                ViewModel.CreateChatCommand.Execute().Subscribe().DisposeWith(_disposables);
+                AddFromInput();
+                e.Handled = true;
             }
         };
 
-        // Hide manual lookup button — auto-lookup triggers on valid npub input
-        lookupButton.Visibility = ViewStates.Gone;
+        // Render chips mirroring the ViewModel collection
+        RenderChips();
+        _participantsChangedHandler = (s, e) => Activity?.RunOnUiThread(RenderChips);
+        ViewModel.NewChatParticipants.CollectionChanged += _participantsChangedHandler;
 
-        // Bind text input reactively to ViewModel (triggers validation + auto-lookup)
-        pubKeyInput.TextChanged += (s, e) =>
+        createButton.Click += (s, e) =>
         {
-            ViewModel.NewChatParticipantInput = pubKeyInput.Text ?? string.Empty;
+            ViewModel.NewChatName = nameInput.Text ?? string.Empty;
+            ViewModel.NewChatDescription = descInput.Text ?? string.Empty;
+            ViewModel.CreateChatCommand.Execute().Subscribe().DisposeWith(_disposables);
+        };
+
+        lookupButton.Click += (s, e) =>
+        {
+            ViewModel.LookupKeyPackagesCommand.Execute().Subscribe().DisposeWith(_disposables);
         };
 
         // Show sending overlay while creating
@@ -91,21 +127,19 @@ public class NewChatFragment : Fragment
             {
                 formSection.Visibility = creating ? ViewStates.Gone : ViewStates.Visible;
                 sendingOverlay.Visibility = creating ? ViewStates.Visible : ViewStates.Gone;
-                toolbar.Title = creating ? "Sending Invite" : "New Chat";
+                toolbar.Title = creating ? "Creating..." : "New Chat";
                 createButton.Enabled = !creating;
             })
             .DisposeWith(_disposables);
 
-        // Dynamic progress status text
         ViewModel.WhenAnyValue(x => x.CreateProgress)
             .ObserveOn(RxApp.MainThreadScheduler)
             .Subscribe(progress =>
             {
-                sendingStatusText.Text = progress ?? "Sending invite...";
+                sendingStatusText.Text = progress ?? "Creating chat...";
             })
             .DisposeWith(_disposables);
 
-        // Observe ViewModel state
         ViewModel.WhenAnyValue(x => x.NewChatError)
             .ObserveOn(RxApp.MainThreadScheduler)
             .Subscribe(error =>
@@ -124,69 +158,22 @@ public class NewChatFragment : Fragment
             })
             .DisposeWith(_disposables);
 
-        // Disable Create button until KeyPackage is found and relays selected
-        ViewModel.CreateChatCommand.CanExecute
-            .ObserveOn(RxApp.MainThreadScheduler)
-            .Subscribe(canCreate =>
-            {
-                createButton.Enabled = canCreate;
-            })
-            .DisposeWith(_disposables);
-
-        // Show validation error on input field
-        var pubKeyLayout = view.FindViewById<TextInputLayout>(Resource.Id.new_chat_pubkey_layout);
-        ViewModel.WhenAnyValue(x => x.NewChatError)
-            .ObserveOn(RxApp.MainThreadScheduler)
-            .Subscribe(error =>
-            {
-                if (pubKeyLayout != null)
-                {
-                    pubKeyLayout.Error = string.IsNullOrEmpty(error) ? null : error;
-                }
-            })
-            .DisposeWith(_disposables);
-
         ViewModel.WhenAnyValue(x => x.IsLookingUpKeyPackages)
             .ObserveOn(RxApp.MainThreadScheduler)
             .Subscribe(loading =>
             {
-                statusText.Text = loading ? "Looking up KeyPackage..." : statusText.Text;
+                lookupButton.Enabled = !loading;
+                lookupButton.Text = loading ? "Looking up..." : "Lookup KeyPackages";
             })
             .DisposeWith(_disposables);
 
-        // Contacts picker: populated from NIP-02 follow list cached in VM
-        var contactsHeader = view.FindViewById<TextView>(Resource.Id.contacts_header)!;
-        var followingList = view.FindViewById<RecyclerView>(Resource.Id.following_list)!;
-        var contactAdapter = new FollowContactAdapter();
-        followingList.SetLayoutManager(new LinearLayoutManager(Context));
-        followingList.SetAdapter(contactAdapter);
-        contactAdapter.ItemClick += (s, contact) =>
-        {
-            pubKeyInput.Text = contact.Npub;
-            pubKeyInput.SetSelection(contact.Npub.Length);
-        };
-
-        void RefreshContactList()
-        {
-            var visible = ViewModel.Following.Where(f => f.IsVisible).ToList();
-            contactAdapter.UpdateItems(visible);
-            var hasAny = ViewModel.Following.Count > 0;
-            contactsHeader.Visibility = hasAny ? ViewStates.Visible : ViewStates.Gone;
-            followingList.Visibility = hasAny ? ViewStates.Visible : ViewStates.Gone;
-        }
-
-        RefreshContactList();
-        ViewModel.Following.CollectionChanged += (s, e) =>
-            Activity?.RunOnUiThread(RefreshContactList);
-        ViewModel.WhenAnyValue(x => x.NewChatParticipantInput)
+        ViewModel.CreateChatCommand.CanExecute
             .ObserveOn(RxApp.MainThreadScheduler)
-            .Subscribe(_ => RefreshContactList())
+            .Subscribe(canCreate => createButton.Enabled = canCreate)
             .DisposeWith(_disposables);
 
-        // Set flag before subscribing to avoid immediate dismiss
         ViewModel.ShowNewChatDialog = true;
 
-        // Populate relay checkboxes
         relayContainer.RemoveAllViews();
         foreach (var relay in ViewModel.SelectableRelays)
         {
@@ -201,7 +188,6 @@ public class NewChatFragment : Fragment
             relayContainer.AddView(checkBox);
         }
 
-        // Auto-navigate back on success
         ViewModel.WhenAnyValue(x => x.ShowNewChatDialog)
             .ObserveOn(RxApp.MainThreadScheduler)
             .Where(show => !show)
@@ -209,8 +195,33 @@ public class NewChatFragment : Fragment
             .DisposeWith(_disposables);
     }
 
+    private void RenderChips()
+    {
+        if (_chipGroup == null || Context == null) return;
+        _chipGroup.RemoveAllViews();
+        foreach (var p in ViewModel.NewChatParticipants.ToList())
+        {
+            var chip = new Chip(Context)
+            {
+                Text = p.ShownName,
+                Checkable = false,
+                CloseIconVisible = true
+            };
+            var captured = p;
+            chip.SetOnCloseIconClickListener(new ActionClickListener(() =>
+                ViewModel.RemoveChatParticipantCommand.Execute(captured).Subscribe().DisposeWith(_disposables)));
+            _chipGroup.AddView(chip);
+        }
+    }
+
     public override void OnDestroyView()
     {
+        if (_participantsChangedHandler != null)
+        {
+            ViewModel.NewChatParticipants.CollectionChanged -= _participantsChangedHandler;
+            _participantsChangedHandler = null;
+        }
+        _chipGroup = null;
         _disposables.Dispose();
         _disposables = new CompositeDisposable();
         base.OnDestroyView();

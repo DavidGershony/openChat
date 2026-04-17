@@ -1780,7 +1780,8 @@ public class ChatItemViewModel : ViewModelBase
         this.RaisePropertyChanged(nameof(HasUnread));
         IsPinned = chat.IsPinned;
         IsMuted = chat.IsMuted;
-        IsGroup = chat.Type == ChatType.Group;
+        IsGroup = chat.Type == ChatType.Group &&
+            (chat.ParticipantPublicKeys.Count > 2 || !string.IsNullOrEmpty(chat.Description));
         IsBot = chat.Type == ChatType.Bot;
     }
 }

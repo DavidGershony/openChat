@@ -297,7 +297,7 @@ public class ChatListFragment : Fragment
     {
         if (Context == null) return;
 
-        var items = new[] { "New Chat", "New Group", "Link Device" };
+        var items = new[] { "New Chat", "Link Device" };
         new MaterialAlertDialogBuilder(Context)
             .SetTitle("Create")!
             .SetItems(items, (s, e) =>
@@ -305,8 +305,7 @@ public class ChatListFragment : Fragment
                 switch (e.Which)
                 {
                     case 0: (Activity as MainActivity)?.NavigateToNewChat(); break;
-                    case 1: (Activity as MainActivity)?.NavigateToNewGroup(); break;
-                    case 2: (Activity as MainActivity)?.NavigateToAddBot(); break;
+                    case 1: (Activity as MainActivity)?.NavigateToAddBot(); break;
                 }
             })!
             .Show();
