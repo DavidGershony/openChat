@@ -488,7 +488,7 @@
                             </Grid>
 
                             <!-- Chip row of added participants -->
-                            <ItemsControl ItemsSource="{Binding NewChatParticipants}">
+                            <ItemsControl x:Name="ParticipantChips" ItemsSource="{Binding NewChatParticipants}">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
                                         <WrapPanel Orientation="Horizontal" />
@@ -505,7 +505,7 @@
                                                 <Button Content="✕"
                                                         Padding="4,0" FontSize="11"
                                                         Background="Transparent" BorderThickness="0"
-                                                        Command="{Binding $parent[ItemsControl].((vm:ChatListViewModel)DataContext).RemoveChatParticipantCommand}"
+                                                        Command="{Binding #ParticipantChips.DataContext.RemoveChatParticipantCommand}"
                                                         CommandParameter="{Binding}" />
                                             </StackPanel>
                                         </Border>
