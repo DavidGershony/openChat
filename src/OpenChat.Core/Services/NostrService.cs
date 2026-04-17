@@ -15,6 +15,8 @@ using OpenChat.Core.Configuration;
 using OpenChat.Core.Crypto;
 using OpenChat.Core.Logging;
 using OpenChat.Core.Models;
+using MarmotCs.Protocol.Mip00;
+using MarmotCs.Protocol.Mip02;
 using MarmotCs.Protocol.Nip44;
 
 namespace OpenChat.Core.Services;
@@ -564,15 +566,15 @@ public class NostrService : INostrService, IDisposable
     {
         try
         {
-            // Extract group ID from h-tag (MIP-03 uses 'h' tag, not 'g')
+            // Extract group ID from h-tag per MIP-03 spec (no g-tag fallback)
             var groupId = nostrEvent.Tags
                 .FirstOrDefault(t => t.Count >= 2 && t[0] == "h")?[1] ?? "";
 
-            // Fallback to 'g' tag for backwards compatibility
             if (string.IsNullOrEmpty(groupId))
             {
-                groupId = nostrEvent.Tags
-                    .FirstOrDefault(t => t.Count >= 2 && t[0] == "g")?[1] ?? "";
+                _logger.LogWarning("Ignoring kind 445 event {EventId}: missing required 'h' tag (MIP-03)",
+                    nostrEvent.EventId[..Math.Min(16, nostrEvent.EventId.Length)]);
+                return;
             }
 
             // Extract epoch from epoch tag if present
@@ -1137,19 +1139,19 @@ public class NostrService : INostrService, IDisposable
             _logger.LogWarning(ex, "Failed to discover recipient relays for Welcome delivery");
         }
 
-        // Build the unsigned kind 444 rumor
-        var rumorTags = new List<List<string>>
+        // Build the unsigned kind 444 rumor tags via MIP-02 protocol library
+        if (string.IsNullOrEmpty(keyPackageEventId))
         {
-            new() { "p", recipientPublicKey },
-            new() { "encoding", "base64" }
-        };
-        if (!string.IsNullOrEmpty(keyPackageEventId))
-        {
-            rumorTags.Add(new List<string> { "e", keyPackageEventId });
+            _logger.LogError("PublishWelcome: keyPackageEventId is required by MIP-02 but was null/empty");
+            throw new ArgumentException("KeyPackage event ID is required by MIP-02 for Welcome events", nameof(keyPackageEventId));
         }
-        var relaysTag = new List<string> { "relays" };
-        relaysTag.AddRange(relayUrls);
-        rumorTags.Add(relaysTag);
+
+        var (_, mip02Tags) = WelcomeEventBuilder.BuildWelcomeEvent(
+            welcomeData, keyPackageEventId, relayUrls.ToArray());
+
+        // Convert string[][] to List<List<string>> and add p-tag for recipient routing
+        var rumorTags = mip02Tags.Select(t => t.ToList()).ToList();
+        rumorTags.Insert(0, new List<string> { "p", recipientPublicKey });
 
         // Determine sender pubkey
         string? senderPrivateKeyHex = null;
@@ -1546,7 +1548,8 @@ public class NostrService : INostrService, IDisposable
         // Create kind 445 event for commit/evolution messages (MIP-03)
         var tags = new List<List<string>>
         {
-            new() { "h", groupId }  // MIP-03 uses 'h' tag for group ID
+            new() { "h", groupId },
+            new() { "encoding", "base64" }
         };
 
         var eventId = await PublishEventAsync(445, Convert.ToBase64String(commitData), tags, privateKeyHex);
@@ -1555,10 +1558,11 @@ public class NostrService : INostrService, IDisposable
 
     public async Task<string> PublishGroupMessageAsync(byte[] encryptedData, string groupId, string? privateKeyHex)
     {
-        // Create kind 445 event (MIP-03) - uses 'h' tag per protocol spec
+        // Create kind 445 event (MIP-03) — h + encoding tags per spec
         var tags = new List<List<string>>
         {
-            new() { "h", groupId }  // MIP-03 uses 'h' tag for group ID, not 'g'
+            new() { "h", groupId },
+            new() { "encoding", "base64" }
         };
         var eventId = await PublishEventAsync(445, Convert.ToBase64String(encryptedData), tags, privateKeyHex);
         return eventId;
@@ -1750,45 +1754,14 @@ public class NostrService : INostrService, IDisposable
                         {
                             try
                             {
-                                // Validate MIP-00 required tags before accepting the key package
+                                // Parse and validate via MIP-00 protocol library
                                 var tags = eventData.GetProperty("tags");
-                                bool hasEncoding = false, hasCiphersuite = false, hasProtocolVersion = false;
-                                ushort ciphersuiteId = 0x0001;
+                                var tagsArray = tags.EnumerateArray()
+                                    .Select(t => t.EnumerateArray().Select(v => v.GetString() ?? "").ToArray())
+                                    .ToArray();
 
-                                foreach (var tag in tags.EnumerateArray())
-                                {
-                                    if (tag.GetArrayLength() < 2) continue;
-                                    var tagName = tag[0].GetString();
-                                    var tagValue = tag[1].GetString();
-
-                                    switch (tagName)
-                                    {
-                                        case "encoding" when tagValue == "base64":
-                                            hasEncoding = true;
-                                            break;
-                                        case "mls_ciphersuite":
-                                            hasCiphersuite = true;
-                                            if (tagValue != null && tagValue.StartsWith("0x"))
-                                            {
-                                                if (ushort.TryParse(tagValue[2..], System.Globalization.NumberStyles.HexNumber, null, out var parsed))
-                                                    ciphersuiteId = parsed;
-                                            }
-                                            break;
-                                        case "mls_protocol_version":
-                                            hasProtocolVersion = true;
-                                            break;
-                                    }
-                                }
-
-                                if (!hasEncoding || !hasCiphersuite || !hasProtocolVersion)
-                                {
-                                    _logger.LogWarning(
-                                        "KeyPackage event {EventId} missing required MIP-00 tags (encoding={Enc}, ciphersuite={Cs}, version={Ver}), skipping",
-                                        eventId, hasEncoding, hasCiphersuite, hasProtocolVersion);
-                                    continue;
-                                }
-
-                                var keyPackageData = Convert.FromBase64String(content);
+                                var (keyPackageData, keyPackageRefHex, parsedRelays) =
+                                    KeyPackageEventParser.ParseKeyPackageEvent(content, tagsArray);
 
                                 // Basic sanity check: MLS KeyPackages are typically > 100 bytes
                                 if (keyPackageData.Length < 64)
@@ -1798,6 +1771,13 @@ public class NostrService : INostrService, IDisposable
                                         eventId, keyPackageData.Length);
                                     continue;
                                 }
+
+                                // Extract ciphersuite ID from tags (not part of MIP-00 parser output)
+                                ushort ciphersuiteId = 0x0001;
+                                var csTag = tagsArray.FirstOrDefault(t => t.Length >= 2 && t[0] == "mls_ciphersuite");
+                                if (csTag != null && csTag[1].StartsWith("0x") &&
+                                    ushort.TryParse(csTag[1][2..], System.Globalization.NumberStyles.HexNumber, null, out var parsed))
+                                    ciphersuiteId = parsed;
 
                                 // Store the full event JSON for MLS processing
                                 var eventJson = eventData.GetRawText();
@@ -1811,11 +1791,13 @@ public class NostrService : INostrService, IDisposable
                                     CiphersuiteId = ciphersuiteId,
                                     CreatedAt = DateTimeOffset.FromUnixTimeSeconds(createdAt).UtcDateTime,
                                     ExpiresAt = DateTimeOffset.FromUnixTimeSeconds(createdAt).UtcDateTime.AddDays(30),
-                                    RelayUrls = new List<string> { relayUrl }
+                                    RelayUrls = parsedRelays.Length > 0
+                                        ? parsedRelays.ToList()
+                                        : new List<string> { relayUrl }
                                 };
                                 keyPackages.Add(keyPackage);
-                                _logger.LogDebug("Found valid KeyPackage {EventId} from {Relay} (ciphersuite=0x{Cs:x4}, {Len} bytes)",
-                                    eventId, relayUrl, ciphersuiteId, keyPackageData.Length);
+                                _logger.LogDebug("Found valid KeyPackage {EventId} from {Relay} (ciphersuite=0x{Cs:x4}, kpRef={KpRef}, {Len} bytes)",
+                                    eventId, relayUrl, ciphersuiteId, keyPackageRefHex[..Math.Min(16, keyPackageRefHex.Length)], keyPackageData.Length);
                             }
                             catch (FormatException)
                             {

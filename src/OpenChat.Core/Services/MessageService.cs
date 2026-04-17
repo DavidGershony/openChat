@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using OpenChat.Core.Logging;
 using OpenChat.Core.Crypto;
 using OpenChat.Core.Models;
+using MarmotCs.Protocol.Mip02;
 
 namespace OpenChat.Core.Services;
 
@@ -692,7 +693,8 @@ public class MessageService : IMessageService, IDisposable
         if (_currentUser != null)
         {
             var welcomeEventId = await _nostrService.PublishWelcomeAsync(
-                welcome.WelcomeData, welcome.RecipientPublicKey, _currentUser.PrivateKeyHex);
+                welcome.WelcomeData, welcome.RecipientPublicKey, _currentUser.PrivateKeyHex,
+                welcome.KeyPackageEventId);
             _logger.LogInformation("AddMember: published kind 444 Welcome event {EventId} for {Recipient}",
                 welcomeEventId, welcome.RecipientPublicKey[..Math.Min(16, welcome.RecipientPublicKey.Length)]);
         }
@@ -1034,18 +1036,29 @@ public class MessageService : IMessageService, IDisposable
                 nostrEvent.EventId[..Math.Min(16, nostrEvent.EventId.Length)]);
         }
 
-        // Extract group ID from tags (h or g tag per MIP-02)
+        // Parse Welcome event tags via MIP-02 protocol library
+        string? keyPackageEventId;
+        List<string> relayUrls;
+        try
+        {
+            var tagsArray = nostrEvent.Tags.Select(t => t.ToArray()).ToArray();
+            var (_, parsedKpId, parsedRelays) = WelcomeEventParser.ParseWelcomeEvent(
+                nostrEvent.Content, tagsArray);
+            keyPackageEventId = parsedKpId;
+            relayUrls = parsedRelays
+                .Where(u => u.StartsWith("wss://") || u.StartsWith("ws://"))
+                .ToList();
+        }
+        catch (FormatException ex)
+        {
+            _logger.LogWarning("HandleWelcome: rejecting malformed Welcome {EventId}: {Reason}",
+                nostrEvent.EventId[..Math.Min(16, nostrEvent.EventId.Length)], ex.Message);
+            return;
+        }
+
+        // Extract group ID from tags (h or g tag — not part of MIP-02 parser, added by some clients)
         var groupTag = nostrEvent.Tags.FirstOrDefault(t => t.Count > 1 && (t[0] == "h" || t[0] == "g"));
         var groupId = groupTag?[1];
-
-        // Extract KeyPackage event ID from e tag
-        var eTag = nostrEvent.Tags.FirstOrDefault(t => t.Count > 1 && t[0] == "e");
-        var keyPackageEventId = eTag?[1];
-
-        // Extract relay URLs from relays tag (MIP-02)
-        var relaysTag = nostrEvent.Tags.FirstOrDefault(t => t.Count > 1 && t[0] == "relays");
-        var relayUrls = relaysTag?.Skip(1).Where(u => u.StartsWith("wss://") || u.StartsWith("ws://")).ToList()
-            ?? new List<string>();
 
         // Fetch and cache sender profile
         string? senderDisplayName = null;

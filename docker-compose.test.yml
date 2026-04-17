@@ -12,5 +12,21 @@ services:
       retries: 3
       start_period: 3s
 
+  whitenoise:
+    build:
+      context: ./tests/whitenoise-docker
+      dockerfile: Dockerfile
+    container_name: whitenoise-interop
+    volumes:
+      - wn-data:/data
+      - wn-logs:/logs
+    depends_on:
+      nostr-relay:
+        condition: service_healthy
+    environment:
+      - RUST_LOG=info,whitenoise=debug,mdk_core=debug
+
 volumes:
   relay-data:
+  wn-data:
+  wn-logs:
