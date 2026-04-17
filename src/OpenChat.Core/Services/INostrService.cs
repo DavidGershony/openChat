@@ -158,6 +158,7 @@ public interface INostrService
     /// </summary>
     Task SubscribeToGroupMessagesAsync(IEnumerable<string> groupIds, DateTimeOffset? since = null);
 
+
     /// <summary>
     /// Observable stream of Welcome messages (kind 444).
     /// </summary>

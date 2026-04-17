@@ -1646,7 +1646,10 @@ public class ChatListViewModel : ViewModelBase
                 var subGroupId = chat.NostrGroupId != null && chat.NostrGroupId.Length > 0
                     ? Convert.ToHexString(chat.NostrGroupId).ToLowerInvariant()
                     : Convert.ToHexString(chat.MlsGroupId).ToLowerInvariant();
-                await _nostrService.SubscribeToGroupMessagesAsync(new[] { subGroupId });
+                // Subscribe with a since parameter to catch commits published between
+                // the Welcome creation and now (MIP-03 epoch sync)
+                var since = new DateTimeOffset(chat.CreatedAt, TimeSpan.Zero).AddMinutes(-5);
+                await _nostrService.SubscribeToGroupMessagesAsync(new[] { subGroupId }, since);
             }
 
             inviteVm.IsAccepting = false;
