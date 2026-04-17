@@ -83,6 +83,32 @@ public class WhitenoiseDockerClient : IAsyncDisposable
     }
 
     /// <summary>
+    /// Add a relay to the account's relay list so WN publishes/subscribes there.
+    /// </summary>
+    /// <summary>
+    /// Add a relay to the account's relay list so WN publishes/subscribes there.
+    /// Adds as all types (nip65, inbox, key_package) for full coverage.
+    /// </summary>
+    public async Task AddRelayAsync(string relayUrl)
+    {
+        foreach (var type in new[] { "nip65", "inbox", "key_package" })
+        {
+            var args = new List<string> { "relays", "add", "--type", type, relayUrl };
+            if (_accountPubkeyHex != null)
+                args.InsertRange(0, new[] { "--account", _accountPubkeyHex });
+            try
+            {
+                var result = await RunWnAsync(args.ToArray());
+                _output.WriteLine($"WN add relay ({type}): {result.Trim()}");
+            }
+            catch (Exception ex)
+            {
+                _output.WriteLine($"WN add relay ({type}) failed: {ex.Message}");
+            }
+        }
+    }
+
+    /// <summary>
     /// Create a group with the given name and member pubkeys.
     /// Returns the group ID hex.
     /// </summary>

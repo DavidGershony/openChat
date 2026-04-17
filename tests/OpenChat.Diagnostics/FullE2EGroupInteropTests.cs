@@ -372,6 +372,10 @@ public class FullE2EGroupInteropTests : IAsyncLifetime
         var wnPubkey = await _wnClient!.CreateIdentityAsync();
         _output.WriteLine($"Charlie (WN): {wnPubkey[..16]}...");
 
+        // Add test relay to WN so it publishes KPs and subscribes there
+        await _wnClient.AddRelayAsync(RelayUrl);
+        await Task.Delay(3000); // Wait for WN to connect and publish KP to new relay
+
         // Step 1: Bob publishes KeyPackage
         _output.WriteLine("\n[Step 1] Publishing KeyPackages");
         var kpBob = await bob.MlsService.GenerateKeyPackageAsync();
@@ -544,6 +548,101 @@ public class FullE2EGroupInteropTests : IAsyncLifetime
         _output.WriteLine($"    WN saw Bob's message:   {bobMsgInWn != null}");
         _output.WriteLine($"    Alice saw WN message:   {aliceGotWn}");
         _output.WriteLine($"    Bob saw WN message:     {bobGotWn}");
+        _output.WriteLine("═══════════════════════════════════════════════════════════");
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Test 3: Add member after chat established + messages exchanged
+    // ══════════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task E2E_AddMemberAfterMessaging()
+    {
+        _output.WriteLine("═══════════════════════════════════════════════════════════");
+        _output.WriteLine("  Add member after chat established + messages exchanged");
+        _output.WriteLine($"  Relay: {RelayUrl}");
+        _output.WriteLine("═══════════════════════════════════════════════════════════");
+
+        var alice = await CreateOCUser("Alice");
+        var bob = await CreateOCUser("Bob");
+
+        // Step 1: Create 2-user group, exchange messages
+        _output.WriteLine("\n[Step 1] Create group with Alice + Bob");
+        var kpBob = await bob.MlsService.GenerateKeyPackageAsync();
+        await bob.NostrService.PublishKeyPackageAsync(kpBob.Data, bob.PrivKeyHex, kpBob.NostrTags);
+        await Task.Delay(2000);
+
+        var chat = await alice.MessageService.CreateGroupAsync("Late Joiner Test",
+            new[] { bob.PubKeyHex });
+        await Task.Delay(2000);
+
+        await bob.NostrService.SubscribeToWelcomesAsync(bob.PubKeyHex, bob.PrivKeyHex);
+        await Task.Delay(2000);
+        await bob.MessageService.RescanInvitesAsync();
+        var bobInvites = (await bob.Storage.GetPendingInvitesAsync()).ToList();
+        Assert.NotEmpty(bobInvites);
+        var chatBob = await bob.MessageService.AcceptInviteAsync(bobInvites[0].Id);
+        _output.WriteLine($"  Bob joined: epoch={chatBob.MlsEpoch}");
+
+        // Step 2: Exchange messages at epoch 1
+        _output.WriteLine("\n[Step 2] Exchange messages (epoch 1)");
+        await alice.MessageService.SendMessageAsync(chat.Id, "Alice msg at epoch 1");
+        await Task.Delay(2000);
+        await bob.MessageService.SendMessageAsync(chatBob.Id, "Bob msg at epoch 1");
+        await Task.Delay(2000);
+        _output.WriteLine("  Messages exchanged at epoch 1");
+
+        // Step 3: Add Charlie after messages
+        _output.WriteLine("\n[Step 3] Add Charlie (late joiner)");
+        var charlie = await CreateOCUser("Charlie");
+        var kpCharlie = await charlie.MlsService.GenerateKeyPackageAsync();
+        await charlie.NostrService.PublishKeyPackageAsync(kpCharlie.Data, charlie.PrivKeyHex, kpCharlie.NostrTags);
+        await Task.Delay(2000);
+
+        await alice.MessageService.AddMemberAsync(chat.Id, charlie.PubKeyHex);
+        _output.WriteLine("  Alice added Charlie");
+        await Task.Delay(3000);
+
+        // Bob must process the commit
+        var nostrGroupIdHex = chat.NostrGroupId != null
+            ? Convert.ToHexString(chat.NostrGroupId).ToLowerInvariant()
+            : Convert.ToHexString(chat.MlsGroupId!).ToLowerInvariant();
+
+        // Subscribe Bob with since to catch the commit
+        var bobSubGroupId = chatBob.NostrGroupId != null
+            ? Convert.ToHexString(chatBob.NostrGroupId).ToLowerInvariant()
+            : Convert.ToHexString(chatBob.MlsGroupId!).ToLowerInvariant();
+        await bob.NostrService.SubscribeToGroupMessagesAsync(
+            new[] { bobSubGroupId },
+            DateTimeOffset.UtcNow.AddMinutes(-5));
+        await Task.Delay(3000);
+
+        // Charlie accepts
+        await charlie.NostrService.SubscribeToWelcomesAsync(charlie.PubKeyHex, charlie.PrivKeyHex);
+        await Task.Delay(2000);
+        await charlie.MessageService.RescanInvitesAsync();
+        var charlieInvites = (await charlie.Storage.GetPendingInvitesAsync()).ToList();
+        Assert.NotEmpty(charlieInvites);
+        var chatCharlie = await charlie.MessageService.AcceptInviteAsync(charlieInvites[0].Id);
+        _output.WriteLine($"  Charlie joined: epoch={chatCharlie.MlsEpoch}");
+
+        // Step 4: Everyone sends at new epoch
+        _output.WriteLine("\n[Step 4] Messages after Charlie joins");
+        await alice.MessageService.SendMessageAsync(chat.Id, "Alice after Charlie joined");
+        await Task.Delay(2000);
+        await bob.MessageService.SendMessageAsync(chatBob.Id, "Bob after Charlie joined");
+        await Task.Delay(2000);
+        await charlie.MessageService.SendMessageAsync(chatCharlie.Id, "Charlie first message!");
+        await Task.Delay(2000);
+
+        // Epoch check
+        var aliceEpoch = (await alice.MlsService.GetGroupInfoAsync(chat.MlsGroupId!))?.Epoch;
+        var bobEpoch = (await bob.MlsService.GetGroupInfoAsync(chatBob.MlsGroupId!))?.Epoch;
+        var charlieEpoch = (await charlie.MlsService.GetGroupInfoAsync(chatCharlie.MlsGroupId!))?.Epoch;
+        _output.WriteLine($"\n  EPOCH CHECK: Alice={aliceEpoch}, Bob={bobEpoch}, Charlie={charlieEpoch}");
+
+        _output.WriteLine("\n═══════════════════════════════════════════════════════════");
+        _output.WriteLine("  Late joiner test COMPLETE");
         _output.WriteLine("═══════════════════════════════════════════════════════════");
     }
 
