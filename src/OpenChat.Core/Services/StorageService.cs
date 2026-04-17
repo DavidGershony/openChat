@@ -15,6 +15,12 @@ public class StorageService : IStorageService
     private readonly string _databasePath;
     private readonly ISecureStorage? _secureStorage;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
+
+    /// <summary>Path to the SQLite database file. Used by MLS storage provider to share the same DB.</summary>
+    public string DatabasePath => _databasePath;
+
+    /// <summary>Secure storage for encrypting sensitive data at rest.</summary>
+    public ISecureStorage? SecureStorage => _secureStorage;
     private readonly ConcurrentDictionary<string, string?> _settingsCache = new();
     private User? _cachedCurrentUser;
     private bool _initialized;

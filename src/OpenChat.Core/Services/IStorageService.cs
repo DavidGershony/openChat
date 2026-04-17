@@ -65,10 +65,16 @@ public interface IStorageService
     Task SaveUserRelayListAsync(string publicKeyHex, IEnumerable<RelayPreference> relays);
     Task<List<RelayPreference>> GetUserRelayListAsync(string publicKeyHex);
 
-    // MLS state
+    // MLS state (legacy blob persistence — used only for migration)
     Task SaveMlsStateAsync(string groupId, byte[] state);
     Task<byte[]?> GetMlsStateAsync(string groupId);
     Task DeleteMlsStateAsync(string groupId);
+
+    /// <summary>Path to the SQLite database file. Used by MLS storage provider to share the DB.</summary>
+    string DatabasePath { get; }
+
+    /// <summary>Secure storage for encrypting sensitive data at rest. May be null in tests.</summary>
+    ISecureStorage? SecureStorage { get; }
 
     // Welcome event management
     Task UndismissWelcomeEventAsync(string nostrEventId);

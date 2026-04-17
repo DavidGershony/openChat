@@ -31,8 +31,9 @@
   <ItemGroup>
     <PackageReference Include="DotnetMls" Version="0.1.0-beta.2" />
     <PackageReference Include="DotnetMls.Crypto" Version="0.1.0-beta.2" />
-    <PackageReference Include="MarmotCs.Core" Version="0.1.0-alpha.20" />
-    <PackageReference Include="MarmotCs.Storage.Memory" Version="0.1.0-alpha.20" />
+    <PackageReference Include="MarmotCs.Core" Version="0.1.0-alpha.21" />
+    <PackageReference Include="MarmotCs.Storage.Memory" Version="0.1.0-alpha.21" />
+    <PackageReference Include="MarmotCs.Storage.Sqlite" Version="0.1.0-alpha.21" />
   </ItemGroup>
 
 </Project>

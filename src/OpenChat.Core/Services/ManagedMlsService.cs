@@ -13,14 +13,14 @@ using DotnetMls.Group;
 using MarmotCs.Protocol.Crypto;
 using MarmotCs.Protocol.Mip00;
 using MarmotCs.Protocol.Mip03;
-using MarmotCs.Storage.Memory;
 
 namespace OpenChat.Core.Services;
 
 /// <summary>
 /// IMlsService implementation backed by the pure C# marmut-mdk library.
-/// Uses Mdk&lt;MemoryStorageProvider&gt; for MLS group management.
-/// Optionally persists MLS state via IStorageService for cross-restart survival.
+/// Uses Mdk&lt;EncryptedSqliteStorageProvider&gt; for MLS group management.
+/// MLS state is persisted directly to SQLite via the storage provider —
+/// no blob export/import needed.
 /// </summary>
 public class ManagedMlsService : IMlsService
 {
@@ -28,7 +28,8 @@ public class ManagedMlsService : IMlsService
     private readonly ICipherSuite _cipherSuite = new CipherSuite0x0001();
     private readonly IStorageService? _storageService;
 
-    private Mdk<MemoryStorageProvider>? _mdk;
+    private Mdk<EncryptedSqliteStorageProvider>? _mdk;
+    private EncryptedSqliteStorageProvider? _storageProvider;
     private string? _publicKeyHex;
     private string? _privateKeyHex;
     private byte[]? _identity;
@@ -116,16 +117,33 @@ public class ManagedMlsService : IMlsService
                 _logger.LogInformation("Generated new MLS signing keys");
             }
 
-            var storage = new MemoryStorageProvider();
-            _mdk = new MdkBuilder<MemoryStorageProvider>()
-                .WithStorage(storage)
+            // Use SQLite-backed storage for MLS state.
+            // Separate file from openchat.db to avoid table name collisions
+            // (marmot-cs uses generic names like "messages", "groups").
+            var baseDbPath = _storageService?.DatabasePath ?? ":memory:";
+            string connStr;
+            if (baseDbPath == ":memory:")
+            {
+                connStr = "Data Source=:memory:";
+            }
+            else
+            {
+                var dir = Path.GetDirectoryName(baseDbPath) ?? ".";
+                var mlsDbPath = Path.Combine(dir, "mls_state.db");
+                connStr = $"Data Source={mlsDbPath}";
+            }
+            var secureStorage = _storageService?.SecureStorage ?? new NoOpSecureStorage();
+            _storageProvider = new EncryptedSqliteStorageProvider(connStr, secureStorage);
+
+            _mdk = new MdkBuilder<EncryptedSqliteStorageProvider>()
+                .WithStorage(_storageProvider)
                 .WithConfig(MdkConfig.Default)
                 .Build();
 
-            // Restore group states from persistence
+            // Migrate legacy blob state if present
             if (_storageService != null)
             {
-                await RestoreGroupStatesAsync();
+                await MigrateLegacyBlobStateAsync();
             }
 
             _logger.LogInformation("Managed MLS service initialized successfully");
@@ -249,7 +267,7 @@ public class ManagedMlsService : IMlsService
         _logger.LogInformation("CreateGroup: created group {GroupId}, epoch={Epoch} (managed)",
             groupIdHex[..Math.Min(16, groupIdHex.Length)], result.Group.Epoch);
 
-        await SaveGroupStateAsync(groupId);
+        // Storage provider persists directly — no blob export needed
 
         return new MlsGroupInfo
         {
@@ -297,7 +315,7 @@ public class ManagedMlsService : IMlsService
 
         var result = await _mdk!.AddMembersAsync(groupId, new[] { kpBytes });
 
-        await SaveGroupStateAsync(groupId);
+        // Storage provider persists directly — no blob export needed
 
         // MIP-02 requires the Welcome to be wrapped in an MLSMessage container:
         //   MLSMessage { version=mls10(0x0001), wire_format=mls_welcome(0x0003), Welcome }
@@ -373,7 +391,7 @@ public class ManagedMlsService : IMlsService
                 // The KP should be rotated (new KP published, old key material deleted)
                 // after a successful accept, but NOT removed immediately.
                 _logger.LogInformation("ProcessWelcome: KeyPackage retained (last_resort per MIP-00), rotation recommended");
-                await SaveGroupStateAsync(preview.GroupId);
+                // Storage provider persists directly — no blob export needed
 
                 return new MlsGroupInfo
                 {
@@ -474,7 +492,7 @@ public class ManagedMlsService : IMlsService
 
         _logger.LogDebug("EncryptMessage: produced {Len} bytes event JSON (managed)", eventJson.Length);
 
-        await SaveGroupStateAsync(groupId);
+        // Storage provider persists directly — no blob export needed
 
         return eventJson;
     }
@@ -510,7 +528,7 @@ public class ManagedMlsService : IMlsService
         var tags = mip03Tags.Select(t => t.ToList()).ToList();
         var eventJson = BuildEphemeralSignedEvent(445, base64Content, tags, exporterSecret);
 
-        await SaveGroupStateAsync(groupId);
+        // Storage provider persists directly — no blob export needed
 
         return eventJson;
     }
@@ -695,7 +713,7 @@ public class ManagedMlsService : IMlsService
             _logger.LogDebug("DecryptMessage: sender={Sender}, epoch={Epoch}, plaintext length={Len} (managed)",
                 senderHex[..Math.Min(16, senderHex.Length)], appMsg.Message.Epoch, plaintext.Length);
 
-            await SaveGroupStateAsync(groupId);
+            // Storage provider persists directly — no blob export needed
 
             return new MlsDecryptedMessage
             {
@@ -723,7 +741,7 @@ public class ManagedMlsService : IMlsService
         {
             _logger.LogInformation("DecryptMessage: processed commit for group {GroupId}, epoch advanced (managed)",
                 groupIdHex[..Math.Min(16, groupIdHex.Length)]);
-            await SaveGroupStateAsync(groupId);
+            // Storage provider persists directly — no blob export needed
             return new MlsDecryptedMessage
             {
                 IsCommit = true,
@@ -752,7 +770,7 @@ public class ManagedMlsService : IMlsService
         {
             _logger.LogInformation("ProcessCommit: success for group {GroupId} (managed)",
                 groupIdHex[..Math.Min(16, groupIdHex.Length)]);
-            await SaveGroupStateAsync(groupId);
+            // Storage provider persists directly — no blob export needed
             return;
         }
 
@@ -768,7 +786,7 @@ public class ManagedMlsService : IMlsService
 
         var result = await _mdk!.SelfUpdateAsync(groupId);
 
-        await SaveGroupStateAsync(groupId);
+        // Storage provider persists directly — no blob export needed
 
         return result.CommitMessageBytes;
     }
@@ -788,7 +806,7 @@ public class ManagedMlsService : IMlsService
 
         var result = await _mdk.RemoveMembersAsync(groupId, new[] { member.leafIndex });
 
-        await SaveGroupStateAsync(groupId);
+        // Storage provider persists directly — no blob export needed
 
         return result.CommitMessageBytes;
     }
@@ -1024,14 +1042,19 @@ public class ManagedMlsService : IMlsService
 
     // ---- Persistence helpers ----
 
-    private async Task RestoreGroupStatesAsync()
+    /// <summary>
+    /// One-time migration: moves legacy blob-based MLS state from the MlsStates table
+    /// into the proper SQLite storage provider tables. After migration, the old blobs
+    /// are deleted.
+    /// </summary>
+    private async Task MigrateLegacyBlobStateAsync()
     {
         if (_storageService == null || _mdk == null) return;
 
         try
         {
             var chats = await _storageService.GetAllChatsAsync();
-            var restored = 0;
+            var migrated = 0;
 
             foreach (var chat in chats)
             {
@@ -1040,43 +1063,29 @@ public class ManagedMlsService : IMlsService
                 var hex = Convert.ToHexString(chat.MlsGroupId).ToLowerInvariant();
                 try
                 {
-                    var state = await _storageService.GetMlsStateAsync(hex);
-                    if (state != null)
-                    {
-                        _mdk.ImportGroupState(chat.MlsGroupId, state);
-                        restored++;
-                        _logger.LogDebug("Restored MLS group state for {GroupId}", hex[..Math.Min(16, hex.Length)]);
-                    }
+                    var legacyState = await _storageService.GetMlsStateAsync(hex);
+                    if (legacyState == null) continue;
+
+                    // Import into in-memory Mdk (which writes to the SQLite provider)
+                    _mdk.ImportGroupState(chat.MlsGroupId, legacyState);
+
+                    // Delete the legacy blob
+                    await _storageService.DeleteMlsStateAsync(hex);
+                    migrated++;
+                    _logger.LogInformation("Migrated MLS state for group {GroupId} from legacy blob to SQLite", hex[..Math.Min(16, hex.Length)]);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Failed to restore MLS state for group {GroupId}", hex[..Math.Min(16, hex.Length)]);
+                    _logger.LogWarning(ex, "Failed to migrate MLS state for group {GroupId}", hex[..Math.Min(16, hex.Length)]);
                 }
             }
 
-            _logger.LogInformation("Restored {Count} MLS group states from persistence", restored);
+            if (migrated > 0)
+                _logger.LogInformation("Migrated {Count} MLS group states from legacy blobs to SQLite provider", migrated);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to restore MLS group states");
-        }
-    }
-
-    private async Task SaveGroupStateAsync(byte[] groupId)
-    {
-        if (_storageService == null) return;
-
-        try
-        {
-            var stateBytes = _mdk!.ExportGroupState(groupId);
-            var hex = Convert.ToHexString(groupId).ToLowerInvariant();
-            await _storageService.SaveMlsStateAsync(hex, stateBytes);
-            _logger.LogDebug("Saved MLS state for group {GroupId} ({Len} bytes)", hex[..Math.Min(16, hex.Length)], stateBytes.Length);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to save MLS state for group {GroupId}",
-                Convert.ToHexString(groupId).ToLowerInvariant());
+            _logger.LogWarning(ex, "Failed to migrate legacy MLS group states");
         }
     }
 
