@@ -483,6 +483,9 @@ public class ManagedMlsService : IMlsService
 
         // Step 3: MIP-03 encrypt + build kind 445 content and tags via GroupEventBuilder
         var exporterSecret = _mdk!.GetExporterSecret(groupId);
+        _logger.LogInformation("EncryptMessage: exporter secret (epoch={Epoch}): {Secret}",
+            (await _mdk.GetGroupAsync(groupId))?.Epoch,
+            Convert.ToHexString(exporterSecret).ToLowerInvariant());
         var nostrGroupId = GetNostrGroupId(groupId);
         var (base64Content, mip03Tags) = GroupEventBuilder.BuildGroupEvent(mlsBytes, nostrGroupId, exporterSecret);
 
@@ -565,6 +568,9 @@ public class ManagedMlsService : IMlsService
             _logger.LogDebug("DecryptMessage: applying MIP-03 ChaCha20-Poly1305 decryption ({Len} bytes)",
                 payloadBytes.Length);
             var exporterSecret = _mdk!.GetExporterSecret(groupId);
+            _logger.LogInformation("DecryptMessage: exporter secret (epoch={Epoch}): {Secret}",
+                (await _mdk.GetGroupAsync(groupId))?.Epoch,
+                Convert.ToHexString(exporterSecret).ToLowerInvariant());
             mlsBytes = GroupEventEncryption.Decrypt(Convert.ToBase64String(payloadBytes), exporterSecret);
             _logger.LogDebug("DecryptMessage: MIP-03 decrypted to {Len} bytes, first 32: {Hex}",
                 mlsBytes.Length,

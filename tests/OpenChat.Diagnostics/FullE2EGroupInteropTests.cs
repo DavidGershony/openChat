@@ -501,7 +501,8 @@ public class FullE2EGroupInteropTests : IAsyncLifetime
         // Step 8: WN sends — check both OC users get it
         _output.WriteLine("\n[Step 8] WN sends message");
         await _wnClient.SendMessageAsync(wnGroups[0].GroupIdHex, "Charlie WN E2E!");
-        await Task.Delay(5000);
+        // WN can take up to 30s to publish (tries multiple relays with timeouts)
+        await Task.Delay(30000);
 
         var events = await FetchRawEventsFromRelay(RelayUrl,
             new { kinds = new[] { 445 }, @__h = new[] { nostrGroupIdHex }, limit = 50 });
