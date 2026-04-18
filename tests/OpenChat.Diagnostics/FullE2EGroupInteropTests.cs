@@ -498,11 +498,12 @@ public class FullE2EGroupInteropTests : IAsyncLifetime
         else
             _output.WriteLine($"  *** WN did NOT see Bob's message — THIS IS THE BUG ***");
 
-        // Step 8: WN sends — check both OC users get it
+        // Step 8: WN sends — check via Bob's live subscription (not manual fetch)
         _output.WriteLine("\n[Step 8] WN sends message");
         await _wnClient.SendMessageAsync(wnGroups[0].GroupIdHex, "Charlie WN E2E!");
-        // WN can take up to 30s to publish (tries multiple relays with timeouts)
-        await Task.Delay(30000);
+        // WN can take up to 30s to publish; then Bob's subscription needs time to process
+        _output.WriteLine("  Waiting 45s for WN publish + Bob subscription delivery...");
+        await Task.Delay(45000);
 
         var events = await FetchRawEventsFromRelay(RelayUrl,
             new { kinds = new[] { 445 }, @__h = new[] { nostrGroupIdHex }, limit = 50 });

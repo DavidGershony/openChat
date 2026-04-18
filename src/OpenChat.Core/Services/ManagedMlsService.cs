@@ -567,6 +567,8 @@ public class ManagedMlsService : IMlsService
         {
             _logger.LogDebug("DecryptMessage: applying MIP-03 ChaCha20-Poly1305 decryption ({Len} bytes)",
                 payloadBytes.Length);
+            _logger.LogInformation("DecryptMessage: MIP-03 ciphertext first 32 bytes: {Hex}",
+                Convert.ToHexString(payloadBytes[..Math.Min(32, payloadBytes.Length)]).ToLowerInvariant());
             var exporterSecret = _mdk!.GetExporterSecret(groupId);
             _logger.LogInformation("DecryptMessage: exporter secret (epoch={Epoch}): {Secret}",
                 (await _mdk.GetGroupAsync(groupId))?.Epoch,
