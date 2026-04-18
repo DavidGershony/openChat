@@ -245,7 +245,14 @@ impl MarmotClient {
                 let epoch = 0u64; // TODO: Get actual epoch
                 Ok((sender, content, epoch))
             }
-            _ => Err(MarmotError::Internal("Unexpected message type".into())),
+            mdk_core::messages::MessageProcessingResult::Commit { .. } => {
+                Ok(("commit".to_string(), String::new(), 0))
+            }
+            mdk_core::messages::MessageProcessingResult::Proposal(_) |
+            mdk_core::messages::MessageProcessingResult::PendingProposal { .. } => {
+                Ok(("proposal".to_string(), String::new(), 0))
+            }
+            other => Err(MarmotError::Internal(format!("Unexpected message type: {:?}", other))),
         }
     }
 
@@ -255,14 +262,26 @@ impl MarmotClient {
         let event_json = std::str::from_utf8(commit_data)
             .map_err(|e| MarmotError::Internal(format!("Invalid UTF-8: {}", e)))?;
         let event: Event = serde_json::from_str(event_json)
-            .map_err(|e| MarmotError::Internal(format!("Invalid event JSON: {}", e)))?;
+            .map_err(|e| MarmotError::Internal(format!("Failed to process commit: {}", e)))?;
 
         // Process as a message (commits are processed the same way)
         let mdk = self.mdk.write();
-        mdk.process_message(&event)
+        let result = mdk.process_message(&event)
             .map_err(|e| MarmotError::Internal(format!("Failed to process commit: {}", e)))?;
 
-        Ok(())
+        // Check if it was actually processed as a commit
+        match result {
+            mdk_core::messages::MessageProcessingResult::Commit { .. } => Ok(()),
+            mdk_core::messages::MessageProcessingResult::Unprocessable { .. } => {
+                Err(MarmotError::Internal("Commit was unprocessable by MLS layer".into()))
+            }
+            other => {
+                // Other results (ApplicationMessage, Proposal) are unexpected for commits
+                // but the message was processed - don't error
+                eprintln!("[RUST] process_commit got: {:?}", other);
+                Ok(())
+            }
+        }
     }
 
     /// Update keys for forward secrecy.

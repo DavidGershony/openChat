@@ -326,8 +326,15 @@ public class ManagedMlsService : IMlsService
         var rawWelcome = result.WelcomeBytes ?? Array.Empty<byte>();
         var mlsMessage = WrapWelcomeInMlsMessage(rawWelcome);
 
+        // Wrap commit in MlsMessage envelope (same as Welcome wrapping but with wire_format=mls_private_message)
+        // Without this, OpenMLS can't parse the raw PrivateMessage TLS bytes.
+        var wrappedCommit = WrapPrivateMessageInMlsMessage(result.CommitMessageBytes);
+        _logger.LogInformation("AddMember: commit bytes first 8: {Hex}, len={Len}",
+            Convert.ToHexString(wrappedCommit[..Math.Min(8, wrappedCommit.Length)]).ToLowerInvariant(),
+            wrappedCommit.Length);
+
         // MIP-03 encrypt the commit with the PRE-commit exporter secret
-        var mip03EncryptedBase64 = GroupEventEncryption.Encrypt(result.CommitMessageBytes, preCommitExporterSecret);
+        var mip03EncryptedBase64 = GroupEventEncryption.Encrypt(wrappedCommit, preCommitExporterSecret);
         var mip03Encrypted = Convert.FromBase64String(mip03EncryptedBase64);
 
         return new MlsWelcome
@@ -1273,6 +1280,29 @@ public class ManagedMlsService : IMlsService
         result[0] = 0x00; result[1] = 0x01; // ProtocolVersion = mls10 (1)
         result[2] = 0x00; result[3] = 0x03; // WireFormat = mls_welcome (3)
         Buffer.BlockCopy(rawWelcome, 0, result, 4, rawWelcome.Length);
+        return result;
+    }
+
+    /// <summary>
+    /// Wraps raw PrivateMessage TLS bytes in an MLSMessage container.
+    /// Required for cross-implementation interop — OpenMLS expects the 4-byte header.
+    /// </summary>
+    private static byte[] WrapPrivateMessageInMlsMessage(byte[] rawPrivateMessage)
+    {
+        if (rawPrivateMessage.Length == 0) return rawPrivateMessage;
+
+        // Don't double-wrap if already has MLSMessage header
+        if (rawPrivateMessage.Length >= 4 &&
+            rawPrivateMessage[0] == 0x00 && rawPrivateMessage[1] == 0x01 &&
+            rawPrivateMessage[2] == 0x00 && rawPrivateMessage[3] == 0x02)
+        {
+            return rawPrivateMessage;
+        }
+
+        var result = new byte[4 + rawPrivateMessage.Length];
+        result[0] = 0x00; result[1] = 0x01; // ProtocolVersion = mls10 (1)
+        result[2] = 0x00; result[3] = 0x02; // WireFormat = mls_private_message (2)
+        Buffer.BlockCopy(rawPrivateMessage, 0, result, 4, rawPrivateMessage.Length);
         return result;
     }
 
