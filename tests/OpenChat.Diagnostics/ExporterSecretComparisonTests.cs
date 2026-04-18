@@ -302,6 +302,18 @@ public class ExporterSecretComparisonTests : IAsyncLifetime
             var (name, backend, mls) = mlsServices[i];
             var kp = WrapKp(await mls.GenerateKeyPackageAsync(), name.ToLowerInvariant());
 
+            // Diagnostic: verify exporter secrets match by sending a message BEFORE the add
+            if (users.Any(u => u.backend == "rust"))
+            {
+                var probe = await aliceMls.EncryptMessageAsync(group.GroupId, $"probe-{i}");
+                foreach (var (rn, rb, rm, rg) in users.Where(u => u.backend == "rust"))
+                {
+                    try { await rm.DecryptMessageAsync(rg, probe);
+                          _output.WriteLine($"    [DIAG] {rn} epoch-probe OK"); }
+                    catch (Exception ex) { _output.WriteLine($"    [DIAG] {rn} epoch-probe FAIL: {ex.Message}"); }
+                }
+            }
+
             var addResult = await aliceMls.AddMemberAsync(group.GroupId, kp);
             _output.WriteLine($"  Adding {name} ({backend}): welcome={addResult.WelcomeData.Length}B");
 
@@ -310,21 +322,32 @@ public class ExporterSecretComparisonTests : IAsyncLifetime
             // (MIP-03 exporter secret mismatch in commit path — separate issue from SecretTree fix)
             if (addResult.CommitData is { Length: > 0 })
             {
+                // Wrap commit in a properly signed kind 445 event for rust members
+                byte[] commitEvent = await ((ManagedMlsService)aliceMls)
+                    .EncryptCommitAsync(group.GroupId, addResult.CommitData);
+
                 for (int j = 1; j < users.Count; j++)
                 {
                     var (eName, eBackend, eMls, eGid) = users[j];
-                    if (eBackend == "rust")
-                    {
-                        _output.WriteLine($"    {eName} (rust): commit skip (known MIP-03 epoch issue)");
-                        continue;
-                    }
                     try
                     {
-                        await eMls.DecryptMessageAsync(eGid, addResult.CommitData);
+                        if (eBackend == "rust")
+                        {
+                            // Use DecryptMessageAsync for commits — the MDK processes
+                            // commits internally via process_message even though it
+                            // returns "Unexpected message type"
+                            try { await eMls.DecryptMessageAsync(eGid, commitEvent); }
+                            catch (InvalidOperationException ex2) when (ex2.Message.Contains("Unexpected message type"))
+                            { /* commit processed but no plaintext returned — expected */ }
+                        }
+                        else
+                        {
+                            await eMls.DecryptMessageAsync(eGid, addResult.CommitData);
+                        }
                     }
                     catch (Exception ex)
                     {
-                        _output.WriteLine($"    {eName} commit processing FAILED: {ex.Message}");
+                        _output.WriteLine($"    {eName} commit FAILED: {ex.Message}");
                     }
                 }
             }
