@@ -149,52 +149,80 @@ public class ExporterSecretComparisonTests : IAsyncLifetime
         // But we need MLS-Exporter("marmot", "group-event", 32) - let me use GetExporterSecret
         // Actually GetExporterSecret is internal to Mdk. Let me use the encryption path instead.
 
-        // Encrypt a message with Alice → see if Charlie (rust) can MIP-03 decrypt it
+        // Encrypt a message with Alice → pass FULL event JSON to Charlie (rust)
+        // The Rust decrypt_message expects a JSON Nostr event, not raw bytes
         _output.WriteLine("\nAlice encrypts at epoch 2...");
         var aliceMsg = await aliceMls.EncryptMessageAsync(group.GroupId, "Test from Alice");
-        _output.WriteLine($"Alice encrypted: {aliceMsg.Length} bytes");
+        _output.WriteLine($"Alice encrypted: {aliceMsg.Length} bytes (full event JSON)");
 
-        // Extract the base64 content (MIP-03 encrypted)
-        using var doc = JsonDocument.Parse(aliceMsg);
-        var b64Content = doc.RootElement.GetProperty("content").GetString()!;
-        var encryptedBytes = Convert.FromBase64String(b64Content);
-        _output.WriteLine($"MIP-03 ciphertext: {encryptedBytes.Length} bytes, nonce={Convert.ToHexString(encryptedBytes[..12])}");
-
-        // Try to decrypt with Charlie (rust)
-        _output.WriteLine("\nCharlie (rust) tries to decrypt Alice's message...");
+        // Pass the full event JSON to Charlie (rust) — this is what the relay delivers
+        _output.WriteLine("\nCharlie (rust) tries to decrypt Alice's full event...");
         try
         {
-            var result = await charlieMls.DecryptMessageAsync(
-                (await charlieMls.GetGroupInfoAsync(group.GroupId))!.GroupId,
-                encryptedBytes);
+            var charlieGroupId = (await charlieMls.GetGroupInfoAsync(group.GroupId))?.GroupId ?? group.GroupId;
+            var result = await charlieMls.DecryptMessageAsync(charlieGroupId, aliceMsg);
             _output.WriteLine($"Charlie DECRYPTED: \"{result.Plaintext}\"");
-            _output.WriteLine("*** EXPORTER SECRETS MATCH — managed and rust are compatible! ***");
+            _output.WriteLine("*** CROSS-IMPL INTEROP WORKS — managed → rust decryption OK! ***");
         }
         catch (Exception ex)
         {
             _output.WriteLine($"Charlie DECRYPT FAILED: {ex.GetType().Name}: {ex.Message}");
-            _output.WriteLine("*** EXPORTER SECRETS DIVERGE — key schedule mismatch between dotnet-mls and OpenMLS ***");
+
+            // Also try with just the MIP-03 bytes to differentiate MIP-03 vs MLS failure
+            using var doc = JsonDocument.Parse(aliceMsg);
+            var b64Content = doc.RootElement.GetProperty("content").GetString()!;
+            var encryptedBytes = Convert.FromBase64String(b64Content);
+            _output.WriteLine($"MIP-03 ciphertext: {encryptedBytes.Length} bytes, nonce={Convert.ToHexString(encryptedBytes[..12])}");
+            _output.WriteLine("*** EXPORTER SECRETS DIVERGE — key schedule mismatch ***");
         }
 
-        // Also test reverse: Charlie encrypts, Alice decrypts
+        // Reverse: Charlie (rust) encrypts, Alice (managed) decrypts
         _output.WriteLine("\nCharlie (rust) encrypts...");
         try
         {
             var charlieMsg = await charlieMls.EncryptMessageAsync(group.GroupId, "Test from Charlie rust");
             _output.WriteLine($"Charlie encrypted: {charlieMsg.Length} bytes");
+            _output.WriteLine($"Charlie event first 100: {System.Text.Encoding.UTF8.GetString(charlieMsg)[..Math.Min(100, charlieMsg.Length)]}");
 
-            // Alice tries to decrypt
-            using var cDoc = JsonDocument.Parse(charlieMsg);
-            var cContent = cDoc.RootElement.GetProperty("content").GetString()!;
-            var cBytes = Convert.FromBase64String(cContent);
-
-            var aResult = await aliceMls.DecryptMessageAsync(group.GroupId, cBytes);
+            // Alice tries to decrypt the full event JSON via the MIP-03 path
+            var aResult = await aliceMls.DecryptMessageAsync(group.GroupId, charlieMsg);
             _output.WriteLine($"Alice DECRYPTED Charlie: \"{aResult.Plaintext}\"");
             _output.WriteLine("*** BIDIRECTIONAL — both directions work! ***");
         }
         catch (Exception ex)
         {
             _output.WriteLine($"Reverse decrypt FAILED: {ex.GetType().Name}: {ex.Message}");
+
+            // Check if the Rust event is a proper JSON kind 445 event
+            try
+            {
+                var charlieMsg2 = await charlieMls.EncryptMessageAsync(group.GroupId, "Test2 from Charlie rust");
+                var charlieStr = System.Text.Encoding.UTF8.GetString(charlieMsg2);
+                using var cDoc = System.Text.Json.JsonDocument.Parse(charlieStr);
+                var kind = cDoc.RootElement.GetProperty("kind").GetInt32();
+                var content = cDoc.RootElement.GetProperty("content").GetString()!;
+                _output.WriteLine($"Charlie event kind={kind}, content length={content.Length}");
+
+                // MIP-03 decrypt with Alice's exporter secret
+                var cipherBytes = Convert.FromBase64String(content);
+                _output.WriteLine($"MIP-03 ciphertext: {cipherBytes.Length} bytes");
+
+                var exporterSecret = ((ManagedMlsService)aliceMls).GetMediaExporterSecret(group.GroupId);
+                // Actually use the correct exporter secret via reflection or direct call
+                _output.WriteLine("Attempting manual MIP-03 decrypt...");
+                var mlsBytes = MarmotCs.Protocol.Crypto.GroupEventEncryption.Decrypt(content, exporterSecret);
+                _output.WriteLine($"MIP-03 decrypted to {mlsBytes.Length} MLS bytes, first 4: {Convert.ToHexString(mlsBytes[..Math.Min(4, mlsBytes.Length)])}");
+
+                // Check if it looks like an MLS PrivateMessage
+                if (mlsBytes.Length >= 4 && mlsBytes[0] == 0x00 && mlsBytes[1] == 0x01)
+                    _output.WriteLine("MLS message header: valid MlsMessage envelope");
+                else
+                    _output.WriteLine($"MLS message header: NOT MlsMessage (starts with {Convert.ToHexString(mlsBytes[..Math.Min(4, mlsBytes.Length)])})");
+            }
+            catch (Exception ex2)
+            {
+                _output.WriteLine($"Detailed analysis failed: {ex2.GetType().Name}: {ex2.Message}");
+            }
         }
 
         _output.WriteLine("\n═══════════════════════════════════════════════════════════");

@@ -300,9 +300,10 @@ public class MarmotWrapper : IDisposable
             if (firstByte != (byte)'{' && firstByte != (byte)'[')
             {
                 // Raw MLS TLS bytes from C# MDK — wrap in a synthetic rumor event
+                // Must include required MIP-02 tags: encoding, e (KP ref), relays
                 var base64Content = Convert.ToBase64String(welcomeData);
                 var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                rumorJson = $"{{\"id\":\"{wrapperEventId}\",\"pubkey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"created_at\":{now},\"kind\":444,\"tags\":[],\"content\":\"{base64Content}\"}}";
+                rumorJson = $"{{\"id\":\"{wrapperEventId}\",\"pubkey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"created_at\":{now},\"kind\":444,\"tags\":[[\"encoding\",\"base64\"],[\"e\",\"{wrapperEventId}\"],[\"relays\",\"wss://relay.test\"]],\"content\":\"{base64Content}\"}}";
                 _logger.LogInformation("ProcessWelcome: wrapped {Len} bytes of raw MLS TLS data in synthetic rumor event", welcomeData.Length);
             }
             else
