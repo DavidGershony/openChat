@@ -28,12 +28,14 @@
     <PackageReference Include="System.Reactive" Version="6.1.0" />
   </ItemGroup>
 
+  <!-- Direct project references for development — changes flow immediately
+       without NuGet repacking. Switch back to PackageReference for release builds. -->
   <ItemGroup>
-    <PackageReference Include="DotnetMls" Version="0.1.0-beta.2" />
-    <PackageReference Include="DotnetMls.Crypto" Version="0.1.0-beta.2" />
-    <PackageReference Include="MarmotCs.Core" Version="0.1.0-alpha.21" />
-    <PackageReference Include="MarmotCs.Storage.Memory" Version="0.1.0-alpha.21" />
-    <PackageReference Include="MarmotCs.Storage.Sqlite" Version="0.1.0-alpha.21" />
+    <ProjectReference Include="..\..\..\dotnet-mls\src\DotnetMls\DotnetMls.csproj" />
+    <ProjectReference Include="..\..\..\dotnet-mls\src\DotnetMls.Crypto\DotnetMls.Crypto.csproj" />
+    <ProjectReference Include="..\..\..\marmot-cs\src\MarmotCs.Core\MarmotCs.Core.csproj" />
+    <ProjectReference Include="..\..\..\marmot-cs\src\MarmotCs.Storage.Memory\MarmotCs.Storage.Memory.csproj" />
+    <ProjectReference Include="..\..\..\marmot-cs\src\MarmotCs.Storage.Sqlite\MarmotCs.Storage.Sqlite.csproj" />
   </ItemGroup>
 
 </Project>
