@@ -458,6 +458,21 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
+                        android:hint="Server relay (e.g. wss://relay.example.com)">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/notification_server_relay_input"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="textUri"
+                            android:fontFamily="monospace"
+                            android:textSize="13sp" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
                         android:hint="Push URL (e.g. https://ntfy.sh/your-topic)">
 
                         <com.google.android.material.textfield.TextInputEditText

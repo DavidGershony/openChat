@@ -68,6 +68,7 @@ public class SettingsViewModel : ViewModelBase
 
     // Notifications
     [Reactive] public string NotificationServerNpub { get; set; } = string.Empty;
+    [Reactive] public string NotificationServerRelay { get; set; } = string.Empty;
     [Reactive] public string NotificationPushUrl { get; set; } = string.Empty;
     [Reactive] public string? NotificationRegistrationStatus { get; set; }
 
@@ -223,6 +224,15 @@ public class SettingsViewModel : ViewModelBase
                 catch (Exception ex) { _logger.LogError(ex, "Failed to save notification server npub"); }
             });
 
+        this.WhenAnyValue(x => x.NotificationServerRelay)
+            .Skip(1)
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .Subscribe(async v =>
+            {
+                try { await _storageService.SaveSettingAsync("notification_server_relay", v.Trim()); }
+                catch (Exception ex) { _logger.LogError(ex, "Failed to save notification server relay"); }
+            });
+
         this.WhenAnyValue(x => x.NotificationPushUrl)
             .Skip(1)
             .Where(v => !string.IsNullOrWhiteSpace(v))
@@ -298,6 +308,9 @@ public class SettingsViewModel : ViewModelBase
         var notifNpub = await _storageService.GetSettingAsync("notification_server_npub");
         if (!string.IsNullOrEmpty(notifNpub))
             NotificationServerNpub = notifNpub;
+        var notifRelay = await _storageService.GetSettingAsync("notification_server_relay");
+        if (!string.IsNullOrEmpty(notifRelay))
+            NotificationServerRelay = notifRelay;
         var notifPushUrl = await _storageService.GetSettingAsync("notification_push_url");
         if (!string.IsNullOrEmpty(notifPushUrl))
             NotificationPushUrl = notifPushUrl;
@@ -515,9 +528,10 @@ public class SettingsViewModel : ViewModelBase
 
     private async Task RegisterNotificationsAsync()
     {
-        if (string.IsNullOrWhiteSpace(NotificationServerNpub) || string.IsNullOrWhiteSpace(NotificationPushUrl))
+        if (string.IsNullOrWhiteSpace(NotificationServerNpub) || string.IsNullOrWhiteSpace(NotificationPushUrl)
+            || string.IsNullOrWhiteSpace(NotificationServerRelay))
         {
-            NotificationRegistrationStatus = "Enter both server npub and push URL";
+            NotificationRegistrationStatus = "Enter server npub, relay, and push URL";
             return;
         }
 
@@ -554,17 +568,18 @@ public class SettingsViewModel : ViewModelBase
             var relayArray = string.Join(", ", relays.Select(r => $"\"{r}\""));
             var content = $"{{\"action\": \"register\", \"push_url\": \"{NotificationPushUrl.Trim()}\", \"relays\": [{relayArray}]}}";
 
-            // Send as NIP-59 gift-wrapped kind-14 DM to the server
+            // Send as NIP-59 gift-wrapped kind-14 DM to the server's inbox relay
             var rumorTags = new List<List<string>> { new() { "p", serverPubKeyHex } };
+            var targetRelays = new List<string> { NotificationServerRelay.Trim() };
 
-            // Send to the server's inbox relays (use connected relays as best guess)
             var eventId = await _nostrService.PublishGiftWrapAsync(
                 rumorKind: 14,
                 content: content,
                 rumorTags: rumorTags,
                 senderPrivateKeyHex: PrivateKeyHex,
                 senderPublicKeyHex: PublicKeyHex,
-                recipientPublicKeyHex: serverPubKeyHex);
+                recipientPublicKeyHex: serverPubKeyHex,
+                targetRelayUrls: targetRelays);
 
             NotificationRegistrationStatus = $"Registered (event {eventId[..12]}...)";
             _logger.LogInformation("Notification registration sent to {ServerPubKey}, event {EventId}", serverPubKeyHex[..16], eventId);

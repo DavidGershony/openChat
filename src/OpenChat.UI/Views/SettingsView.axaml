@@ -292,6 +292,13 @@
                     </StackPanel>
 
                     <StackPanel Spacing="4">
+                        <TextBlock Text="Server relay" FontSize="14" />
+                        <TextBox Text="{Binding NotificationServerRelay}"
+                                 Watermark="wss://relay.example.com"
+                                 FontFamily="Consolas,monospace" FontSize="13" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="4">
                         <TextBlock Text="Push URL" FontSize="14" />
                         <TextBox Text="{Binding NotificationPushUrl}"
                                  Watermark="https://ntfy.sh/your-topic"
