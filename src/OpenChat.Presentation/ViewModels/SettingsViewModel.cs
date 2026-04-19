@@ -617,8 +617,7 @@ public class SettingsViewModel : ViewModelBase
                 recipientPublicKeyHex: serverPubKeyHex,
                 targetRelayUrls: targetRelays);
 
-            NotificationRegistrationStatus = "Verified! Notifications active.";
-            NotificationAwaitingVerification = false;
+            NotificationRegistrationStatus = "Verification sent — check your push notifications for confirmation.";
             NotificationVerifyCode = string.Empty;
             _logger.LogInformation("Notification verification sent, event {EventId}", eventId);
         }
