@@ -78,6 +78,12 @@ public class SettingsFragment : Fragment
         var mip04Warning = view.FindViewById<TextView>(Resource.Id.mip04_dependency_warning)!;
         var blossomInput = view.FindViewById<TextInputEditText>(Resource.Id.blossom_server_input)!;
 
+        // Notification views
+        var notifServerNpubInput = view.FindViewById<TextInputEditText>(Resource.Id.notification_server_npub_input)!;
+        var notifPushUrlInput = view.FindViewById<TextInputEditText>(Resource.Id.notification_push_url_input)!;
+        var registerNotifButton = view.FindViewById<MaterialButton>(Resource.Id.register_notifications_button)!;
+        var notifRegistrationStatus = view.FindViewById<TextView>(Resource.Id.notification_registration_status)!;
+
         // Developer views
         var viewLogsButton = view.FindViewById<MaterialButton>(Resource.Id.view_logs_button)!;
         var libraryVersionsText = view.FindViewById<TextView>(Resource.Id.library_versions_text)!;
@@ -216,6 +222,31 @@ public class SettingsFragment : Fragment
         {
             if (!e.HasFocus && !string.IsNullOrWhiteSpace(blossomInput.Text))
                 ViewModel.BlossomServerUrl = blossomInput.Text!.Trim();
+        };
+
+        // Notification registration
+        notifServerNpubInput.Text = ViewModel.NotificationServerNpub;
+        notifServerNpubInput.FocusChange += (s, e) =>
+        {
+            if (!e.HasFocus && !string.IsNullOrWhiteSpace(notifServerNpubInput.Text))
+                ViewModel.NotificationServerNpub = notifServerNpubInput.Text!.Trim();
+        };
+
+        notifPushUrlInput.Text = ViewModel.NotificationPushUrl;
+        notifPushUrlInput.FocusChange += (s, e) =>
+        {
+            if (!e.HasFocus && !string.IsNullOrWhiteSpace(notifPushUrlInput.Text))
+                ViewModel.NotificationPushUrl = notifPushUrlInput.Text!.Trim();
+        };
+
+        registerNotifButton.Click += (s, e) =>
+        {
+            // Sync input values before registering (in case focus hasn't changed)
+            if (!string.IsNullOrWhiteSpace(notifServerNpubInput.Text))
+                ViewModel.NotificationServerNpub = notifServerNpubInput.Text!.Trim();
+            if (!string.IsNullOrWhiteSpace(notifPushUrlInput.Text))
+                ViewModel.NotificationPushUrl = notifPushUrlInput.Text!.Trim();
+            ViewModel.RegisterNotificationsCommand.Execute().Subscribe().DisposeWith(_disposables);
         };
 
         // View Logs
@@ -362,6 +393,34 @@ public class SettingsFragment : Fragment
             {
                 if (blossomInput.Text != url)
                     blossomInput.Text = url;
+            })
+            .DisposeWith(_disposables);
+
+        // Notification settings sync
+        ViewModel.WhenAnyValue(x => x.NotificationServerNpub)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(v =>
+            {
+                if (notifServerNpubInput.Text != v)
+                    notifServerNpubInput.Text = v;
+            })
+            .DisposeWith(_disposables);
+
+        ViewModel.WhenAnyValue(x => x.NotificationPushUrl)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(v =>
+            {
+                if (notifPushUrlInput.Text != v)
+                    notifPushUrlInput.Text = v;
+            })
+            .DisposeWith(_disposables);
+
+        ViewModel.WhenAnyValue(x => x.NotificationRegistrationStatus)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(status =>
+            {
+                notifRegistrationStatus.Text = status ?? "";
+                notifRegistrationStatus.Visibility = string.IsNullOrEmpty(status) ? ViewStates.Gone : ViewStates.Visible;
             })
             .DisposeWith(_disposables);
 

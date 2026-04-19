@@ -66,6 +66,11 @@ public class SettingsViewModel : ViewModelBase
     [Reactive] public string BlossomServerUrl { get; set; } = "https://blossom.primal.net";
     [Reactive] public string? BlossomStatus { get; set; }
 
+    // Notifications
+    [Reactive] public string NotificationServerNpub { get; set; } = string.Empty;
+    [Reactive] public string NotificationPushUrl { get; set; } = string.Empty;
+    [Reactive] public string? NotificationRegistrationStatus { get; set; }
+
     // Library versions
     public string MarmotCsVersion { get; } = GetPackageVersion("MarmotCs.Core");
     public string DotnetMlsVersion { get; } = GetPackageVersion("DotnetMls");
@@ -90,6 +95,7 @@ public class SettingsViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> AuditKeyPackagesCommand { get; }
     public ReactiveCommand<Unit, Unit> PublishRelayListCommand { get; }
     public ReactiveCommand<RelayViewModel, Unit> CycleRelayUsageCommand { get; }
+    public ReactiveCommand<Unit, Unit> RegisterNotificationsCommand { get; }
 
     public SettingsViewModel(INostrService nostrService, IStorageService storageService, IMlsService mlsService, IMessageService messageService, IPlatformLauncher launcher)
     {
@@ -151,6 +157,9 @@ public class SettingsViewModel : ViewModelBase
         PublishRelayListCommand = ReactiveCommand.CreateFromTask(PublishRelayListAsync);
         CycleRelayUsageCommand = ReactiveCommand.CreateFromTask<RelayViewModel>(CycleRelayUsageAsync);
 
+        // Notification registration
+        RegisterNotificationsCommand = ReactiveCommand.CreateFromTask(RegisterNotificationsAsync);
+
         // Add default relays (will be replaced by saved relays in LoadSettingsAsync)
         foreach (var relay in NostrConstants.DefaultRelays)
             Relays.Add(new RelayViewModel { Url = relay, IsConnected = false });
@@ -202,6 +211,25 @@ public class SettingsViewModel : ViewModelBase
                 {
                     _logger.LogError(ex, "Failed to save MIP-04 setting");
                 }
+            });
+
+        // Persist notification settings
+        this.WhenAnyValue(x => x.NotificationServerNpub)
+            .Skip(1)
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .Subscribe(async v =>
+            {
+                try { await _storageService.SaveSettingAsync("notification_server_npub", v.Trim()); }
+                catch (Exception ex) { _logger.LogError(ex, "Failed to save notification server npub"); }
+            });
+
+        this.WhenAnyValue(x => x.NotificationPushUrl)
+            .Skip(1)
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .Subscribe(async v =>
+            {
+                try { await _storageService.SaveSettingAsync("notification_push_url", v.Trim()); }
+                catch (Exception ex) { _logger.LogError(ex, "Failed to save notification push URL"); }
             });
 
         // Theme change handler
@@ -265,6 +293,14 @@ public class SettingsViewModel : ViewModelBase
                 blossom.BlossomServerUrl = blossomUrl;
         }
         _logger.LogInformation("Loaded Blossom server: {Url}", BlossomServerUrl);
+
+        // Load notification settings
+        var notifNpub = await _storageService.GetSettingAsync("notification_server_npub");
+        if (!string.IsNullOrEmpty(notifNpub))
+            NotificationServerNpub = notifNpub;
+        var notifPushUrl = await _storageService.GetSettingAsync("notification_push_url");
+        if (!string.IsNullOrEmpty(notifPushUrl))
+            NotificationPushUrl = notifPushUrl;
     }
 
     private async Task SaveProfileAsync()
@@ -474,6 +510,69 @@ public class SettingsViewModel : ViewModelBase
         finally
         {
             IsAuditingKeyPackages = false;
+        }
+    }
+
+    private async Task RegisterNotificationsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(NotificationServerNpub) || string.IsNullOrWhiteSpace(NotificationPushUrl))
+        {
+            NotificationRegistrationStatus = "Enter both server npub and push URL";
+            return;
+        }
+
+        if (string.IsNullOrEmpty(PublicKeyHex))
+        {
+            NotificationRegistrationStatus = "No keys loaded";
+            return;
+        }
+
+        try
+        {
+            NotificationRegistrationStatus = "Registering...";
+
+            // Decode server npub to hex
+            var serverPubKeyHex = NotificationServerNpub.Trim().StartsWith("npub1")
+                ? _nostrService.NpubToHex(NotificationServerNpub.Trim())
+                : NotificationServerNpub.Trim();
+
+            if (string.IsNullOrEmpty(serverPubKeyHex) || serverPubKeyHex.Length != 64)
+            {
+                NotificationRegistrationStatus = "Invalid server npub";
+                return;
+            }
+
+            // Build relay list from current connections
+            var relays = _nostrService.ConnectedRelayUrls.ToList();
+            if (relays.Count == 0)
+            {
+                NotificationRegistrationStatus = "No relays connected";
+                return;
+            }
+
+            // Build registration JSON
+            var relayArray = string.Join(", ", relays.Select(r => $"\"{r}\""));
+            var content = $"{{\"action\": \"register\", \"push_url\": \"{NotificationPushUrl.Trim()}\", \"relays\": [{relayArray}]}}";
+
+            // Send as NIP-59 gift-wrapped kind-14 DM to the server
+            var rumorTags = new List<List<string>> { new() { "p", serverPubKeyHex } };
+
+            // Send to the server's inbox relays (use connected relays as best guess)
+            var eventId = await _nostrService.PublishGiftWrapAsync(
+                rumorKind: 14,
+                content: content,
+                rumorTags: rumorTags,
+                senderPrivateKeyHex: PrivateKeyHex,
+                senderPublicKeyHex: PublicKeyHex,
+                recipientPublicKeyHex: serverPubKeyHex);
+
+            NotificationRegistrationStatus = $"Registered (event {eventId[..12]}...)";
+            _logger.LogInformation("Notification registration sent to {ServerPubKey}, event {EventId}", serverPubKeyHex[..16], eventId);
+        }
+        catch (Exception ex)
+        {
+            NotificationRegistrationStatus = $"Failed: {ex.Message}";
+            _logger.LogError(ex, "Failed to register for notifications");
         }
     }
 

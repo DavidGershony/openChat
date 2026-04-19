@@ -277,6 +277,36 @@
                 </StackPanel>
             </Border>
 
+            <!-- Notifications Section -->
+            <Border Classes="card">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Notifications" FontWeight="SemiBold" FontSize="16" />
+                    <TextBlock Text="Register with a notification server to receive push notifications via UnifiedPush"
+                               Classes="muted" FontSize="12" TextWrapping="Wrap" />
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Server npub" FontSize="14" />
+                        <TextBox Text="{Binding NotificationServerNpub}"
+                                 Watermark="npub1..."
+                                 FontFamily="Consolas,monospace" FontSize="13" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Push URL" FontSize="14" />
+                        <TextBox Text="{Binding NotificationPushUrl}"
+                                 Watermark="https://ntfy.sh/your-topic"
+                                 FontFamily="Consolas,monospace" FontSize="13" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Button Classes="secondary" Content="Register"
+                                Command="{Binding RegisterNotificationsCommand}" />
+                        <TextBlock Text="{Binding NotificationRegistrationStatus}"
+                                   VerticalAlignment="Center" FontSize="13" Classes="muted" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
             <!-- Developer Section -->
             <Border Classes="card">
                 <StackPanel Spacing="16">
