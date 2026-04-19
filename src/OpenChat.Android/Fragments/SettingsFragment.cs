@@ -81,6 +81,8 @@ public class SettingsFragment : Fragment
         // Notification views
         var notifServerNpubInput = view.FindViewById<TextInputEditText>(Resource.Id.notification_server_npub_input)!;
         var notifPushUrlInput = view.FindViewById<TextInputEditText>(Resource.Id.notification_push_url_input)!;
+        var generateTopicButton = view.FindViewById<MaterialButton>(Resource.Id.generate_push_topic_button)!;
+        var subscribeNtfyButton = view.FindViewById<MaterialButton>(Resource.Id.subscribe_ntfy_button)!;
         var registerNotifButton = view.FindViewById<MaterialButton>(Resource.Id.register_notifications_button)!;
         var notifRegistrationStatus = view.FindViewById<TextView>(Resource.Id.notification_registration_status)!;
         var notifVerifyLayout = view.FindViewById<LinearLayout>(Resource.Id.notification_verify_layout)!;
@@ -240,6 +242,18 @@ public class SettingsFragment : Fragment
         {
             if (!e.HasFocus && !string.IsNullOrWhiteSpace(notifPushUrlInput.Text))
                 ViewModel.NotificationPushUrl = notifPushUrlInput.Text!.Trim();
+        };
+
+        generateTopicButton.Click += (s, e) =>
+        {
+            ViewModel.GeneratePushTopicCommand.Execute().Subscribe().DisposeWith(_disposables);
+        };
+
+        subscribeNtfyButton.Click += (s, e) =>
+        {
+            if (!string.IsNullOrWhiteSpace(notifPushUrlInput.Text))
+                ViewModel.NotificationPushUrl = notifPushUrlInput.Text!.Trim();
+            ViewModel.SubscribeInNtfyCommand.Execute().Subscribe().DisposeWith(_disposables);
         };
 
         registerNotifButton.Click += (s, e) =>

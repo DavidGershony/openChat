@@ -100,6 +100,8 @@ public class SettingsViewModel : ViewModelBase
     public ReactiveCommand<RelayViewModel, Unit> CycleRelayUsageCommand { get; }
     public ReactiveCommand<Unit, Unit> RegisterNotificationsCommand { get; }
     public ReactiveCommand<Unit, Unit> VerifyNotificationsCommand { get; }
+    public ReactiveCommand<Unit, Unit> GeneratePushTopicCommand { get; }
+    public ReactiveCommand<Unit, Unit> SubscribeInNtfyCommand { get; }
 
     public SettingsViewModel(INostrService nostrService, IStorageService storageService, IMlsService mlsService, IMessageService messageService, IPlatformLauncher launcher)
     {
@@ -164,6 +166,8 @@ public class SettingsViewModel : ViewModelBase
         // Notification registration
         RegisterNotificationsCommand = ReactiveCommand.CreateFromTask(RegisterNotificationsAsync);
         VerifyNotificationsCommand = ReactiveCommand.CreateFromTask(VerifyNotificationsAsync);
+        GeneratePushTopicCommand = ReactiveCommand.Create(GeneratePushTopic);
+        SubscribeInNtfyCommand = ReactiveCommand.Create(SubscribeInNtfy);
 
         // Add default relays (will be replaced by saved relays in LoadSettingsAsync)
         foreach (var relay in NostrConstants.DefaultRelays)
@@ -528,6 +532,21 @@ public class SettingsViewModel : ViewModelBase
         {
             IsAuditingKeyPackages = false;
         }
+    }
+
+    private void GeneratePushTopic()
+    {
+        var random = new byte[4];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(random);
+        var topic = $"openchat-{Convert.ToHexString(random).ToLowerInvariant()}";
+        NotificationPushUrl = $"https://ntfy.sh/{topic}";
+        _logger.LogInformation("Generated push topic: {Topic}", topic);
+    }
+
+    private void SubscribeInNtfy()
+    {
+        if (string.IsNullOrWhiteSpace(NotificationPushUrl)) return;
+        _launcher.OpenUrl(NotificationPushUrl.Trim());
     }
 
     private async Task VerifyNotificationsAsync()
