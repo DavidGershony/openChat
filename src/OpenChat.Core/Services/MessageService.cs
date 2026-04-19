@@ -1156,8 +1156,13 @@ public class MessageService : IMessageService, IDisposable
         }
 
         // Decrypt message — must use the MLS group ID (not the NostrGroupId from the h-tag)
+        _logger.LogDebug("HandleGroupMessage: raw content prefix ({Len} chars): {Prefix}",
+            nostrEvent.Content.Length,
+            nostrEvent.Content[..Math.Min(80, nostrEvent.Content.Length)]);
         var encryptedData = Convert.FromBase64String(nostrEvent.Content);
-        _logger.LogInformation("HandleGroupMessage: decrypting {Len} bytes for chat {ChatName}", encryptedData.Length, chat.Name);
+        _logger.LogInformation("HandleGroupMessage: decrypting {Len} bytes for chat {ChatName}, first4hex={First4}",
+            encryptedData.Length, chat.Name,
+            Convert.ToHexString(encryptedData[..Math.Min(4, encryptedData.Length)]).ToLowerInvariant());
 
         MlsDecryptedMessage decrypted;
         try
