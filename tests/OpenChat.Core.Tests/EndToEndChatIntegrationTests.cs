@@ -728,6 +728,209 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
     }
 
     // ═══════════════════════════════════════════════════════════════════
+    // Test 6: Desktop creates group, closes. Phone accepts and sends.
+    //         Desktop reopens. Both must see each other's messages.
+    //         Reproduces the "Group chat with Dan" bug.
+    // ═══════════════════════════════════════════════════════════════════
+
+    [Theory]
+    [InlineData("managed")]
+    public async Task DesktopCreatesGroup_Closes_PhoneAcceptsAndSends_DesktopReopens_MessagesFlow(string backend)
+    {
+        await SetupUsers(backend);
+
+        // ── Phase 1: Desktop (A) creates group ──
+        var keyPackageB = await _mlsServiceB.GenerateKeyPackageAsync();
+        var groupInfo = await _mlsServiceA.CreateGroupAsync("Dan Group Test", new[] { "wss://relay.test" });
+        var groupIdHex = Convert.ToHexString(groupInfo.GroupId).ToLowerInvariant();
+
+        var chatA = new Chat
+        {
+            Id = Guid.NewGuid().ToString(),
+            Name = "Dan Group Test",
+            Type = ChatType.Group,
+            MlsGroupId = groupInfo.GroupId,
+            MlsEpoch = groupInfo.Epoch,
+            ParticipantPublicKeys = new List<string> { _pubKeyA },
+            CreatedAt = DateTime.UtcNow,
+            LastActivityAt = DateTime.UtcNow
+        };
+        await _storageA.SaveChatAsync(chatA);
+
+        // ── Phase 2: Desktop adds Phone to group ──
+        var fakeKpJson = CreateFakeKeyPackageEventJson(_pubKeyB, keyPackageB.Data, keyPackageB.NostrTags);
+        keyPackageB.EventJson = fakeKpJson;
+        keyPackageB.NostrEventId = "fake443_" + Guid.NewGuid().ToString("N");
+
+        var welcome = await _mlsServiceA.AddMemberAsync(groupInfo.GroupId, keyPackageB);
+        Assert.NotNull(welcome.WelcomeData);
+        Assert.NotNull(welcome.CommitData);
+
+        // Capture what PublishCommitAsync would send (the commit event content)
+        byte[]? capturedCommitData = null;
+        _mockNostrA.Setup(n => n.PublishCommitAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<string>()))
+            .Callback<byte[], string, string?>((data, gid, key) => capturedCommitData = data)
+            .ReturnsAsync("fakecommit_" + Guid.NewGuid().ToString("N"));
+
+        // The AddMemberAsync in MessageService would call PublishCommitAsync,
+        // but we already called MLS AddMemberAsync directly.
+        // Save the commit data for later delivery simulation.
+        var commitData = welcome.CommitData!;
+
+        // Persist MLS state for Desktop after adding member
+        var stateA = await _mlsServiceA.ExportGroupStateAsync(groupInfo.GroupId);
+        await _storageA.SaveMlsStateAsync(groupIdHex, stateA);
+
+        // ── Phase 3: DESKTOP CLOSES ──
+        _messageServiceA.Dispose();
+
+        // ── Phase 4: Phone (B) accepts Welcome (MLS level, then create chat) ──
+        var fakeWelcomeEventId = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        var groupInfoB = await _mlsServiceB.ProcessWelcomeAsync(welcome.WelcomeData, fakeWelcomeEventId);
+        Assert.NotNull(groupInfoB.GroupId);
+
+        var groupIdHexB = Convert.ToHexString(groupInfoB.GroupId).ToLowerInvariant();
+
+        // Create chat for Phone
+        var chatB = new Chat
+        {
+            Id = Guid.NewGuid().ToString(),
+            Name = "Dan Group Test",
+            Type = ChatType.Group,
+            MlsGroupId = groupInfoB.GroupId,
+            MlsEpoch = groupInfoB.Epoch,
+            ParticipantPublicKeys = new List<string> { _pubKeyA, _pubKeyB },
+            CreatedAt = DateTime.UtcNow,
+            LastActivityAt = DateTime.UtcNow
+        };
+        await _storageB.SaveChatAsync(chatB);
+
+        // ── Phase 5: Phone receives the commit event (from relay history) ──
+        // The commit was published before desktop closed. Phone receives it
+        // after joining. This must not crash — phone should skip it gracefully
+        // because it joined via Welcome at the post-commit epoch.
+        var nostrGroupId = _mlsServiceA.GetNostrGroupId(groupInfo.GroupId);
+        var commitGroupIdHex = nostrGroupId != null
+            ? Convert.ToHexString(nostrGroupId).ToLowerInvariant()
+            : groupIdHex;
+
+        var commitEvent = new NostrEventReceived
+        {
+            Kind = 445,
+            EventId = "commit_" + Guid.NewGuid().ToString("N"),
+            PublicKey = _pubKeyA,
+            Content = Convert.ToBase64String(commitData),
+            CreatedAt = DateTime.UtcNow,
+            Tags = new List<List<string>>
+            {
+                new() { "h", commitGroupIdHex },
+                new() { "encoding", "base64" }
+            },
+            RelayUrl = "wss://test.relay"
+        };
+
+        // This should NOT throw — it should be silently skipped
+        _eventsB.OnNext(commitEvent);
+        await Task.Delay(500); // Give time for async processing
+
+        // ── Phase 6: Phone sends a message ──
+        byte[]? capturedPhoneMsg = null;
+        _mockNostrB.Setup(n => n.PublishRawEventJsonAsync(It.IsAny<byte[]>()))
+            .Callback<byte[]>(data => capturedPhoneMsg = data)
+            .ReturnsAsync("fakemsg_phone");
+
+        var phoneMsg = await _messageServiceB.SendMessageAsync(chatB.Id, "Hello from phone!");
+        Assert.Equal("Hello from phone!", phoneMsg.Content);
+        Assert.NotNull(capturedPhoneMsg);
+
+        // Persist Phone MLS state
+        var stateB = await _mlsServiceB.ExportGroupStateAsync(chatB.MlsGroupId!);
+        await _storageB.SaveMlsStateAsync(groupIdHexB, stateB);
+
+        // ── Phase 7: DESKTOP REOPENS ──
+        var eventsA2 = new Subject<NostrEventReceived>();
+        var mockNostrA2 = CreateMockNostr(eventsA2);
+
+        // Wrap real MLS service to prevent re-initialization
+        var wrappedMlsA = new Mock<IMlsService>();
+        wrappedMlsA.Setup(m => m.InitializeAsync(It.IsAny<string>(), It.IsAny<string>())).Returns(Task.CompletedTask);
+        wrappedMlsA.Setup(m => m.EncryptMessageAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<List<List<string>>?>()))
+            .Returns<byte[], string, List<List<string>>?>((gid, msg, tags) => _mlsServiceA.EncryptMessageAsync(gid, msg, tags));
+        wrappedMlsA.Setup(m => m.DecryptMessageAsync(It.IsAny<byte[]>(), It.IsAny<byte[]>()))
+            .Returns<byte[], byte[]>((gid, data) => _mlsServiceA.DecryptMessageAsync(gid, data));
+        wrappedMlsA.Setup(m => m.ExportGroupStateAsync(It.IsAny<byte[]>()))
+            .Returns<byte[]>(gid => _mlsServiceA.ExportGroupStateAsync(gid));
+        wrappedMlsA.Setup(m => m.GetGroupInfoAsync(It.IsAny<byte[]>()))
+            .Returns<byte[]>(gid => _mlsServiceA.GetGroupInfoAsync(gid));
+        wrappedMlsA.Setup(m => m.GetNostrGroupId(It.IsAny<byte[]>()))
+            .Returns<byte[]>(gid => _mlsServiceA.GetNostrGroupId(gid));
+
+        var messageServiceA2 = new MessageService(_storageA, mockNostrA2.Object, wrappedMlsA.Object);
+        await messageServiceA2.InitializeAsync();
+
+        try
+        {
+            // Verify chat survived restart
+            var chatsA = await messageServiceA2.GetChatsAsync();
+            var restoredChatA = chatsA.FirstOrDefault(c => c.Id == chatA.Id);
+            Assert.NotNull(restoredChatA);
+
+            // ── Phase 8: Desktop receives Phone's message (relay catch-up) ──
+            // Simulate the relay delivering the Phone's kind 445 message to Desktop
+            var phoneMsgEvent = new NostrEventReceived
+            {
+                Kind = 445,
+                EventId = "phonemsg_" + Guid.NewGuid().ToString("N"),
+                PublicKey = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N"), // MIP-03 ephemeral pubkey
+                Content = Convert.ToBase64String(capturedPhoneMsg!),
+                CreatedAt = DateTime.UtcNow,
+                Tags = new List<List<string>> { new() { "h", commitGroupIdHex } },
+                RelayUrl = "wss://test.relay"
+            };
+
+            var receivedTask = WaitForObservable(messageServiceA2.NewMessages, TimeSpan.FromSeconds(5));
+            eventsA2.OnNext(phoneMsgEvent);
+            var receivedMsg = await receivedTask;
+
+            Assert.NotNull(receivedMsg);
+            Assert.Equal("Hello from phone!", receivedMsg.Content);
+
+            // ── Phase 9: Desktop sends a reply ──
+            byte[]? capturedDesktopReply = null;
+            mockNostrA2.Setup(n => n.PublishRawEventJsonAsync(It.IsAny<byte[]>()))
+                .Callback<byte[]>(data => capturedDesktopReply = data)
+                .ReturnsAsync("fakemsg_desktop");
+
+            var desktopReply = await messageServiceA2.SendMessageAsync(restoredChatA!.Id, "Hello from desktop!");
+            Assert.Equal("Hello from desktop!", desktopReply.Content);
+            Assert.NotNull(capturedDesktopReply);
+
+            // ── Phase 10: Phone receives Desktop's reply ──
+            var desktopReplyEvent = new NostrEventReceived
+            {
+                Kind = 445,
+                EventId = "desktopreply_" + Guid.NewGuid().ToString("N"),
+                PublicKey = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N"),
+                Content = Convert.ToBase64String(capturedDesktopReply!),
+                CreatedAt = DateTime.UtcNow,
+                Tags = new List<List<string>> { new() { "h", commitGroupIdHex } },
+                RelayUrl = "wss://test.relay"
+            };
+
+            var phoneReceivedTask = WaitForObservable(_messageServiceB.NewMessages, TimeSpan.FromSeconds(5));
+            _eventsB.OnNext(desktopReplyEvent);
+            var phoneReceivedMsg = await phoneReceivedTask;
+
+            Assert.NotNull(phoneReceivedMsg);
+            Assert.Equal("Hello from desktop!", phoneReceivedMsg.Content);
+        }
+        finally
+        {
+            messageServiceA2.Dispose();
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
     // Helpers
     // ═══════════════════════════════════════════════════════════════════
 
