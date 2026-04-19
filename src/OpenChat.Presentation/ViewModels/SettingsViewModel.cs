@@ -70,14 +70,16 @@ public class SettingsViewModel : ViewModelBase
     [Reactive] public string NotificationServerNpub { get; set; } = string.Empty;
     [Reactive] public string NotificationServerRelay { get; set; } = string.Empty;
     [Reactive] public string NotificationPushUrl { get; set; } = string.Empty;
+    [Reactive] public string NotificationVerifyCode { get; set; } = string.Empty;
     [Reactive] public string? NotificationRegistrationStatus { get; set; }
+    [Reactive] public bool NotificationAwaitingVerification { get; set; }
 
     // Library versions
     public string MarmotCsVersion { get; } = GetPackageVersion("MarmotCs.Core");
     public string DotnetMlsVersion { get; } = GetPackageVersion("DotnetMls");
 
     // Theme selection
-    [Reactive] public int SelectedThemeIndex { get; set; }
+    [Reactive] public int SelectedThemeIndex { get; set; } = 4;
     public static string[] AvailableThemeNames { get; set; } = Array.Empty<string>();
     public static Action<int>? OnThemeChanged { get; set; }
 
@@ -97,6 +99,7 @@ public class SettingsViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> PublishRelayListCommand { get; }
     public ReactiveCommand<RelayViewModel, Unit> CycleRelayUsageCommand { get; }
     public ReactiveCommand<Unit, Unit> RegisterNotificationsCommand { get; }
+    public ReactiveCommand<Unit, Unit> VerifyNotificationsCommand { get; }
 
     public SettingsViewModel(INostrService nostrService, IStorageService storageService, IMlsService mlsService, IMessageService messageService, IPlatformLauncher launcher)
     {
@@ -160,6 +163,7 @@ public class SettingsViewModel : ViewModelBase
 
         // Notification registration
         RegisterNotificationsCommand = ReactiveCommand.CreateFromTask(RegisterNotificationsAsync);
+        VerifyNotificationsCommand = ReactiveCommand.CreateFromTask(VerifyNotificationsAsync);
 
         // Add default relays (will be replaced by saved relays in LoadSettingsAsync)
         foreach (var relay in NostrConstants.DefaultRelays)
@@ -526,6 +530,59 @@ public class SettingsViewModel : ViewModelBase
         }
     }
 
+    private async Task VerifyNotificationsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(NotificationVerifyCode))
+        {
+            NotificationRegistrationStatus = "Enter the verification code";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(NotificationServerNpub) || string.IsNullOrEmpty(PublicKeyHex))
+        {
+            NotificationRegistrationStatus = "Missing server npub or keys";
+            return;
+        }
+
+        try
+        {
+            NotificationRegistrationStatus = "Verifying...";
+
+            var serverPubKeyHex = NotificationServerNpub.Trim().StartsWith("npub1")
+                ? _nostrService.NpubToHex(NotificationServerNpub.Trim())
+                : NotificationServerNpub.Trim();
+
+            if (string.IsNullOrEmpty(serverPubKeyHex) || serverPubKeyHex.Length != 64)
+            {
+                NotificationRegistrationStatus = "Invalid server npub";
+                return;
+            }
+
+            var content = $"{{\"action\": \"verify\", \"code\": \"{NotificationVerifyCode.Trim()}\"}}";
+            var rumorTags = new List<List<string>> { new() { "p", serverPubKeyHex } };
+            var targetRelays = new List<string> { NotificationServerRelay.Trim() };
+
+            var eventId = await _nostrService.PublishGiftWrapAsync(
+                rumorKind: 14,
+                content: content,
+                rumorTags: rumorTags,
+                senderPrivateKeyHex: PrivateKeyHex,
+                senderPublicKeyHex: PublicKeyHex,
+                recipientPublicKeyHex: serverPubKeyHex,
+                targetRelayUrls: targetRelays);
+
+            NotificationRegistrationStatus = "Verified! Notifications active.";
+            NotificationAwaitingVerification = false;
+            NotificationVerifyCode = string.Empty;
+            _logger.LogInformation("Notification verification sent, event {EventId}", eventId);
+        }
+        catch (Exception ex)
+        {
+            NotificationRegistrationStatus = $"Verification failed: {ex.Message}";
+            _logger.LogError(ex, "Failed to verify notifications");
+        }
+    }
+
     private async Task RegisterNotificationsAsync()
     {
         if (string.IsNullOrWhiteSpace(NotificationServerNpub) || string.IsNullOrWhiteSpace(NotificationPushUrl)
@@ -581,7 +638,8 @@ public class SettingsViewModel : ViewModelBase
                 recipientPublicKeyHex: serverPubKeyHex,
                 targetRelayUrls: targetRelays);
 
-            NotificationRegistrationStatus = $"Registered (event {eventId[..12]}...)";
+            NotificationRegistrationStatus = "Check your push notifications for a verification code";
+            NotificationAwaitingVerification = true;
             _logger.LogInformation("Notification registration sent to {ServerPubKey}, event {EventId}", serverPubKeyHex[..16], eventId);
         }
         catch (Exception ex)

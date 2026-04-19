@@ -308,9 +308,23 @@
                     <StackPanel Orientation="Horizontal" Spacing="12">
                         <Button Classes="secondary" Content="Register"
                                 Command="{Binding RegisterNotificationsCommand}" />
-                        <TextBlock Text="{Binding NotificationRegistrationStatus}"
-                                   VerticalAlignment="Center" FontSize="13" Classes="muted" />
                     </StackPanel>
+
+                    <!-- Verification code input (visible after registration) -->
+                    <StackPanel Spacing="4" IsVisible="{Binding NotificationAwaitingVerification}">
+                        <TextBlock Text="Verification code" FontSize="14" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBox Text="{Binding NotificationVerifyCode}"
+                                     Watermark="6-digit code"
+                                     FontFamily="Consolas,monospace" FontSize="16" Width="150" />
+                            <Button Classes="secondary" Content="Verify"
+                                    Command="{Binding VerifyNotificationsCommand}" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <TextBlock Text="{Binding NotificationRegistrationStatus}"
+                               FontSize="13" Classes="muted" TextWrapping="Wrap"
+                               IsVisible="{Binding NotificationRegistrationStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                 </StackPanel>
             </Border>
 
@@ -343,6 +357,7 @@
                         <ComboBoxItem Content="Golden Axe" />
                         <ComboBoxItem Content="Cyber Teal" />
                         <ComboBoxItem Content="AMOLED Black" />
+                        <ComboBoxItem Content="AMOLED Purple" />
                     </ComboBox>
                 </StackPanel>
             </Border>

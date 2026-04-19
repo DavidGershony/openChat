@@ -83,6 +83,9 @@ public class SettingsFragment : Fragment
         var notifPushUrlInput = view.FindViewById<TextInputEditText>(Resource.Id.notification_push_url_input)!;
         var registerNotifButton = view.FindViewById<MaterialButton>(Resource.Id.register_notifications_button)!;
         var notifRegistrationStatus = view.FindViewById<TextView>(Resource.Id.notification_registration_status)!;
+        var notifVerifyLayout = view.FindViewById<LinearLayout>(Resource.Id.notification_verify_layout)!;
+        var notifVerifyCodeInput = view.FindViewById<TextInputEditText>(Resource.Id.notification_verify_code_input)!;
+        var verifyNotifButton = view.FindViewById<MaterialButton>(Resource.Id.verify_notifications_button)!;
 
         // Developer views
         var viewLogsButton = view.FindViewById<MaterialButton>(Resource.Id.view_logs_button)!;
@@ -247,6 +250,13 @@ public class SettingsFragment : Fragment
             if (!string.IsNullOrWhiteSpace(notifPushUrlInput.Text))
                 ViewModel.NotificationPushUrl = notifPushUrlInput.Text!.Trim();
             ViewModel.RegisterNotificationsCommand.Execute().Subscribe().DisposeWith(_disposables);
+        };
+
+        verifyNotifButton.Click += (s, e) =>
+        {
+            if (!string.IsNullOrWhiteSpace(notifVerifyCodeInput.Text))
+                ViewModel.NotificationVerifyCode = notifVerifyCodeInput.Text!.Trim();
+            ViewModel.VerifyNotificationsCommand.Execute().Subscribe().DisposeWith(_disposables);
         };
 
         // View Logs
@@ -421,6 +431,14 @@ public class SettingsFragment : Fragment
             {
                 notifRegistrationStatus.Text = status ?? "";
                 notifRegistrationStatus.Visibility = string.IsNullOrEmpty(status) ? ViewStates.Gone : ViewStates.Visible;
+            })
+            .DisposeWith(_disposables);
+
+        ViewModel.WhenAnyValue(x => x.NotificationAwaitingVerification)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(awaiting =>
+            {
+                notifVerifyLayout.Visibility = awaiting ? ViewStates.Visible : ViewStates.Gone;
             })
             .DisposeWith(_disposables);
 
