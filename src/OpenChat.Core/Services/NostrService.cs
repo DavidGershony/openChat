@@ -1545,6 +1545,11 @@ public class NostrService : INostrService, IDisposable
 
     public async Task<string> PublishCommitAsync(byte[] commitData, string groupId, string? privateKeyHex)
     {
+        _logger.LogInformation("PublishCommitAsync: {Len} bytes for group {GroupId}, hasPrivKey={HasKey}, first4={First4}",
+            commitData.Length, groupId[..Math.Min(16, groupId.Length)],
+            !string.IsNullOrEmpty(privateKeyHex),
+            Convert.ToHexString(commitData[..Math.Min(4, commitData.Length)]).ToLowerInvariant());
+
         // Create kind 445 event for commit/evolution messages (MIP-03)
         var tags = new List<List<string>>
         {
@@ -1553,6 +1558,7 @@ public class NostrService : INostrService, IDisposable
         };
 
         var eventId = await PublishEventAsync(445, Convert.ToBase64String(commitData), tags, privateKeyHex);
+        _logger.LogInformation("PublishCommitAsync: published event {EventId}", eventId);
         return eventId;
     }
 

@@ -1169,6 +1169,21 @@ public class MessageService : IMessageService, IDisposable
         {
             decrypted = await _mlsService.DecryptMessageAsync(chat.MlsGroupId!, encryptedData);
         }
+        catch (Exception ex) when (
+            ex.Message.Contains("Failed to extract MLS message") ||
+            ex.Message.Contains("UnprocessableResult") ||
+            ex.Message.Contains("stale", StringComparison.OrdinalIgnoreCase))
+        {
+            // Likely a commit that added us to the group — we joined via Welcome
+            // and are already at the post-commit epoch, so we can't decrypt the
+            // commit that preceded our Welcome. This is expected MLS behavior.
+            _logger.LogWarning(
+                "HandleGroupMessage: skipping undecryptable event {EventId} in group {GroupId} (likely pre-join commit): {Error}",
+                nostrEvent.EventId[..Math.Min(16, nostrEvent.EventId.Length)],
+                groupIdHex[..Math.Min(16, groupIdHex.Length)],
+                ex.Message);
+            return;
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "HandleGroupMessage: MLS decrypt failed for event {EventId} in group {GroupId}",
