@@ -133,6 +133,41 @@ public class ManagedMlsService : IMlsService
 
             _logger.LogInformation("Managed MLS service initialized successfully");
 
+            // Restore group states from the MlsStates table.
+            // The MDK's in-memory cache is empty after Build() — groups persisted
+            // by PersistGroupStateAsync must be explicitly re-imported.
+            if (_storageService != null)
+            {
+                try
+                {
+                    var allChats = await _storageService.GetAllChatsAsync();
+                    var groupCount = 0;
+                    foreach (var chat in allChats.Where(c => c.Type == ChatType.Group && c.MlsGroupId != null))
+                    {
+                        try
+                        {
+                            var hex = Convert.ToHexString(chat.MlsGroupId!).ToLowerInvariant();
+                            var state = await _storageService.GetMlsStateAsync(hex);
+                            if (state != null)
+                            {
+                                _mdk.ImportGroupState(chat.MlsGroupId!, state);
+                                groupCount++;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to restore MLS state for group {ChatId}", chat.Id);
+                        }
+                    }
+                    if (groupCount > 0)
+                        _logger.LogInformation("Restored {Count} MLS group(s) from persistence", groupCount);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to enumerate chats for MLS group state restoration");
+                }
+            }
+
             // Save service state (only writes new keys if we generated them)
             if (!restoredKeys)
             {
@@ -252,7 +287,7 @@ public class ManagedMlsService : IMlsService
         _logger.LogInformation("CreateGroup: created group {GroupId}, epoch={Epoch} (managed)",
             groupIdHex[..Math.Min(16, groupIdHex.Length)], result.Group.Epoch);
 
-        // Storage provider persists directly — no blob export needed
+        await PersistGroupStateAsync(groupId);
 
         return new MlsGroupInfo
         {
@@ -300,7 +335,6 @@ public class ManagedMlsService : IMlsService
 
         var result = await _mdk!.AddMembersAsync(groupId, new[] { kpBytes });
 
-        // Storage provider persists directly — no blob export needed
 
         // MIP-02 requires the Welcome to be wrapped in an MLSMessage container:
         //   MLSMessage { version=mls10(0x0001), wire_format=mls_welcome(0x0003), Welcome }
@@ -318,6 +352,8 @@ public class ManagedMlsService : IMlsService
         // MIP-03 encrypt the commit with the PRE-commit exporter secret
         var mip03EncryptedBase64 = GroupEventEncryption.Encrypt(wrappedCommit, preCommitExporterSecret);
         var mip03Encrypted = Convert.FromBase64String(mip03EncryptedBase64);
+
+        await PersistGroupStateAsync(groupId);
 
         return new MlsWelcome
         {
@@ -383,7 +419,8 @@ public class ManagedMlsService : IMlsService
                 // The KP should be rotated (new KP published, old key material deleted)
                 // after a successful accept, but NOT removed immediately.
                 _logger.LogInformation("ProcessWelcome: KeyPackage retained (last_resort per MIP-00), rotation recommended");
-                // Storage provider persists directly — no blob export needed
+
+                await PersistGroupStateAsync(preview.GroupId);
 
                 return new MlsGroupInfo
                 {
@@ -487,7 +524,7 @@ public class ManagedMlsService : IMlsService
 
         _logger.LogDebug("EncryptMessage: produced {Len} bytes event JSON (managed)", eventJson.Length);
 
-        // Storage provider persists directly — no blob export needed
+        await PersistGroupStateAsync(groupId);
 
         return eventJson;
     }
@@ -523,7 +560,7 @@ public class ManagedMlsService : IMlsService
         var tags = mip03Tags.Select(t => t.ToList()).ToList();
         var eventJson = BuildEphemeralSignedEvent(445, base64Content, tags, exporterSecret);
 
-        // Storage provider persists directly — no blob export needed
+        await PersistGroupStateAsync(groupId);
 
         return eventJson;
     }
@@ -575,6 +612,7 @@ public class ManagedMlsService : IMlsService
         // Use a synthetic event ID for deduplication
         var eventId = Guid.NewGuid().ToString("N");
         var result = await _mdk!.ProcessMessageAsync(groupId, mlsBytes, eventId);
+        await PersistGroupStateAsync(groupId);
 
         if (result is ApplicationMessageResult appMsg)
         {
@@ -713,8 +751,7 @@ public class ManagedMlsService : IMlsService
             _logger.LogDebug("DecryptMessage: sender={Sender}, epoch={Epoch}, plaintext length={Len} (managed)",
                 senderHex[..Math.Min(16, senderHex.Length)], appMsg.Message.Epoch, plaintext.Length);
 
-            // Storage provider persists directly — no blob export needed
-
+    
             return new MlsDecryptedMessage
             {
                 SenderPublicKey = senderHex,
@@ -741,8 +778,7 @@ public class ManagedMlsService : IMlsService
         {
             _logger.LogInformation("DecryptMessage: processed commit for group {GroupId}, epoch advanced (managed)",
                 groupIdHex[..Math.Min(16, groupIdHex.Length)]);
-            // Storage provider persists directly — no blob export needed
-            return new MlsDecryptedMessage
+                return new MlsDecryptedMessage
             {
                 IsCommit = true,
                 Epoch = 0, // Epoch info not directly available from CommitResult
@@ -770,7 +806,7 @@ public class ManagedMlsService : IMlsService
         {
             _logger.LogInformation("ProcessCommit: success for group {GroupId} (managed)",
                 groupIdHex[..Math.Min(16, groupIdHex.Length)]);
-            // Storage provider persists directly — no blob export needed
+            await PersistGroupStateAsync(groupId);
             return;
         }
 
@@ -785,8 +821,7 @@ public class ManagedMlsService : IMlsService
         EnsureInitialized();
 
         var result = await _mdk!.SelfUpdateAsync(groupId);
-
-        // Storage provider persists directly — no blob export needed
+        await PersistGroupStateAsync(groupId);
 
         return result.CommitMessageBytes;
     }
@@ -806,7 +841,6 @@ public class ManagedMlsService : IMlsService
 
         var result = await _mdk.RemoveMembersAsync(groupId, new[] { member.leafIndex });
 
-        // Storage provider persists directly — no blob export needed
 
         return result.CommitMessageBytes;
     }
@@ -1419,6 +1453,26 @@ public class ManagedMlsService : IMlsService
             kind, ephPubHex[..16]);
 
         return eventStream.ToArray();
+    }
+
+    /// <summary>
+    /// Exports the current MLS group state and saves it to the MlsStates table.
+    /// Called after every state-changing operation so the group survives app restart.
+    /// </summary>
+    private async Task PersistGroupStateAsync(byte[] groupId)
+    {
+        if (_storageService == null) return;
+
+        try
+        {
+            var hex = Convert.ToHexString(groupId).ToLowerInvariant();
+            var state = _mdk!.ExportGroupState(groupId);
+            await _storageService.SaveMlsStateAsync(hex, state);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to persist MLS state for group");
+        }
     }
 
     private void EnsureInitialized()
