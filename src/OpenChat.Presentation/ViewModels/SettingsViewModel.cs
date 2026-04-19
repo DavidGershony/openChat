@@ -67,6 +67,8 @@ public class SettingsViewModel : ViewModelBase
     [Reactive] public string? BlossomStatus { get; set; }
 
     // Notifications
+    [Reactive] public bool NotificationModeBackground { get; set; } = true;
+    [Reactive] public bool NotificationModePush { get; set; }
     [Reactive] public string NotificationServerNpub { get; set; } = string.Empty;
     [Reactive] public string NotificationServerRelay { get; set; } = string.Empty;
     [Reactive] public string NotificationPushUrl { get; set; } = string.Empty;
@@ -222,6 +224,15 @@ public class SettingsViewModel : ViewModelBase
                 }
             });
 
+        // Persist notification mode
+        this.WhenAnyValue(x => x.NotificationModePush)
+            .Skip(1)
+            .Subscribe(async push =>
+            {
+                try { await _storageService.SaveSettingAsync("notification_mode", push ? "push" : "background"); }
+                catch (Exception ex) { _logger.LogError(ex, "Failed to save notification mode"); }
+            });
+
         // Persist notification settings
         this.WhenAnyValue(x => x.NotificationServerNpub)
             .Skip(1)
@@ -313,6 +324,12 @@ public class SettingsViewModel : ViewModelBase
         _logger.LogInformation("Loaded Blossom server: {Url}", BlossomServerUrl);
 
         // Load notification settings
+        var notifMode = await _storageService.GetSettingAsync("notification_mode");
+        if (notifMode == "push")
+        {
+            NotificationModePush = true;
+            NotificationModeBackground = false;
+        }
         var notifNpub = await _storageService.GetSettingAsync("notification_server_npub");
         if (!string.IsNullOrEmpty(notifNpub))
             NotificationServerNpub = notifNpub;
@@ -546,7 +563,17 @@ public class SettingsViewModel : ViewModelBase
     private void SubscribeInNtfy()
     {
         if (string.IsNullOrWhiteSpace(NotificationPushUrl)) return;
-        _launcher.OpenUrl(NotificationPushUrl.Trim());
+        // Use ntfy:// scheme so Android opens the ntfy app directly
+        var url = NotificationPushUrl.Trim();
+        if (url.StartsWith("https://ntfy.sh/", StringComparison.OrdinalIgnoreCase))
+        {
+            var topic = url["https://ntfy.sh/".Length..];
+            _launcher.OpenUrl($"ntfy://ntfy.sh/{topic}");
+        }
+        else
+        {
+            _launcher.OpenUrl(url);
+        }
     }
 
     private async Task VerifyNotificationsAsync()

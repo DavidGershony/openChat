@@ -431,122 +431,160 @@
                         android:textSize="16sp"
                         android:textStyle="bold" />
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Register with a notification server to receive push notifications via UnifiedPush"
-                        android:textSize="12sp"
-                        android:textColor="?attr/colorOnSurfaceVariant"
-                        android:layout_marginTop="4dp" />
-
-                    <com.google.android.material.textfield.TextInputLayout
+                    <RadioGroup
+                        android:id="@+id/notification_mode_group"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:hint="Server npub">
-
-                        <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/notification_server_npub_input"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:inputType="text"
-                            android:fontFamily="monospace"
-                            android:textSize="13sp" />
-                    </com.google.android.material.textfield.TextInputLayout>
-
-                    <com.google.android.material.textfield.TextInputLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:hint="Server relay (e.g. wss://relay.example.com)">
-
-                        <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/notification_server_relay_input"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:inputType="textUri"
-                            android:fontFamily="monospace"
-                            android:textSize="13sp" />
-                    </com.google.android.material.textfield.TextInputLayout>
-
-                    <com.google.android.material.textfield.TextInputLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:hint="Push URL (e.g. https://ntfy.sh/your-topic)">
-
-                        <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/notification_push_url_input"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:inputType="textUri"
-                            android:fontFamily="monospace"
-                            android:textSize="13sp" />
-                    </com.google.android.material.textfield.TextInputLayout>
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
                         android:layout_marginTop="8dp">
 
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/generate_push_topic_button"
-                            android:layout_width="wrap_content"
+                        <RadioButton
+                            android:id="@+id/notification_mode_background"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:text="Generate topic"
-                            style="@style/Widget.Material3.Button.TonalButton" />
+                            android:text="Background service (keep relay connections alive)"
+                            android:checked="true" />
 
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/subscribe_ntfy_button"
-                            android:layout_width="wrap_content"
+                        <RadioButton
+                            android:id="@+id/notification_mode_push"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:text="Subscribe in ntfy"
-                            android:layout_marginStart="8dp"
-                            style="@style/Widget.Material3.Button.TonalButton" />
-                    </LinearLayout>
+                            android:text="UnifiedPush (via ntfy)" />
+                    </RadioGroup>
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/register_notifications_button"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Register"
-                        android:layout_marginTop="12dp"
-                        style="@style/Widget.Material3.Button.OutlinedButton" />
-
-                    <!-- Verification code (visible after registration) -->
-                    <LinearLayout
-                        android:id="@+id/notification_verify_layout"
+                    <!-- Background mode description -->
+                    <TextView
+                        android:id="@+id/notification_bg_description"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical"
-                        android:layout_marginTop="12dp"
+                        android:text="The app will run a foreground service to keep relay connections open. Uses more battery but works without a notification server."
+                        android:textSize="12sp"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:layout_marginTop="8dp" />
+
+                    <!-- Push mode settings (hidden by default) -->
+                    <LinearLayout
+                        android:id="@+id/push_settings_panel"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
                         android:visibility="gone">
 
-                        <com.google.android.material.textfield.TextInputLayout
-                            android:layout_width="0dp"
+                        <TextView
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:hint="6-digit code">
+                            android:text="Register with a notification server to receive push notifications. Lower battery usage."
+                            android:textSize="12sp"
+                            android:textColor="?attr/colorOnSurfaceVariant"
+                            android:layout_marginTop="8dp" />
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:hint="Server npub">
 
                             <com.google.android.material.textfield.TextInputEditText
-                                android:id="@+id/notification_verify_code_input"
+                                android:id="@+id/notification_server_npub_input"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
-                                android:inputType="number"
+                                android:inputType="text"
                                 android:fontFamily="monospace"
-                                android:textSize="16sp"
-                                android:maxLength="6" />
+                                android:textSize="13sp" />
                         </com.google.android.material.textfield.TextInputLayout>
 
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/verify_notifications_button"
-                            android:layout_width="wrap_content"
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:text="Verify"
-                            android:layout_marginStart="8dp"
-                            style="@style/Widget.Material3.Button.OutlinedButton" />
+                            android:layout_marginTop="8dp"
+                            android:hint="Server relay (e.g. wss://relay.example.com)">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/notification_server_relay_input"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:inputType="textUri"
+                                android:fontFamily="monospace"
+                                android:textSize="13sp" />
+                        </com.google.android.material.textfield.TextInputLayout>
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:hint="Push URL (e.g. https://ntfy.sh/your-topic)">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/notification_push_url_input"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:inputType="textUri"
+                                android:fontFamily="monospace"
+                                android:textSize="13sp" />
+                        </com.google.android.material.textfield.TextInputLayout>
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:layout_marginTop="8dp">
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/generate_push_topic_button"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Generate topic"
+                                style="@style/Widget.Material3.Button.TonalButton" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/subscribe_ntfy_button"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Open in ntfy"
+                                android:layout_marginStart="8dp"
+                                style="@style/Widget.Material3.Button.TonalButton" />
+                        </LinearLayout>
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/register_notifications_button"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Register"
+                            android:layout_marginTop="12dp" />
+
+                        <!-- Verification code (visible after registration) -->
+                        <LinearLayout
+                            android:id="@+id/notification_verify_layout"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:layout_marginTop="12dp"
+                            android:visibility="gone">
+
+                            <com.google.android.material.textfield.TextInputLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:hint="6-digit code">
+
+                                <com.google.android.material.textfield.TextInputEditText
+                                    android:id="@+id/notification_verify_code_input"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:inputType="number"
+                                    android:fontFamily="monospace"
+                                    android:textSize="16sp"
+                                    android:maxLength="6" />
+                            </com.google.android.material.textfield.TextInputLayout>
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/verify_notifications_button"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Verify"
+                                android:layout_marginStart="8dp"
+                                style="@style/Widget.Material3.Button.OutlinedButton" />
+                        </LinearLayout>
                     </LinearLayout>
 
                     <TextView

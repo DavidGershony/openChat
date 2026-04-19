@@ -79,7 +79,11 @@ public class SettingsFragment : Fragment
         var blossomInput = view.FindViewById<TextInputEditText>(Resource.Id.blossom_server_input)!;
 
         // Notification views
+        var notifModeGroup = view.FindViewById<RadioGroup>(Resource.Id.notification_mode_group)!;
+        var notifBgDescription = view.FindViewById<TextView>(Resource.Id.notification_bg_description)!;
+        var pushSettingsPanel = view.FindViewById<LinearLayout>(Resource.Id.push_settings_panel)!;
         var notifServerNpubInput = view.FindViewById<TextInputEditText>(Resource.Id.notification_server_npub_input)!;
+        var notifServerRelayInput = view.FindViewById<TextInputEditText>(Resource.Id.notification_server_relay_input)!;
         var notifPushUrlInput = view.FindViewById<TextInputEditText>(Resource.Id.notification_push_url_input)!;
         var generateTopicButton = view.FindViewById<MaterialButton>(Resource.Id.generate_push_topic_button)!;
         var subscribeNtfyButton = view.FindViewById<MaterialButton>(Resource.Id.subscribe_ntfy_button)!;
@@ -229,20 +233,28 @@ public class SettingsFragment : Fragment
                 ViewModel.BlossomServerUrl = blossomInput.Text!.Trim();
         };
 
-        // Notification registration
-        notifServerNpubInput.Text = ViewModel.NotificationServerNpub;
-        notifServerNpubInput.FocusChange += (s, e) =>
+        // Notification mode switching
+        notifModeGroup.CheckedChange += (s, e) =>
         {
-            if (!e.HasFocus && !string.IsNullOrWhiteSpace(notifServerNpubInput.Text))
-                ViewModel.NotificationServerNpub = notifServerNpubInput.Text!.Trim();
+            var isPush = e.CheckedId == Resource.Id.notification_mode_push;
+            ViewModel.NotificationModePush = isPush;
+            ViewModel.NotificationModeBackground = !isPush;
+            pushSettingsPanel.Visibility = isPush ? ViewStates.Visible : ViewStates.Gone;
+            notifBgDescription.Visibility = isPush ? ViewStates.Gone : ViewStates.Visible;
         };
 
-        notifPushUrlInput.Text = ViewModel.NotificationPushUrl;
-        notifPushUrlInput.FocusChange += (s, e) =>
+        // Set initial panel state from ViewModel
+        if (ViewModel.NotificationModePush)
         {
-            if (!e.HasFocus && !string.IsNullOrWhiteSpace(notifPushUrlInput.Text))
-                ViewModel.NotificationPushUrl = notifPushUrlInput.Text!.Trim();
-        };
+            notifModeGroup.Check(Resource.Id.notification_mode_push);
+            pushSettingsPanel.Visibility = ViewStates.Visible;
+            notifBgDescription.Visibility = ViewStates.Gone;
+        }
+
+        // Notification push settings
+        notifServerNpubInput.Text = ViewModel.NotificationServerNpub;
+        notifServerRelayInput.Text = ViewModel.NotificationServerRelay;
+        notifPushUrlInput.Text = ViewModel.NotificationPushUrl;
 
         generateTopicButton.Click += (s, e) =>
         {
@@ -258,9 +270,11 @@ public class SettingsFragment : Fragment
 
         registerNotifButton.Click += (s, e) =>
         {
-            // Sync input values before registering (in case focus hasn't changed)
+            // Sync all input values before registering
             if (!string.IsNullOrWhiteSpace(notifServerNpubInput.Text))
                 ViewModel.NotificationServerNpub = notifServerNpubInput.Text!.Trim();
+            if (!string.IsNullOrWhiteSpace(notifServerRelayInput.Text))
+                ViewModel.NotificationServerRelay = notifServerRelayInput.Text!.Trim();
             if (!string.IsNullOrWhiteSpace(notifPushUrlInput.Text))
                 ViewModel.NotificationPushUrl = notifPushUrlInput.Text!.Trim();
             ViewModel.RegisterNotificationsCommand.Execute().Subscribe().DisposeWith(_disposables);
@@ -427,6 +441,15 @@ public class SettingsFragment : Fragment
             {
                 if (notifServerNpubInput.Text != v)
                     notifServerNpubInput.Text = v;
+            })
+            .DisposeWith(_disposables);
+
+        ViewModel.WhenAnyValue(x => x.NotificationServerRelay)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(v =>
+            {
+                if (notifServerRelayInput.Text != v)
+                    notifServerRelayInput.Text = v;
             })
             .DisposeWith(_disposables);
 
