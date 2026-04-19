@@ -383,33 +383,6 @@ public class MainViewModel : ViewModelBase
                     _logger.LogWarning(ex, "Failed to restore MLS service state");
                 }
 
-                // Restore each group's MLS state from persistence
-                try
-                {
-                    var allChats = await _storageService.GetAllChatsAsync();
-                    foreach (var chat in allChats.Where(c => c.Type == ChatType.Group && c.MlsGroupId != null))
-                    {
-                        try
-                        {
-                            var hex = Convert.ToHexString(chat.MlsGroupId!).ToLowerInvariant();
-                            var state = await _storageService.GetMlsStateAsync(hex);
-                            if (state != null)
-                            {
-                                await _mlsService.ImportGroupStateAsync(chat.MlsGroupId!, state);
-                                _logger.LogInformation("Restored MLS state for group {GroupId}", hex[..Math.Min(16, hex.Length)]);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogWarning(ex, "Failed to restore MLS state for group chat {ChatId}", chat.Id);
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to enumerate chats for MLS state restoration");
-                }
-
                 // Wire up the Nostr event signer for kind 445 MLS group messages.
                 // Local key users sign with their private key; external signer users delegate to Amber/NIP-46.
                 if (!string.IsNullOrEmpty(CurrentUser.PrivateKeyHex))

@@ -117,37 +117,19 @@ public class ManagedMlsService : IMlsService
                 _logger.LogInformation("Generated new MLS signing keys");
             }
 
-            // Use SQLite-backed storage for MLS state.
-            // Separate file from openchat.db to avoid table name collisions
-            // (marmot-cs uses generic names like "messages", "groups").
+            // Use the main openchat.db for MLS state with a "mls_" table prefix
+            // to avoid name collisions with OpenChat's own tables.
             var baseDbPath = _storageService?.DatabasePath ?? ":memory:";
-            string connStr;
-            if (baseDbPath == ":memory:")
-            {
-                connStr = "Data Source=:memory:";
-            }
-            else
-            {
-                // Derive MLS DB name from the main DB name to keep them 1:1
-                // e.g., "openchat.db" → "openchat_mls.db"
-                var dir = Path.GetDirectoryName(baseDbPath) ?? ".";
-                var baseName = Path.GetFileNameWithoutExtension(baseDbPath);
-                var mlsDbPath = Path.Combine(dir, $"{baseName}_mls.db");
-                connStr = $"Data Source={mlsDbPath}";
-            }
+            var connStr = baseDbPath == ":memory:"
+                ? "Data Source=:memory:"
+                : $"Data Source={baseDbPath}";
             var secureStorage = _storageService?.SecureStorage ?? new NoOpSecureStorage();
-            _storageProvider = new EncryptedSqliteStorageProvider(connStr, secureStorage);
+            _storageProvider = new EncryptedSqliteStorageProvider(connStr, secureStorage, tablePrefix: "mls_");
 
             _mdk = new MdkBuilder<EncryptedSqliteStorageProvider>()
                 .WithStorage(_storageProvider)
                 .WithConfig(MdkConfig.Default)
                 .Build();
-
-            // Migrate legacy blob state if present
-            if (_storageService != null)
-            {
-                await MigrateLegacyBlobStateAsync();
-            }
 
             _logger.LogInformation("Managed MLS service initialized successfully");
 
@@ -1059,53 +1041,6 @@ public class ManagedMlsService : IMlsService
     }
 
     // ---- Persistence helpers ----
-
-    /// <summary>
-    /// One-time migration: moves legacy blob-based MLS state from the MlsStates table
-    /// into the proper SQLite storage provider tables. After migration, the old blobs
-    /// are deleted.
-    /// </summary>
-    private async Task MigrateLegacyBlobStateAsync()
-    {
-        if (_storageService == null || _mdk == null) return;
-
-        try
-        {
-            var chats = await _storageService.GetAllChatsAsync();
-            var migrated = 0;
-
-            foreach (var chat in chats)
-            {
-                if (chat.MlsGroupId == null) continue;
-
-                var hex = Convert.ToHexString(chat.MlsGroupId).ToLowerInvariant();
-                try
-                {
-                    var legacyState = await _storageService.GetMlsStateAsync(hex);
-                    if (legacyState == null) continue;
-
-                    // Import into in-memory Mdk (which writes to the SQLite provider)
-                    _mdk.ImportGroupState(chat.MlsGroupId, legacyState);
-
-                    // Delete the legacy blob
-                    await _storageService.DeleteMlsStateAsync(hex);
-                    migrated++;
-                    _logger.LogInformation("Migrated MLS state for group {GroupId} from legacy blob to SQLite", hex[..Math.Min(16, hex.Length)]);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to migrate MLS state for group {GroupId}", hex[..Math.Min(16, hex.Length)]);
-                }
-            }
-
-            if (migrated > 0)
-                _logger.LogInformation("Migrated {Count} MLS group states from legacy blobs to SQLite provider", migrated);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to migrate legacy MLS group states");
-        }
-    }
 
     private async Task SaveServiceStateAsync()
     {

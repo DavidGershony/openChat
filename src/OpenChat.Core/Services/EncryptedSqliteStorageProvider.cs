@@ -24,9 +24,9 @@ public sealed class EncryptedSqliteStorageProvider : IMdkStorageProvider, IGroup
     private readonly SqliteStorageProvider _inner;
     private readonly ISecureStorage _secure;
 
-    public EncryptedSqliteStorageProvider(string connectionString, ISecureStorage secureStorage)
+    public EncryptedSqliteStorageProvider(string connectionString, ISecureStorage secureStorage, string tablePrefix = "")
     {
-        _inner = new SqliteStorageProvider(connectionString);
+        _inner = new SqliteStorageProvider(connectionString, tablePrefix);
         _secure = secureStorage;
     }
 
