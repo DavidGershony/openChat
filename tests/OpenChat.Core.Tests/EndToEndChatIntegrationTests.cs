@@ -150,7 +150,10 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
             Tags = new List<List<string>>
             {
                 new() { "p", _pubKeyB },
-                new() { "h", Convert.ToHexString(groupInfo.GroupId).ToLowerInvariant() }
+                new() { "e", keyPackageB.NostrEventId! },
+                new() { "encoding", "base64" },
+                new() { "h", Convert.ToHexString(groupInfo.GroupId).ToLowerInvariant() },
+                new() { "relays", "wss://test.relay" }
             },
             RelayUrl = "wss://test.relay"
         };
@@ -327,7 +330,10 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
             Tags = new List<List<string>>
             {
                 new() { "p", _pubKeyB },
-                new() { "h", Convert.ToHexString(groupInfo.GroupId).ToLowerInvariant() }
+                new() { "e", keyPackageB.NostrEventId! },
+                new() { "encoding", "base64" },
+                new() { "h", Convert.ToHexString(groupInfo.GroupId).ToLowerInvariant() },
+                new() { "relays", "wss://test.relay" }
             },
             RelayUrl = "wss://test.relay"
         };
@@ -450,7 +456,10 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
             Tags = new List<List<string>>
             {
                 new() { "p", _pubKeyB },
-                new() { "h", groupIdHex }
+                new() { "e", keyPackageB.NostrEventId! },
+                new() { "encoding", "base64" },
+                new() { "h", groupIdHex },
+                new() { "relays", "wss://test.relay" }
             },
             RelayUrl = "wss://test.relay"
         };
@@ -743,6 +752,7 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
         var keyPackageB = await _mlsServiceB.GenerateKeyPackageAsync();
         var groupInfo = await _mlsServiceA.CreateGroupAsync("Dan Group Test", new[] { "wss://relay.test" });
         var groupIdHex = Convert.ToHexString(groupInfo.GroupId).ToLowerInvariant();
+        var nostrGroupIdA = _mlsServiceA.GetNostrGroupId(groupInfo.GroupId);
 
         var chatA = new Chat
         {
@@ -750,6 +760,7 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
             Name = "Dan Group Test",
             Type = ChatType.Group,
             MlsGroupId = groupInfo.GroupId,
+            NostrGroupId = nostrGroupIdA,
             MlsEpoch = groupInfo.Epoch,
             ParticipantPublicKeys = new List<string> { _pubKeyA },
             CreatedAt = DateTime.UtcNow,
@@ -790,6 +801,7 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
         Assert.NotNull(groupInfoB.GroupId);
 
         var groupIdHexB = Convert.ToHexString(groupInfoB.GroupId).ToLowerInvariant();
+        var nostrGroupIdB = _mlsServiceB.GetNostrGroupId(groupInfoB.GroupId);
 
         // Create chat for Phone
         var chatB = new Chat
@@ -798,6 +810,7 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
             Name = "Dan Group Test",
             Type = ChatType.Group,
             MlsGroupId = groupInfoB.GroupId,
+            NostrGroupId = nostrGroupIdB,
             MlsEpoch = groupInfoB.Epoch,
             ParticipantPublicKeys = new List<string> { _pubKeyA, _pubKeyB },
             CreatedAt = DateTime.UtcNow,
@@ -977,6 +990,7 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
         mockNostr.Setup(n => n.PublishCommitAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync(() => "fakecommit_" + Guid.NewGuid().ToString("N"));
 
+        mockNostr.Setup(n => n.ConnectedRelayUrls).Returns(new List<string> { "wss://test.relay" });
         mockNostr.Setup(n => n.FetchUserMetadataAsync(It.IsAny<string>()))
             .ReturnsAsync((UserMetadata?)null);
         mockNostr.Setup(n => n.FetchKeyPackagesAsync(It.IsAny<string>()))
@@ -1028,6 +1042,7 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
         mockNostr.Setup(n => n.PublishCommitAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync(() => "fakecommit_" + Guid.NewGuid().ToString("N"));
 
+        mockNostr.Setup(n => n.ConnectedRelayUrls).Returns(new List<string> { "wss://test.relay" });
         mockNostr.Setup(n => n.FetchUserMetadataAsync(It.IsAny<string>()))
             .ReturnsAsync((UserMetadata?)null);
         mockNostr.Setup(n => n.FetchKeyPackagesAsync(It.IsAny<string>()))
