@@ -47,6 +47,130 @@
                 android:textColor="?attr/colorOnSurfaceVariant"
                 android:layout_marginTop="8dp" />
 
+            <!-- Relay Selection -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Relay selection"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:layout_marginTop="20dp" />
+
+            <RadioGroup
+                android:id="@+id/relay_mode_group"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp">
+
+                <RadioButton
+                    android:id="@+id/relay_mode_nip65"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Look up device relays (NIP-65)"
+                    android:checked="true" />
+
+                <RadioButton
+                    android:id="@+id/relay_mode_list"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Select from connected relays" />
+
+                <RadioButton
+                    android:id="@+id/relay_mode_manual"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Enter relay manually" />
+            </RadioGroup>
+
+            <!-- NIP-65 panel -->
+            <LinearLayout
+                android:id="@+id/nip65_panel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="8dp">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/lookup_nip65_button"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Look up relays"
+                    style="@style/Widget.Material3.Button.TonalButton" />
+
+                <ProgressBar
+                    android:id="@+id/nip65_progress"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:indeterminate="true"
+                    android:visibility="gone"
+                    style="?android:attr/progressBarStyleHorizontal" />
+
+                <TextView
+                    android:id="@+id/nip65_status"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="12sp"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:layout_marginTop="4dp"
+                    android:visibility="gone" />
+
+                <LinearLayout
+                    android:id="@+id/nip65_relay_list"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_marginTop="4dp" />
+            </LinearLayout>
+
+            <!-- Connected relays panel -->
+            <LinearLayout
+                android:id="@+id/connected_relays_panel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="8dp"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:id="@+id/connected_relay_list"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+
+                <TextView
+                    android:id="@+id/no_relays_text"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="No relays connected"
+                    android:textSize="12sp"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:visibility="gone" />
+            </LinearLayout>
+
+            <!-- Manual relay panel -->
+            <LinearLayout
+                android:id="@+id/manual_relay_panel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="8dp"
+                android:visibility="gone">
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="wss://relay.example.com">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/manual_relay_input"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="textUri"
+                        android:fontFamily="monospace"
+                        android:textSize="13sp" />
+                </com.google.android.material.textfield.TextInputLayout>
+            </LinearLayout>
+
             <TextView
                 android:id="@+id/add_bot_error"
                 android:layout_width="match_parent"
