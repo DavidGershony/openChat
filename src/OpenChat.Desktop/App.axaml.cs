@@ -21,13 +21,14 @@ public partial class App : Application
 {
     private static ILogger? _logger;
 
-    private static readonly string[] ThemeNames = { "Nostr", "Golden Axe", "Cyber Teal", "AMOLED Black" };
+    private static readonly string[] ThemeNames = { "Nostr", "Golden Axe", "Cyber Teal", "AMOLED Black", "AMOLED Purple" };
     private static readonly string[] ThemeUris =
     {
         "avares://OpenChat.UI/Themes/NostrColors.axaml",
         "avares://OpenChat.UI/Themes/GoldenAxeTheme.axaml",
         "avares://OpenChat.UI/Themes/CyberTealTheme.axaml",
         "avares://OpenChat.UI/Themes/AmoledBlackTheme.axaml",
+        "avares://OpenChat.UI/Themes/AmoledPurpleTheme.axaml",
     };
 
     public override void Initialize()
@@ -143,9 +144,11 @@ public partial class App : Application
                     return (data, file.Name, mime);
                 };
 
-                // Theme switching
+                // Theme switching — default to AMOLED Purple
+                const int defaultThemeIndex = 4;
                 SettingsViewModel.AvailableThemeNames = ThemeNames;
                 SettingsViewModel.OnThemeChanged = index => Dispatcher.UIThread.Post(() => ApplyTheme(index));
+                ApplyTheme(defaultThemeIndex);
 
                 _logger?.LogInformation("MainWindow created successfully (Profile: {Profile})", ProfileConfiguration.ProfileName);
 

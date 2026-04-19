@@ -28,6 +28,7 @@ public static class ThemeService
         new ThemeInfo("monochrome", "Monochrome", Resource.Style.AppTheme_Monochrome),
         new ThemeInfo("cyber_teal", "Cyber Teal", Resource.Style.AppTheme_CyberTeal),
         new ThemeInfo("amoled_black", "AMOLED Black", Resource.Style.AppTheme_AmoledBlack),
+        new ThemeInfo("amoled_purple", "AMOLED Purple", Resource.Style.AppTheme_AmoledPurple),
     };
 
     /// <summary>
@@ -36,7 +37,7 @@ public static class ThemeService
     public static string GetSavedThemeId(Context context)
     {
         var prefs = context.GetSharedPreferences(PrefsName, FileCreationMode.Private);
-        return prefs?.GetString(ThemeKey, "nostr_purple") ?? "nostr_purple";
+        return prefs?.GetString(ThemeKey, "amoled_purple") ?? "amoled_purple";
     }
 
     /// <summary>

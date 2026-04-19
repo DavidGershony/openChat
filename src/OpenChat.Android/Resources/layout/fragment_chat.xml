@@ -192,6 +192,8 @@
                 android:layout_marginStart="4dp"
                 android:contentDescription="Send"
                 app:srcCompat="@android:drawable/ic_menu_send"
+                app:backgroundTint="?attr/colorPrimary"
+                app:tint="?attr/colorOnPrimary"
                 app:fabSize="mini" />
         </LinearLayout>
     </LinearLayout>

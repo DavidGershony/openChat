@@ -219,9 +219,9 @@
                         Padding="0" ToolTip.Tip="Send message">
                     <Panel>
                         <PathIcon Data="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"
-                                  Width="22" Height="22" Foreground="White"
+                                  Width="22" Height="22" Foreground="{DynamicResource OnPrimaryBrush}"
                                   IsVisible="{Binding !IsSending}" />
-                        <TextBlock Text="..." FontSize="14" Foreground="White"
+                        <TextBlock Text="..." FontSize="14" Foreground="{DynamicResource OnPrimaryBrush}"
                                    IsVisible="{Binding IsSending}"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Panel>

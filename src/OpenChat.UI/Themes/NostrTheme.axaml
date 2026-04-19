@@ -39,6 +39,10 @@
         <Setter Property="Background" Value="{DynamicResource NostrPurpleLightBrush}" />
     </Style>
 
+    <Style Selector="Button.primary:pressed /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource NostrPurpleDarkBrush}" />
+    </Style>
+
     <Style Selector="Button.secondary">
         <Setter Property="Background" Value="{DynamicResource SurfaceSecondaryBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />

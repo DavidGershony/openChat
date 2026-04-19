@@ -207,28 +207,30 @@
 
                     <!-- Footer Buttons -->
                     <Border Grid.Row="2" Padding="12" Background="{DynamicResource BackgroundLightBrush}">
-                        <StackPanel Spacing="8">
+                        <Grid ColumnDefinitions="*,8,*">
                             <!-- New Chat Button -->
-                            <Button Classes="secondary" HorizontalAlignment="Stretch"
+                            <Button Grid.Column="0" Classes="secondary" HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Center"
                                     Command="{Binding ChatListViewModel.NewChatCommand}"
-                                    Padding="8,6">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    Padding="8,6" ToolTip.Tip="New Chat">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
                                     <PathIcon Data="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" Width="16" Height="16" />
-                                    <TextBlock Text="New Chat" FontSize="13" />
+                                    <TextBlock Text="Chat" FontSize="13" />
                                 </StackPanel>
                             </Button>
                             <!-- Link Device Button -->
-                            <Button Classes="secondary" HorizontalAlignment="Stretch"
-                                    Command="{Binding ChatListViewModel.AddBotCommand}"
+                            <Button Grid.Column="2" Classes="secondary" HorizontalAlignment="Stretch"
                                     HorizontalContentAlignment="Center"
-                                    Padding="8,6">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <PathIcon Data="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1.07A7.001 7.001 0 0 1 14 23h-4a7.001 7.001 0 0 1-6.93-6H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2M7.5 13A2.5 2.5 0 0 0 5 15.5A2.5 2.5 0 0 0 7.5 18A2.5 2.5 0 0 0 10 15.5A2.5 2.5 0 0 0 7.5 13m9 0a2.5 2.5 0 0 0-2.5 2.5a2.5 2.5 0 0 0 2.5 2.5a2.5 2.5 0 0 0 2.5-2.5a2.5 2.5 0 0 0-2.5-2.5Z"
+                                    Command="{Binding ChatListViewModel.AddBotCommand}"
+                                    Padding="8,6" ToolTip.Tip="Link Device">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <!-- Plug/connector icon -->
+                                    <PathIcon Data="M16 9V4.5A2.5 2.5 0 0 0 13.5 2A2.5 2.5 0 0 0 11 4.5V9H7v6.5C7 18.54 9.46 21 12.5 21S18 18.54 18 15.5V9h-2M13.5 3.5a1 1 0 0 1 1 1V9h-2V4.5a1 1 0 0 1 1-1Z"
                                               Width="16" Height="16" />
-                                    <TextBlock Text="Link Device" FontSize="12" />
+                                    <TextBlock Text="Device" FontSize="13" />
                                 </StackPanel>
                             </Button>
-                        </StackPanel>
+                        </Grid>
                     </Border>
                 </Grid>
             </Border>

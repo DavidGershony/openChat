@@ -75,6 +75,9 @@
     <SolidColorBrush x:Key="StatusWarningBrush" Color="{StaticResource StatusWarning}" />
     <SolidColorBrush x:Key="StatusOfflineBrush" Color="{StaticResource StatusOffline}" />
 
+    <!-- On-primary (foreground color for elements on primary-colored backgrounds) -->
+    <SolidColorBrush x:Key="OnPrimaryBrush" Color="#FFFFFF" />
+
     <!-- Sent bubble border -->
     <SolidColorBrush x:Key="BubbleSentBorderBrush" Color="{StaticResource NostrPurple}" />
 
