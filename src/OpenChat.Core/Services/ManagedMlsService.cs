@@ -1040,35 +1040,8 @@ public class ManagedMlsService : IMlsService
         var groupIdHex = Convert.ToHexString(groupId).ToLowerInvariant();
         _logger.LogDebug("GetMediaExporterSecret: group={GroupId}", groupIdHex[..Math.Min(16, groupIdHex.Length)]);
 
-        // Access the private _groups dictionary in Mdk via reflection to call ExportSecret
-        // with MIP-04 parameters (label="marmot", context="encrypted-media", length=32).
-        // The public GetExporterSecret only supports MIP-03 hardcoded parameters.
-        var groupsField = _mdk!.GetType().GetField("_groups",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-
-        if (groupsField == null)
-            throw new InvalidOperationException("Cannot access MLS group state for MIP-04 export (reflection failed)");
-
-        var groups = groupsField.GetValue(_mdk) as System.Collections.IDictionary;
-        if (groups == null)
-            throw new InvalidOperationException("MLS groups dictionary is null");
-
-        var groupHexKey = Convert.ToHexString(groupId);
-        if (!groups.Contains(groupHexKey))
-            throw new InvalidOperationException($"MLS group {groupIdHex[..Math.Min(16, groupIdHex.Length)]} not found");
-
-        var mlsGroup = groups[groupHexKey];
-        var exportMethod = mlsGroup!.GetType().GetMethod("ExportSecret",
-            new[] { typeof(string), typeof(byte[]), typeof(int) });
-
-        if (exportMethod == null)
-            throw new InvalidOperationException("Cannot find ExportSecret method on MlsGroup");
-
         var mediaContext = Encoding.UTF8.GetBytes("encrypted-media");
-        var result = exportMethod.Invoke(mlsGroup, new object[] { "marmot", mediaContext, 32 }) as byte[];
-
-        if (result == null || result.Length != 32)
-            throw new InvalidOperationException("MIP-04 ExportSecret returned invalid result");
+        var result = _mdk!.GetExporterSecret(groupId, "marmot", mediaContext, 32);
 
         _logger.LogInformation("GetMediaExporterSecret: derived 32-byte secret for group {GroupId}",
             groupIdHex[..Math.Min(16, groupIdHex.Length)]);

@@ -82,18 +82,7 @@ public class ExporterSecretComparisonTests : IAsyncLifetime
     /// Wraps MIP-03 encrypted commit bytes in a fake kind 445 Nostr event JSON
     /// so the rust native library can process them.
     /// </summary>
-    /// <summary>
-    /// Gets the MIP-03 group-event exporter secret from a ManagedMlsService via reflection.
-    /// Must be called BEFORE AddMemberAsync (which advances the epoch).
-    /// </summary>
-    private static byte[] GetGroupEventExporterSecret(IMlsService mls, byte[] groupId)
-    {
-        var mdkField = typeof(ManagedMlsService).GetField("_mdk",
-            BindingFlags.NonPublic | BindingFlags.Instance)!;
-        var mdk = mdkField.GetValue((ManagedMlsService)mls)!;
-        var method = mdk.GetType().GetMethod("GetExporterSecret")!;
-        return (byte[])method.Invoke(mdk, new object[] { groupId })!;
-    }
+
 
     [SkippableFact]
     public async Task CompareExporterSecrets_ManagedVsRust_SameGroup()

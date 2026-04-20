@@ -29,11 +29,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="DotnetMls" Version="0.1.0-beta.5" />
-    <PackageReference Include="DotnetMls.Crypto" Version="0.1.0-beta.5" />
-    <PackageReference Include="MarmotCs.Core" Version="0.1.0-beta.3" />
-    <PackageReference Include="MarmotCs.Storage.Memory" Version="0.1.0-beta.3" />
-    <PackageReference Include="MarmotCs.Storage.Sqlite" Version="0.1.0-beta.3" />
+    <ProjectReference Include="..\..\lib\dotnet-mls\src\DotnetMls\DotnetMls.csproj" />
+    <ProjectReference Include="..\..\lib\dotnet-mls\src\DotnetMls.Crypto\DotnetMls.Crypto.csproj" />
+    <ProjectReference Include="..\..\lib\marmot-cs\src\MarmotCs.Core\MarmotCs.Core.csproj" />
+    <ProjectReference Include="..\..\lib\marmot-cs\src\MarmotCs.Storage.Memory\MarmotCs.Storage.Memory.csproj" />
+    <ProjectReference Include="..\..\lib\marmot-cs\src\MarmotCs.Storage.Sqlite\MarmotCs.Storage.Sqlite.csproj" />
   </ItemGroup>
 
 </Project>

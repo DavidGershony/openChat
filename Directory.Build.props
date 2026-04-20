@@ -1,5 +1,6 @@
 <Project>
   <PropertyGroup>
     <AndroidSdkDirectory Condition="'$(AndroidSdkDirectory)' == ''">$(LOCALAPPDATA)\Android\Sdk</AndroidSdkDirectory>
+    <UseLocalDotnetMls>true</UseLocalDotnetMls>
   </PropertyGroup>
 </Project>
