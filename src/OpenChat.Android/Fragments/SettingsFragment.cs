@@ -88,6 +88,8 @@ public class SettingsFragment : Fragment
         var generateTopicButton = view.FindViewById<MaterialButton>(Resource.Id.generate_push_topic_button)!;
         var subscribeNtfyButton = view.FindViewById<MaterialButton>(Resource.Id.subscribe_ntfy_button)!;
         var registerNotifButton = view.FindViewById<MaterialButton>(Resource.Id.register_notifications_button)!;
+        var registerNotifProgress = view.FindViewById<LinearLayout>(Resource.Id.register_notifications_progress)!;
+        var registerNotifProgressText = view.FindViewById<TextView>(Resource.Id.register_notifications_progress_text)!;
         var notifRegistrationStatus = view.FindViewById<TextView>(Resource.Id.notification_registration_status)!;
         var notifVerifyLayout = view.FindViewById<LinearLayout>(Resource.Id.notification_verify_layout)!;
         var notifVerifyCodeInput = view.FindViewById<TextInputEditText>(Resource.Id.notification_verify_code_input)!;
@@ -468,6 +470,17 @@ public class SettingsFragment : Fragment
             {
                 notifRegistrationStatus.Text = status ?? "";
                 notifRegistrationStatus.Visibility = string.IsNullOrEmpty(status) ? ViewStates.Gone : ViewStates.Visible;
+            })
+            .DisposeWith(_disposables);
+
+        ViewModel.RegisterNotificationsCommand.IsExecuting
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(executing =>
+            {
+                registerNotifButton.Visibility = executing ? ViewStates.Gone : ViewStates.Visible;
+                registerNotifProgress.Visibility = executing ? ViewStates.Visible : ViewStates.Gone;
+                if (executing)
+                    registerNotifProgressText.Text = ViewModel.NotificationRegistrationStatus ?? "Registering...";
             })
             .DisposeWith(_disposables);
 

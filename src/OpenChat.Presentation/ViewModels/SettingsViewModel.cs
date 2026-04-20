@@ -658,21 +658,14 @@ public class SettingsViewModel : ViewModelBase
                 return;
             }
 
-            // Build relay list from current connections
-            var relays = _nostrService.ConnectedRelayUrls.ToList();
-            if (relays.Count == 0)
-            {
-                NotificationRegistrationStatus = "No relays connected";
-                return;
-            }
+            var serverRelay = NotificationServerRelay.Trim();
 
-            // Build registration JSON
-            var relayArray = string.Join(", ", relays.Select(r => $"\"{r}\""));
-            var content = $"{{\"action\": \"register\", \"push_url\": \"{NotificationPushUrl.Trim()}\", \"relays\": [{relayArray}]}}";
+            // Build registration JSON — server relay is the relay to monitor
+            var content = $"{{\"action\": \"register\", \"push_url\": \"{NotificationPushUrl.Trim()}\", \"relays\": [\"{serverRelay}\"]}}";
 
             // Send as NIP-59 gift-wrapped kind-14 DM to the server's inbox relay
             var rumorTags = new List<List<string>> { new() { "p", serverPubKeyHex } };
-            var targetRelays = new List<string> { NotificationServerRelay.Trim() };
+            var targetRelays = new List<string> { serverRelay };
 
             var eventId = await _nostrService.PublishGiftWrapAsync(
                 rumorKind: 14,

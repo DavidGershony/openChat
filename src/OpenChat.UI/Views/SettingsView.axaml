@@ -313,7 +313,15 @@
 
                     <StackPanel Orientation="Horizontal" Spacing="12">
                         <Button Classes="secondary" Content="Register"
-                                Command="{Binding RegisterNotificationsCommand}" />
+                                Command="{Binding RegisterNotificationsCommand}"
+                                IsVisible="{Binding !RegisterNotificationsCommand.IsExecuting^}" />
+                        <StackPanel Orientation="Horizontal" Spacing="8"
+                                    IsVisible="{Binding RegisterNotificationsCommand.IsExecuting^}">
+                            <ProgressBar IsIndeterminate="True" Width="80" Height="4"
+                                         Foreground="{DynamicResource NostrPurpleBrush}" />
+                            <TextBlock Text="{Binding NotificationRegistrationStatus}"
+                                       FontSize="13" VerticalAlignment="Center" />
+                        </StackPanel>
                     </StackPanel>
 
                     <!-- Verification code input (visible after registration) -->

@@ -1255,6 +1255,7 @@ public class NostrService : INostrService, IDisposable
         }
 
         // For target relays that aren't in _relayConnections, open a temporary connection and send
+        string? lastError = null;
         if (targetRelayUrls != null)
         {
             foreach (var targetUrl in targetRelayUrls)
@@ -1273,15 +1274,42 @@ public class NostrService : INostrService, IDisposable
                         WebSocketMessageType.Text, true, CancellationToken.None);
                     _logger.LogInformation("Sent gift-wrapped kind {Kind} to temporary relay {RelayUrl}", rumorKind, targetUrl);
 
-                    // Wait briefly for relay to acknowledge before closing
-                    await Task.Delay(500);
+                    // Read relay OK response
+                    var buffer = new byte[4096];
+                    var result = await tempWs.ReceiveAsync(new ArraySegment<byte>(buffer), cts.Token);
+                    var response = Encoding.UTF8.GetString(buffer, 0, result.Count);
+                    _logger.LogDebug("Relay response from {RelayUrl}: {Response}", targetUrl, response);
+
+                    // Parse ["OK", "<event_id>", true/false, "<message>"]
+                    using var doc = System.Text.Json.JsonDocument.Parse(response);
+                    var arr = doc.RootElement;
+                    if (arr.GetArrayLength() >= 3 && arr[0].GetString() == "OK")
+                    {
+                        var accepted = arr[2].GetBoolean();
+                        var msg = arr.GetArrayLength() >= 4 ? arr[3].GetString() : "";
+                        if (!accepted)
+                        {
+                            lastError = $"Relay {targetUrl} rejected event: {msg}";
+                            _logger.LogWarning("Relay {RelayUrl} rejected gift wrap: {Message}", targetUrl, msg);
+                            await tempWs.CloseAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None);
+                            continue;
+                        }
+                    }
+
+                    sentToRelays.Add(targetUrl.TrimEnd('/'));
                     await tempWs.CloseAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Failed to send gift wrap to temporary relay {RelayUrl}", targetUrl);
+                    lastError = $"Relay {targetUrl}: {ex.Message}";
+                    _logger.LogWarning(ex, "Failed to send gift wrap to relay {RelayUrl}", targetUrl);
                 }
             }
+        }
+
+        if (sentToRelays.Count == 0)
+        {
+            throw new InvalidOperationException(lastError ?? "Failed to deliver event to any relay");
         }
 
         return giftWrapMessage.EventId;
