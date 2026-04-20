@@ -97,4 +97,54 @@
         android:textColor="@color/text_muted"
         android:layout_marginTop="8dp" />
 
+    <!-- nsec section (only visible for app-created users) -->
+    <LinearLayout
+        android:id="@+id/my_nsec_section"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginTop="16dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Private Key (nsec)"
+            android:textSize="12sp"
+            android:textColor="@color/text_muted" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginTop="4dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="••••••••••••••••••••"
+                android:textSize="11sp"
+                android:fontFamily="monospace" />
+
+            <ImageButton
+                android:id="@+id/my_copy_nsec_button"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@android:drawable/ic_menu_edit"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Copy nsec"
+                android:scaleType="centerInside" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="KEEP SECRET — never share your private key with anyone"
+            android:textSize="11sp"
+            android:textColor="@color/status_error"
+            android:layout_marginTop="4dp" />
+    </LinearLayout>
+
 </LinearLayout>

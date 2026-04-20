@@ -444,11 +444,17 @@ public class ChatListFragment : Fragment
 
         var npubText = dialogView.FindViewById<TextView>(Resource.Id.my_npub_text)!;
         var copyNpubButton = dialogView.FindViewById<ImageButton>(Resource.Id.my_copy_npub_button)!;
+        var nsecSection = dialogView.FindViewById<LinearLayout>(Resource.Id.my_nsec_section)!;
+        var copyNsecButton = dialogView.FindViewById<ImageButton>(Resource.Id.my_copy_nsec_button)!;
         var displayNameText = dialogView.FindViewById<TextView>(Resource.Id.my_display_name_text)!;
         var usernameText = dialogView.FindViewById<TextView>(Resource.Id.my_username_text)!;
         var aboutText = dialogView.FindViewById<TextView>(Resource.Id.my_about_text)!;
         var loadingIndicator = dialogView.FindViewById<ProgressBar>(Resource.Id.my_profile_loading)!;
         var qrImage = dialogView.FindViewById<ImageView>(Resource.Id.my_npub_qr)!;
+
+        // Show nsec section only for app-created users
+        var hasNsec = !string.IsNullOrEmpty(_mainViewModel.CurrentUser?.PrivateKeyHex);
+        nsecSection.Visibility = hasNsec ? ViewStates.Visible : ViewStates.Gone;
 
         var dialog = new MaterialAlertDialogBuilder(Context)
             .SetTitle("My Profile")!
@@ -460,6 +466,11 @@ public class ChatListFragment : Fragment
             .Create()!;
 
         dialog.Show();
+
+        copyNsecButton.Click += (s, e) =>
+        {
+            CopyToClipboard("nsec", _mainViewModel.MyNsec);
+        };
 
         copyNpubButton.Click += (s, e) =>
         {
