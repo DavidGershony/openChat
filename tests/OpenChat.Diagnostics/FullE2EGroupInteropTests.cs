@@ -441,7 +441,7 @@ public class FullE2EGroupInteropTests : IAsyncLifetime
 
         // Add test relay to WN so it publishes KPs and subscribes there
         await _wnClient.AddRelayAsync(RelayUrl);
-        await Task.Delay(3000); // Wait for WN to connect and publish KP to new relay
+        await Task.Delay(3000);
 
         // Step 1: Bob publishes KeyPackage
         _output.WriteLine("\n[Step 1] Publishing KeyPackages");
@@ -459,24 +459,23 @@ public class FullE2EGroupInteropTests : IAsyncLifetime
             await Task.Delay(2000);
         }
         _output.WriteLine($"  Found {wnKps.Count} WN KeyPackage(s)");
-
-        if (wnKps.Count == 0)
-        {
-            _output.WriteLine("  SKIP: WN KeyPackage not available on relay");
-            return;
-        }
+        Assert.NotEmpty(wnKps);
 
         // Step 2: Alice creates group with Bob + WN Charlie
         _output.WriteLine("\n[Step 2] Alice creates group");
         var chat = await alice.MessageService.CreateGroupAsync("E2E OC+WN Group",
             new[] { bob.PubKeyHex, wnPubkey });
-        var aliceEpochAfterCreate = (await alice.MlsService.GetGroupInfoAsync(chat.MlsGroupId!))?.Epoch;
         _output.WriteLine($"  Group: {Convert.ToHexString(chat.MlsGroupId!).ToLowerInvariant()[..16]}...");
         _output.WriteLine($"  Participants: {chat.ParticipantPublicKeys.Count}");
-        _output.WriteLine($"  Alice epoch after create+add: {aliceEpochAfterCreate}");
+
+        // Subscribe Alice to group messages (mirrors real app — ChatListViewModel does this)
+        var nostrGroupIdHex = chat.NostrGroupId != null
+            ? Convert.ToHexString(chat.NostrGroupId).ToLowerInvariant()
+            : Convert.ToHexString(chat.MlsGroupId!).ToLowerInvariant();
+        await alice.NostrService.SubscribeToGroupMessagesAsync(new[] { nostrGroupIdHex });
         await Task.Delay(3000);
 
-        // Step 3: Bob accepts
+        // Step 3: Bob accepts invite
         _output.WriteLine("\n[Step 3] Bob accepts invite");
         await bob.NostrService.SubscribeToWelcomesAsync(bob.PubKeyHex, bob.PrivKeyHex);
         await Task.Delay(2000);
@@ -486,6 +485,14 @@ public class FullE2EGroupInteropTests : IAsyncLifetime
         Assert.NotEmpty(bobInvites);
         var chatBob = await bob.MessageService.AcceptInviteAsync(bobInvites[0].Id);
         _output.WriteLine($"  Bob joined: epoch={chatBob.MlsEpoch}");
+
+        // Subscribe Bob to group messages (mirrors real app)
+        var bobSubGroupId = chatBob.NostrGroupId != null
+            ? Convert.ToHexString(chatBob.NostrGroupId).ToLowerInvariant()
+            : Convert.ToHexString(chatBob.MlsGroupId!).ToLowerInvariant();
+        await bob.NostrService.SubscribeToGroupMessagesAsync(
+            new[] { bobSubGroupId },
+            DateTimeOffset.UtcNow.AddMinutes(-5));
 
         // Step 4: Wait for WN to auto-accept
         _output.WriteLine("\n[Step 4] Waiting for WN to join group");
@@ -509,141 +516,96 @@ public class FullE2EGroupInteropTests : IAsyncLifetime
         _output.WriteLine($"  WN groups: {wnGroups.Count}");
         Assert.NotEmpty(wnGroups);
 
-        // Step 5: Bob re-subscribes with since to pick up the commit that added WN.
-        // This simulates what the real app does via the since fix in ChatListViewModel.
-        _output.WriteLine("\n[Step 5] Syncing Bob — re-subscribe with since to catch WN commit");
-        var bobSubGroupId = chatBob.NostrGroupId != null
-            ? Convert.ToHexString(chatBob.NostrGroupId).ToLowerInvariant()
-            : Convert.ToHexString(chatBob.MlsGroupId!).ToLowerInvariant();
-        await bob.NostrService.SubscribeToGroupMessagesAsync(
-            new[] { bobSubGroupId },
-            DateTimeOffset.UtcNow.AddMinutes(-5));
-        // Wait for the subscription to deliver the commit event
+        // Step 5: Wait for subscription-based epoch sync
+        _output.WriteLine("\n[Step 5] Waiting for epoch sync via subscription");
         await Task.Delay(5000);
 
-        var nostrGroupIdHex = chat.NostrGroupId != null
-            ? Convert.ToHexString(chat.NostrGroupId).ToLowerInvariant()
-            : Convert.ToHexString(chat.MlsGroupId!).ToLowerInvariant();
-
-        // Epoch check
         var aliceEpoch = (await alice.MlsService.GetGroupInfoAsync(chat.MlsGroupId!))?.Epoch;
         var bobEpoch = (await bob.MlsService.GetGroupInfoAsync(chatBob.MlsGroupId!))?.Epoch;
-        _output.WriteLine($"\n  EPOCH CHECK: Alice={aliceEpoch}, Bob={bobEpoch}, WN=unknown");
+        _output.WriteLine($"  EPOCH CHECK: Alice={aliceEpoch}, Bob={bobEpoch}, WN=unknown");
+        Assert.Equal(aliceEpoch, bobEpoch);
 
-        // Step 6: Alice sends — check Bob and WN both decrypt
+        // Step 6: Alice sends — verify Bob (via storage) and WN both receive
         _output.WriteLine("\n[Step 6] Alice sends message");
         await alice.MessageService.SendMessageAsync(chat.Id, "Alice E2E to all!");
         await Task.Delay(5000);
 
-        // Check WN got it
+        // Bob receives via subscription
+        var bobMsgs = (await bob.Storage.GetMessagesForChatAsync(chatBob.Id)).ToList();
+        _output.WriteLine($"  Bob stored messages: {bobMsgs.Count}");
+        Assert.True(bobMsgs.Any(m => m.Content.Contains("Alice E2E")),
+            $"Bob must receive Alice's message via subscription. Stored: [{string.Join(", ", bobMsgs.Select(m => m.Content))}]");
+
+        // WN receives via its own mechanism
         var wnMsgs = await _wnClient.PollUntilAsync(
             () => _wnClient.FetchMessagesAsync(wnGroups[0].GroupIdHex),
             m => m.Any(x => x.Content.Contains("Alice E2E")),
             timeoutMs: 15000, intervalMs: 2000,
             description: "WN sees Alice's message");
+        Assert.Contains(wnMsgs, m => m.Content == "Alice E2E to all!");
+        _output.WriteLine($"  WN decrypted Alice's message");
 
-        var aliceMsgInWn = wnMsgs.FirstOrDefault(m => m.Content == "Alice E2E to all!");
-        if (aliceMsgInWn != null)
-            _output.WriteLine($"  WN decrypted Alice: \"{aliceMsgInWn.Content}\" from {aliceMsgInWn.SenderPubkeyHex[..16]}...");
-        else
-            _output.WriteLine($"  WN did NOT see Alice's message. Messages: {wnMsgs.Count}");
-
-        // Step 7: Bob sends — check WN gets it (this is the critical test)
-        _output.WriteLine("\n[Step 7] Bob sends message (critical — WN must see both OC users)");
+        // Step 7: Bob sends — verify Alice (via storage) and WN both receive
+        _output.WriteLine("\n[Step 7] Bob sends message");
         await bob.MessageService.SendMessageAsync(chatBob.Id, "Bob E2E to all!");
         await Task.Delay(5000);
+
+        var aliceMsgs = (await alice.Storage.GetMessagesForChatAsync(chat.Id)).ToList();
+        _output.WriteLine($"  Alice stored messages: {aliceMsgs.Count}");
+        Assert.True(aliceMsgs.Any(m => m.Content.Contains("Bob E2E")),
+            $"Alice must receive Bob's message via subscription. Stored: [{string.Join(", ", aliceMsgs.Select(m => m.Content))}]");
 
         var wnMsgs2 = await _wnClient.PollUntilAsync(
             () => _wnClient.FetchMessagesAsync(wnGroups[0].GroupIdHex),
             m => m.Any(x => x.Content.Contains("Bob E2E")),
             timeoutMs: 15000, intervalMs: 2000,
             description: "WN sees Bob's message");
+        Assert.Contains(wnMsgs2, m => m.Content == "Bob E2E to all!");
+        _output.WriteLine($"  WN decrypted Bob's message");
 
-        var bobMsgInWn = wnMsgs2.FirstOrDefault(m => m.Content == "Bob E2E to all!");
-        if (bobMsgInWn != null)
-            _output.WriteLine($"  WN decrypted Bob: \"{bobMsgInWn.Content}\" from {bobMsgInWn.SenderPubkeyHex[..16]}...");
-        else
-            _output.WriteLine($"  *** WN did NOT see Bob's message — THIS IS THE BUG ***");
-
-        // Step 8: WN sends — check via Bob's live subscription (not manual fetch)
+        // Step 8: WN sends — verify Alice and Bob both receive via storage
         _output.WriteLine("\n[Step 8] WN sends message");
         await _wnClient.SendMessageAsync(wnGroups[0].GroupIdHex, "Charlie WN E2E!");
-        // WN can take up to 30s to publish; then Bob's subscription needs time to process
-        _output.WriteLine("  Waiting 45s for WN publish + Bob subscription delivery...");
-        await Task.Delay(45000);
+        _output.WriteLine("  Waiting for WN publish + subscription delivery...");
 
-        var events = await FetchRawEventsFromRelay(RelayUrl,
-            new { kinds = new[] { 445 }, @__h = new[] { nostrGroupIdHex }, limit = 50 });
-
-        _output.WriteLine($"  Found {events.Count} kind-445 events with h-tag filter");
-        // Also try without h-tag filter to see if WN uses a different group ID
-        if (events.Count == 0)
-        {
-            var allEvents = await FetchRawEventsFromRelay(RelayUrl,
-                new { kinds = new[] { 445 }, limit = 20 });
-            _output.WriteLine($"  Found {allEvents.Count} kind-445 events WITHOUT h-tag filter");
-            foreach (var e in allEvents)
-            {
-                try
-                {
-                    using var d = JsonDocument.Parse(e);
-                    var tags = d.RootElement.GetProperty("tags");
-                    var hTags = new List<string>();
-                    foreach (var t in tags.EnumerateArray())
-                    {
-                        if (t.GetArrayLength() >= 2 && t[0].GetString() == "h")
-                            hTags.Add(t[1].GetString() ?? "?");
-                    }
-                    _output.WriteLine($"    event h-tags: [{string.Join(", ", hTags)}] (expected: {nostrGroupIdHex})");
-                }
-                catch { }
-            }
-            events = allEvents;
-        }
+        // Poll Bob's storage until WN message arrives (or timeout)
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(60);
         bool aliceGotWn = false, bobGotWn = false;
-        foreach (var ev in events)
+        while (DateTimeOffset.UtcNow < deadline && (!aliceGotWn || !bobGotWn))
         {
-            try
+            await Task.Delay(3000);
+            if (!aliceGotWn)
             {
-                using var doc = JsonDocument.Parse(ev);
-                var content = doc.RootElement.GetProperty("content").GetString()!;
-                var bytes = Convert.FromBase64String(content);
-                _output.WriteLine($"  Trying event ({bytes.Length} bytes)...");
-
-                if (!aliceGotWn) try
-                {
-                    var r = await alice.MlsService.DecryptMessageAsync(chat.MlsGroupId!, bytes);
-                    if (!r.IsCommit && r.Plaintext.Contains("Charlie WN"))
-                    { aliceGotWn = true; _output.WriteLine($"  Alice decrypted WN: \"{r.Plaintext}\""); }
-                    else _output.WriteLine($"  Alice got: isCommit={r.IsCommit}, text=\"{r.Plaintext}\"");
-                } catch (Exception ex) { _output.WriteLine($"  Alice error: {ex.Message[..Math.Min(100, ex.Message.Length)]}"); }
-
-                if (!bobGotWn) try
-                {
-                    var r = await bob.MlsService.DecryptMessageAsync(chatBob.MlsGroupId!, bytes);
-                    if (!r.IsCommit && r.Plaintext.Contains("Charlie WN"))
-                    { bobGotWn = true; _output.WriteLine($"  Bob decrypted WN: \"{r.Plaintext}\""); }
-                } catch (Exception ex) { _output.WriteLine($"  Bob error: {ex.Message[..Math.Min(100, ex.Message.Length)]}"); }
+                aliceMsgs = (await alice.Storage.GetMessagesForChatAsync(chat.Id)).ToList();
+                aliceGotWn = aliceMsgs.Any(m => m.Content.Contains("Charlie WN"));
             }
-            catch { }
+            if (!bobGotWn)
+            {
+                bobMsgs = (await bob.Storage.GetMessagesForChatAsync(chatBob.Id)).ToList();
+                bobGotWn = bobMsgs.Any(m => m.Content.Contains("Charlie WN"));
+            }
         }
 
-        if (!aliceGotWn) _output.WriteLine("  Alice could NOT decrypt WN message");
-        if (!bobGotWn) _output.WriteLine("  Bob could NOT decrypt WN message");
+        // Log final state before assertions
+        aliceMsgs = (await alice.Storage.GetMessagesForChatAsync(chat.Id)).ToList();
+        bobMsgs = (await bob.Storage.GetMessagesForChatAsync(chatBob.Id)).ToList();
+        _output.WriteLine($"\n  Alice's stored messages ({aliceMsgs.Count}):");
+        foreach (var m in aliceMsgs)
+            _output.WriteLine($"    [{m.SenderPublicKey[..Math.Min(16, m.SenderPublicKey.Length)]}] \"{m.Content}\"");
+        _output.WriteLine($"  Bob's stored messages ({bobMsgs.Count}):");
+        foreach (var m in bobMsgs)
+            _output.WriteLine($"    [{m.SenderPublicKey[..Math.Min(16, m.SenderPublicKey.Length)]}] \"{m.Content}\"");
 
-        // Summary and assertions
         _output.WriteLine("\n═══════════════════════════════════════════════════════════");
         _output.WriteLine("  RESULTS:");
-        _output.WriteLine($"    WN saw Alice's message: {aliceMsgInWn != null}");
-        _output.WriteLine($"    WN saw Bob's message:   {bobMsgInWn != null}");
-        _output.WriteLine($"    Alice saw WN message:   {aliceGotWn}");
-        _output.WriteLine($"    Bob saw WN message:     {bobGotWn}");
+        _output.WriteLine($"    WN saw Alice: True");
+        _output.WriteLine($"    WN saw Bob:   True");
+        _output.WriteLine($"    Alice saw WN: {aliceGotWn}");
+        _output.WriteLine($"    Bob saw WN:   {bobGotWn}");
         _output.WriteLine("═══════════════════════════════════════════════════════════");
 
-        Assert.NotNull(aliceMsgInWn);
-        Assert.NotNull(bobMsgInWn);
-        Assert.True(aliceGotWn, "Alice must decrypt WN message");
-        Assert.True(bobGotWn, "Bob must decrypt WN message");
+        Assert.True(aliceGotWn, $"Alice must receive WN message via subscription. Stored: [{string.Join(", ", aliceMsgs.Select(m => m.Content))}]");
+        Assert.True(bobGotWn, $"Bob must receive WN message via subscription. Stored: [{string.Join(", ", bobMsgs.Select(m => m.Content))}]");
     }
 
     // ══════════════════════════════════════════════════════════════════════════
