@@ -162,6 +162,12 @@ public class FullE2EGroupInteropTests : IAsyncLifetime
             new[] { bob.PubKeyHex, charlie.PubKeyHex });
         _output.WriteLine($"  Group created: chatId={chat.Id}, mlsGroupId={Convert.ToHexString(chat.MlsGroupId!).ToLowerInvariant()[..16]}...");
         _output.WriteLine($"  Participants: {string.Join(", ", chat.ParticipantPublicKeys.Select(p => p[..16] + "..."))}");
+
+        // Subscribe Alice to group messages so she receives others' messages via relay
+        var aliceNostrGroupId = chat.NostrGroupId != null
+            ? Convert.ToHexString(chat.NostrGroupId).ToLowerInvariant()
+            : Convert.ToHexString(chat.MlsGroupId!).ToLowerInvariant();
+        await alice.NostrService.SubscribeToGroupMessagesAsync(new[] { aliceNostrGroupId });
         await Task.Delay(3000);
 
         // Step 3: Bob subscribes to welcomes and accepts invite
@@ -198,170 +204,75 @@ public class FullE2EGroupInteropTests : IAsyncLifetime
             : Convert.ToHexString(chatCharlie.MlsGroupId!).ToLowerInvariant();
         await charlie.NostrService.SubscribeToGroupMessagesAsync(new[] { charlieNostrGroupId });
 
-        // Step 5: Bob needs to process the commit that added Charlie
-        // In the real app, this happens via relay subscription. Let's fetch it manually.
-        _output.WriteLine("\n[Step 5] Syncing commits");
+        // Step 5: Verify epoch sync
+        // Bob's MessageService subscription (OnNostrEventReceived → HandleGroupMessageEventAsync)
+        // automatically processes the kind-445 commit that added Charlie. Wait for delivery.
+        _output.WriteLine("\n[Step 5] Waiting for subscription-based epoch sync");
+        await Task.Delay(3000);
+
         var nostrGroupIdHex = chat.NostrGroupId != null
             ? Convert.ToHexString(chat.NostrGroupId).ToLowerInvariant()
             : Convert.ToHexString(chat.MlsGroupId!).ToLowerInvariant();
 
-        // Give relay time then fetch all kind-445 events for the group
-        await Task.Delay(2000);
-        var groupEvents = await FetchRawEventsFromRelay(RelayUrl,
-            new { kinds = new[] { 445 }, @__h = new[] { nostrGroupIdHex }, limit = 50 });
-        _output.WriteLine($"  Found {groupEvents.Count} kind-445 events on relay");
-
-        // Bob processes any commit events he hasn't seen
-        var bobProcessedCommit = false;
-        var commitErrors = new List<string>();
-        foreach (var ev in groupEvents)
-        {
-            try
-            {
-                using var doc = JsonDocument.Parse(ev);
-                var content = doc.RootElement.GetProperty("content").GetString()!;
-                var bytes = Convert.FromBase64String(content);
-                var result = await bob.MlsService.DecryptMessageAsync(chatBob.MlsGroupId!, bytes);
-                if (result.IsCommit)
-                {
-                    bobProcessedCommit = true;
-                    _output.WriteLine($"  Bob processed commit (epoch transition)");
-                }
-                else
-                    _output.WriteLine($"  Bob decrypted: \"{result.Plaintext}\"");
-            }
-            catch (Exception ex)
-            {
-                commitErrors.Add($"{ex.GetType().Name}: {ex.Message[..Math.Min(80, ex.Message.Length)]}");
-                _output.WriteLine($"  Bob: {ex.GetType().Name}: {ex.Message[..Math.Min(80, ex.Message.Length)]}");
-            }
-        }
-
-        Assert.True(bobProcessedCommit,
-            $"Bob must process at least one commit to sync epoch. Errors: {string.Join("; ", commitErrors)}");
-
-        // Epoch check — all users must be at the same epoch after sync
+        // Epoch check — all users must be at the same epoch
         var aliceEpoch = (await alice.MlsService.GetGroupInfoAsync(chat.MlsGroupId!))?.Epoch;
         var bobEpoch = (await bob.MlsService.GetGroupInfoAsync(chatBob.MlsGroupId!))?.Epoch;
         var charlieEpoch = (await charlie.MlsService.GetGroupInfoAsync(chatCharlie.MlsGroupId!))?.Epoch;
-        _output.WriteLine($"\n  EPOCH CHECK: Alice={aliceEpoch}, Bob={bobEpoch}, Charlie={charlieEpoch}");
+        _output.WriteLine($"  EPOCH CHECK: Alice={aliceEpoch}, Bob={bobEpoch}, Charlie={charlieEpoch}");
         Assert.Equal(aliceEpoch, bobEpoch);
         Assert.Equal(aliceEpoch, charlieEpoch);
 
-        // Step 6: Each user sends a message, all others must decrypt
+        // Step 6: Each user sends a message — verify via storage (subscription auto-decrypts)
+        // The MessageService subscription (OnNostrEventReceived → HandleGroupMessageEventAsync)
+        // automatically decrypts incoming kind-445 events and saves them to storage.
+        // We verify the full relay round-trip by checking each user's storage for received messages.
         _output.WriteLine("\n[Step 6] Round-trip messaging via real relay");
 
         // Alice sends
         _output.WriteLine("\n  Alice sending...");
         await alice.MessageService.SendMessageAsync(chat.Id, "Hello from Alice E2E!");
-        await Task.Delay(3000);
+        await Task.Delay(5000); // Wait for relay delivery + subscription processing
 
-        var bobGotAlice = false;
-        var charlieGotAlice = false;
-        var msgs = await FetchRawEventsFromRelay(RelayUrl,
-            new { kinds = new[] { 445 }, @__h = new[] { nostrGroupIdHex }, limit = 50 });
-        _output.WriteLine($"  {msgs.Count} events on relay after Alice's message");
+        var bobMsgs = (await bob.Storage.GetMessagesForChatAsync(chatBob.Id)).ToList();
+        var charlieMsgs = (await charlie.Storage.GetMessagesForChatAsync(chatCharlie.Id)).ToList();
+        _output.WriteLine($"  Bob has {bobMsgs.Count} messages, Charlie has {charlieMsgs.Count} messages");
+        var bobGotAlice = bobMsgs.Any(m => m.Content.Contains("Hello from Alice"));
+        var charlieGotAlice = charlieMsgs.Any(m => m.Content.Contains("Hello from Alice"));
+        _output.WriteLine($"  Bob got Alice: {bobGotAlice}, Charlie got Alice: {charlieGotAlice}");
 
-        foreach (var ev in msgs)
-        {
-            using var doc = JsonDocument.Parse(ev);
-            var content = doc.RootElement.GetProperty("content").GetString()!;
-            var bytes = Convert.FromBase64String(content);
-
-            if (!bobGotAlice) try
-            {
-                var r = await bob.MlsService.DecryptMessageAsync(chatBob.MlsGroupId!, bytes);
-                if (!r.IsCommit && r.Plaintext.Contains("Alice"))
-                { bobGotAlice = true; _output.WriteLine($"  Bob decrypted: \"{r.Plaintext}\""); }
-            }
-            catch (Exception ex) { _output.WriteLine($"  Bob decrypt error: {ex.Message[..Math.Min(80, ex.Message.Length)]}"); }
-
-            if (!charlieGotAlice) try
-            {
-                var r = await charlie.MlsService.DecryptMessageAsync(chatCharlie.MlsGroupId!, bytes);
-                if (!r.IsCommit && r.Plaintext.Contains("Alice"))
-                { charlieGotAlice = true; _output.WriteLine($"  Charlie decrypted: \"{r.Plaintext}\""); }
-            }
-            catch (Exception ex) { _output.WriteLine($"  Charlie decrypt error: {ex.Message[..Math.Min(80, ex.Message.Length)]}"); }
-        }
-
-        Assert.True(bobGotAlice, "Bob must decrypt Alice's message");
-        Assert.True(charlieGotAlice, "Charlie must decrypt Alice's message");
+        Assert.True(bobGotAlice, $"Bob must receive Alice's message. Bob's messages: [{string.Join(", ", bobMsgs.Select(m => m.Content))}]");
+        Assert.True(charlieGotAlice, $"Charlie must receive Alice's message. Charlie's messages: [{string.Join(", ", charlieMsgs.Select(m => m.Content))}]");
 
         // Bob sends
         _output.WriteLine("\n  Bob sending...");
         await bob.MessageService.SendMessageAsync(chatBob.Id, "Hello from Bob E2E!");
-        await Task.Delay(3000);
+        await Task.Delay(5000);
 
-        var aliceGotBob = false;
-        var charlieGotBob = false;
-        msgs = await FetchRawEventsFromRelay(RelayUrl,
-            new { kinds = new[] { 445 }, @__h = new[] { nostrGroupIdHex }, limit = 50 });
+        var aliceMsgs = (await alice.Storage.GetMessagesForChatAsync(chat.Id)).ToList();
+        charlieMsgs = (await charlie.Storage.GetMessagesForChatAsync(chatCharlie.Id)).ToList();
+        var aliceGotBob = aliceMsgs.Any(m => m.Content.Contains("Hello from Bob"));
+        var charlieGotBob = charlieMsgs.Any(m => m.Content.Contains("Hello from Bob"));
+        _output.WriteLine($"  Alice got Bob: {aliceGotBob}, Charlie got Bob: {charlieGotBob}");
 
-        foreach (var ev in msgs)
-        {
-            using var doc = JsonDocument.Parse(ev);
-            var content = doc.RootElement.GetProperty("content").GetString()!;
-            var bytes = Convert.FromBase64String(content);
-
-            if (!aliceGotBob) try
-            {
-                var r = await alice.MlsService.DecryptMessageAsync(chat.MlsGroupId!, bytes);
-                if (!r.IsCommit && r.Plaintext.Contains("Bob"))
-                { aliceGotBob = true; _output.WriteLine($"  Alice decrypted Bob: \"{r.Plaintext}\""); }
-            }
-            catch (Exception ex) { _output.WriteLine($"  Alice decrypt error: {ex.Message[..Math.Min(80, ex.Message.Length)]}"); }
-
-            if (!charlieGotBob) try
-            {
-                var r = await charlie.MlsService.DecryptMessageAsync(chatCharlie.MlsGroupId!, bytes);
-                if (!r.IsCommit && r.Plaintext.Contains("Bob"))
-                { charlieGotBob = true; _output.WriteLine($"  Charlie decrypted Bob: \"{r.Plaintext}\""); }
-            }
-            catch (Exception ex) { _output.WriteLine($"  Charlie decrypt error: {ex.Message[..Math.Min(80, ex.Message.Length)]}"); }
-        }
-
-        Assert.True(aliceGotBob, "Alice must decrypt Bob's message");
-        Assert.True(charlieGotBob, "Charlie must decrypt Bob's message");
+        Assert.True(aliceGotBob, $"Alice must receive Bob's message. Alice's messages: [{string.Join(", ", aliceMsgs.Select(m => m.Content))}]");
+        Assert.True(charlieGotBob, $"Charlie must receive Bob's message. Charlie's messages: [{string.Join(", ", charlieMsgs.Select(m => m.Content))}]");
 
         // Charlie sends
         _output.WriteLine("\n  Charlie sending...");
         await charlie.MessageService.SendMessageAsync(chatCharlie.Id, "Hello from Charlie E2E!");
-        await Task.Delay(3000);
+        await Task.Delay(5000);
 
-        var aliceGotCharlie = false;
-        var bobGotCharlie = false;
-        msgs = await FetchRawEventsFromRelay(RelayUrl,
-            new { kinds = new[] { 445 }, @__h = new[] { nostrGroupIdHex }, limit = 50 });
+        aliceMsgs = (await alice.Storage.GetMessagesForChatAsync(chat.Id)).ToList();
+        bobMsgs = (await bob.Storage.GetMessagesForChatAsync(chatBob.Id)).ToList();
+        var aliceGotCharlie = aliceMsgs.Any(m => m.Content.Contains("Hello from Charlie"));
+        var bobGotCharlie = bobMsgs.Any(m => m.Content.Contains("Hello from Charlie"));
+        _output.WriteLine($"  Alice got Charlie: {aliceGotCharlie}, Bob got Charlie: {bobGotCharlie}");
 
-        foreach (var ev in msgs)
-        {
-            using var doc = JsonDocument.Parse(ev);
-            var content = doc.RootElement.GetProperty("content").GetString()!;
-            var bytes = Convert.FromBase64String(content);
-
-            if (!aliceGotCharlie) try
-            {
-                var r = await alice.MlsService.DecryptMessageAsync(chat.MlsGroupId!, bytes);
-                if (!r.IsCommit && r.Plaintext.Contains("Charlie"))
-                { aliceGotCharlie = true; _output.WriteLine($"  Alice decrypted Charlie: \"{r.Plaintext}\""); }
-            }
-            catch (Exception ex) { _output.WriteLine($"  Alice decrypt error: {ex.Message[..Math.Min(80, ex.Message.Length)]}"); }
-
-            if (!bobGotCharlie) try
-            {
-                var r = await bob.MlsService.DecryptMessageAsync(chatBob.MlsGroupId!, bytes);
-                if (!r.IsCommit && r.Plaintext.Contains("Charlie"))
-                { bobGotCharlie = true; _output.WriteLine($"  Bob decrypted Charlie: \"{r.Plaintext}\""); }
-            }
-            catch (Exception ex) { _output.WriteLine($"  Bob decrypt error: {ex.Message[..Math.Min(80, ex.Message.Length)]}"); }
-        }
-
-        Assert.True(aliceGotCharlie, "Alice must decrypt Charlie's message");
-        Assert.True(bobGotCharlie, "Bob must decrypt Charlie's message");
+        Assert.True(aliceGotCharlie, $"Alice must receive Charlie's message. Alice's messages: [{string.Join(", ", aliceMsgs.Select(m => m.Content))}]");
+        Assert.True(bobGotCharlie, $"Bob must receive Charlie's message. Bob's messages: [{string.Join(", ", bobMsgs.Select(m => m.Content))}]");
 
         _output.WriteLine("\n═══════════════════════════════════════════════════════════");
-        _output.WriteLine("  FULL E2E TEST COMPLETE — all 6 decrypt paths verified");
+        _output.WriteLine("  FULL E2E TEST COMPLETE — all 6 message paths verified");
         _output.WriteLine("═══════════════════════════════════════════════════════════");
     }
 
