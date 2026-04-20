@@ -212,6 +212,8 @@ public class FullE2EGroupInteropTests : IAsyncLifetime
         _output.WriteLine($"  Found {groupEvents.Count} kind-445 events on relay");
 
         // Bob processes any commit events he hasn't seen
+        var bobProcessedCommit = false;
+        var commitErrors = new List<string>();
         foreach (var ev in groupEvents)
         {
             try
@@ -221,23 +223,32 @@ public class FullE2EGroupInteropTests : IAsyncLifetime
                 var bytes = Convert.FromBase64String(content);
                 var result = await bob.MlsService.DecryptMessageAsync(chatBob.MlsGroupId!, bytes);
                 if (result.IsCommit)
+                {
+                    bobProcessedCommit = true;
                     _output.WriteLine($"  Bob processed commit (epoch transition)");
+                }
                 else
                     _output.WriteLine($"  Bob decrypted: \"{result.Plaintext}\"");
             }
             catch (Exception ex)
             {
+                commitErrors.Add($"{ex.GetType().Name}: {ex.Message[..Math.Min(80, ex.Message.Length)]}");
                 _output.WriteLine($"  Bob: {ex.GetType().Name}: {ex.Message[..Math.Min(80, ex.Message.Length)]}");
             }
         }
 
-        // Epoch check
+        Assert.True(bobProcessedCommit,
+            $"Bob must process at least one commit to sync epoch. Errors: {string.Join("; ", commitErrors)}");
+
+        // Epoch check — all users must be at the same epoch after sync
         var aliceEpoch = (await alice.MlsService.GetGroupInfoAsync(chat.MlsGroupId!))?.Epoch;
         var bobEpoch = (await bob.MlsService.GetGroupInfoAsync(chatBob.MlsGroupId!))?.Epoch;
         var charlieEpoch = (await charlie.MlsService.GetGroupInfoAsync(chatCharlie.MlsGroupId!))?.Epoch;
         _output.WriteLine($"\n  EPOCH CHECK: Alice={aliceEpoch}, Bob={bobEpoch}, Charlie={charlieEpoch}");
+        Assert.Equal(aliceEpoch, bobEpoch);
+        Assert.Equal(aliceEpoch, charlieEpoch);
 
-        // Step 6: Each user sends a message, all decrypt
+        // Step 6: Each user sends a message, all others must decrypt
         _output.WriteLine("\n[Step 6] Round-trip messaging via real relay");
 
         // Alice sends
@@ -245,111 +256,112 @@ public class FullE2EGroupInteropTests : IAsyncLifetime
         await alice.MessageService.SendMessageAsync(chat.Id, "Hello from Alice E2E!");
         await Task.Delay(3000);
 
-        // Fetch messages from relay and have Bob + Charlie decrypt
+        var bobGotAlice = false;
+        var charlieGotAlice = false;
         var msgs = await FetchRawEventsFromRelay(RelayUrl,
             new { kinds = new[] { 445 }, @__h = new[] { nostrGroupIdHex }, limit = 50 });
         _output.WriteLine($"  {msgs.Count} events on relay after Alice's message");
 
-        // Try to decrypt the latest event(s) as Bob and Charlie
         foreach (var ev in msgs)
         {
-            try
+            using var doc = JsonDocument.Parse(ev);
+            var content = doc.RootElement.GetProperty("content").GetString()!;
+            var bytes = Convert.FromBase64String(content);
+
+            if (!bobGotAlice) try
             {
-                using var doc = JsonDocument.Parse(ev);
-                var content = doc.RootElement.GetProperty("content").GetString()!;
-                var bytes = Convert.FromBase64String(content);
-
-                try
-                {
-                    var r = await bob.MlsService.DecryptMessageAsync(chatBob.MlsGroupId!, bytes);
-                    if (!r.IsCommit)
-                        _output.WriteLine($"  Bob decrypted: \"{r.Plaintext}\"");
-                }
-                catch { }
-
-                try
-                {
-                    var r = await charlie.MlsService.DecryptMessageAsync(chatCharlie.MlsGroupId!, bytes);
-                    if (!r.IsCommit)
-                        _output.WriteLine($"  Charlie decrypted: \"{r.Plaintext}\"");
-                }
-                catch { }
+                var r = await bob.MlsService.DecryptMessageAsync(chatBob.MlsGroupId!, bytes);
+                if (!r.IsCommit && r.Plaintext.Contains("Alice"))
+                { bobGotAlice = true; _output.WriteLine($"  Bob decrypted: \"{r.Plaintext}\""); }
             }
-            catch { }
+            catch (Exception ex) { _output.WriteLine($"  Bob decrypt error: {ex.Message[..Math.Min(80, ex.Message.Length)]}"); }
+
+            if (!charlieGotAlice) try
+            {
+                var r = await charlie.MlsService.DecryptMessageAsync(chatCharlie.MlsGroupId!, bytes);
+                if (!r.IsCommit && r.Plaintext.Contains("Alice"))
+                { charlieGotAlice = true; _output.WriteLine($"  Charlie decrypted: \"{r.Plaintext}\""); }
+            }
+            catch (Exception ex) { _output.WriteLine($"  Charlie decrypt error: {ex.Message[..Math.Min(80, ex.Message.Length)]}"); }
         }
+
+        Assert.True(bobGotAlice, "Bob must decrypt Alice's message");
+        Assert.True(charlieGotAlice, "Charlie must decrypt Alice's message");
 
         // Bob sends
         _output.WriteLine("\n  Bob sending...");
         await bob.MessageService.SendMessageAsync(chatBob.Id, "Hello from Bob E2E!");
         await Task.Delay(3000);
 
+        var aliceGotBob = false;
+        var charlieGotBob = false;
         msgs = await FetchRawEventsFromRelay(RelayUrl,
             new { kinds = new[] { 445 }, @__h = new[] { nostrGroupIdHex }, limit = 50 });
 
         foreach (var ev in msgs)
         {
-            try
+            using var doc = JsonDocument.Parse(ev);
+            var content = doc.RootElement.GetProperty("content").GetString()!;
+            var bytes = Convert.FromBase64String(content);
+
+            if (!aliceGotBob) try
             {
-                using var doc = JsonDocument.Parse(ev);
-                var content = doc.RootElement.GetProperty("content").GetString()!;
-                var bytes = Convert.FromBase64String(content);
-
-                try
-                {
-                    var r = await alice.MlsService.DecryptMessageAsync(chat.MlsGroupId!, bytes);
-                    if (!r.IsCommit && r.Plaintext.Contains("Bob"))
-                        _output.WriteLine($"  Alice decrypted Bob: \"{r.Plaintext}\"");
-                }
-                catch { }
-
-                try
-                {
-                    var r = await charlie.MlsService.DecryptMessageAsync(chatCharlie.MlsGroupId!, bytes);
-                    if (!r.IsCommit && r.Plaintext.Contains("Bob"))
-                        _output.WriteLine($"  Charlie decrypted Bob: \"{r.Plaintext}\"");
-                }
-                catch { }
+                var r = await alice.MlsService.DecryptMessageAsync(chat.MlsGroupId!, bytes);
+                if (!r.IsCommit && r.Plaintext.Contains("Bob"))
+                { aliceGotBob = true; _output.WriteLine($"  Alice decrypted Bob: \"{r.Plaintext}\""); }
             }
-            catch { }
+            catch (Exception ex) { _output.WriteLine($"  Alice decrypt error: {ex.Message[..Math.Min(80, ex.Message.Length)]}"); }
+
+            if (!charlieGotBob) try
+            {
+                var r = await charlie.MlsService.DecryptMessageAsync(chatCharlie.MlsGroupId!, bytes);
+                if (!r.IsCommit && r.Plaintext.Contains("Bob"))
+                { charlieGotBob = true; _output.WriteLine($"  Charlie decrypted Bob: \"{r.Plaintext}\""); }
+            }
+            catch (Exception ex) { _output.WriteLine($"  Charlie decrypt error: {ex.Message[..Math.Min(80, ex.Message.Length)]}"); }
         }
+
+        Assert.True(aliceGotBob, "Alice must decrypt Bob's message");
+        Assert.True(charlieGotBob, "Charlie must decrypt Bob's message");
 
         // Charlie sends
         _output.WriteLine("\n  Charlie sending...");
         await charlie.MessageService.SendMessageAsync(chatCharlie.Id, "Hello from Charlie E2E!");
         await Task.Delay(3000);
 
+        var aliceGotCharlie = false;
+        var bobGotCharlie = false;
         msgs = await FetchRawEventsFromRelay(RelayUrl,
             new { kinds = new[] { 445 }, @__h = new[] { nostrGroupIdHex }, limit = 50 });
 
         foreach (var ev in msgs)
         {
-            try
+            using var doc = JsonDocument.Parse(ev);
+            var content = doc.RootElement.GetProperty("content").GetString()!;
+            var bytes = Convert.FromBase64String(content);
+
+            if (!aliceGotCharlie) try
             {
-                using var doc = JsonDocument.Parse(ev);
-                var content = doc.RootElement.GetProperty("content").GetString()!;
-                var bytes = Convert.FromBase64String(content);
-
-                try
-                {
-                    var r = await alice.MlsService.DecryptMessageAsync(chat.MlsGroupId!, bytes);
-                    if (!r.IsCommit && r.Plaintext.Contains("Charlie"))
-                        _output.WriteLine($"  Alice decrypted Charlie: \"{r.Plaintext}\"");
-                }
-                catch { }
-
-                try
-                {
-                    var r = await bob.MlsService.DecryptMessageAsync(chatBob.MlsGroupId!, bytes);
-                    if (!r.IsCommit && r.Plaintext.Contains("Charlie"))
-                        _output.WriteLine($"  Bob decrypted Charlie: \"{r.Plaintext}\"");
-                }
-                catch { }
+                var r = await alice.MlsService.DecryptMessageAsync(chat.MlsGroupId!, bytes);
+                if (!r.IsCommit && r.Plaintext.Contains("Charlie"))
+                { aliceGotCharlie = true; _output.WriteLine($"  Alice decrypted Charlie: \"{r.Plaintext}\""); }
             }
-            catch { }
+            catch (Exception ex) { _output.WriteLine($"  Alice decrypt error: {ex.Message[..Math.Min(80, ex.Message.Length)]}"); }
+
+            if (!bobGotCharlie) try
+            {
+                var r = await bob.MlsService.DecryptMessageAsync(chatBob.MlsGroupId!, bytes);
+                if (!r.IsCommit && r.Plaintext.Contains("Charlie"))
+                { bobGotCharlie = true; _output.WriteLine($"  Bob decrypted Charlie: \"{r.Plaintext}\""); }
+            }
+            catch (Exception ex) { _output.WriteLine($"  Bob decrypt error: {ex.Message[..Math.Min(80, ex.Message.Length)]}"); }
         }
 
+        Assert.True(aliceGotCharlie, "Alice must decrypt Charlie's message");
+        Assert.True(bobGotCharlie, "Bob must decrypt Charlie's message");
+
         _output.WriteLine("\n═══════════════════════════════════════════════════════════");
-        _output.WriteLine("  FULL E2E TEST COMPLETE");
+        _output.WriteLine("  FULL E2E TEST COMPLETE — all 6 decrypt paths verified");
         _output.WriteLine("═══════════════════════════════════════════════════════════");
     }
 
@@ -564,7 +576,7 @@ public class FullE2EGroupInteropTests : IAsyncLifetime
         if (!aliceGotWn) _output.WriteLine("  Alice could NOT decrypt WN message");
         if (!bobGotWn) _output.WriteLine("  Bob could NOT decrypt WN message");
 
-        // Summary
+        // Summary and assertions
         _output.WriteLine("\n═══════════════════════════════════════════════════════════");
         _output.WriteLine("  RESULTS:");
         _output.WriteLine($"    WN saw Alice's message: {aliceMsgInWn != null}");
@@ -572,6 +584,11 @@ public class FullE2EGroupInteropTests : IAsyncLifetime
         _output.WriteLine($"    Alice saw WN message:   {aliceGotWn}");
         _output.WriteLine($"    Bob saw WN message:     {bobGotWn}");
         _output.WriteLine("═══════════════════════════════════════════════════════════");
+
+        Assert.NotNull(aliceMsgInWn);
+        Assert.NotNull(bobMsgInWn);
+        Assert.True(aliceGotWn, "Alice must decrypt WN message");
+        Assert.True(bobGotWn, "Bob must decrypt WN message");
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -658,11 +675,13 @@ public class FullE2EGroupInteropTests : IAsyncLifetime
         await charlie.MessageService.SendMessageAsync(chatCharlie.Id, "Charlie first message!");
         await Task.Delay(2000);
 
-        // Epoch check
+        // Epoch check — all must match after late joiner
         var aliceEpoch = (await alice.MlsService.GetGroupInfoAsync(chat.MlsGroupId!))?.Epoch;
         var bobEpoch = (await bob.MlsService.GetGroupInfoAsync(chatBob.MlsGroupId!))?.Epoch;
         var charlieEpoch = (await charlie.MlsService.GetGroupInfoAsync(chatCharlie.MlsGroupId!))?.Epoch;
         _output.WriteLine($"\n  EPOCH CHECK: Alice={aliceEpoch}, Bob={bobEpoch}, Charlie={charlieEpoch}");
+        Assert.Equal(aliceEpoch, bobEpoch);
+        Assert.Equal(aliceEpoch, charlieEpoch);
 
         _output.WriteLine("\n═══════════════════════════════════════════════════════════");
         _output.WriteLine("  Late joiner test COMPLETE");

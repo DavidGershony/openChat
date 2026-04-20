@@ -582,14 +582,16 @@ public class ManagedMlsService : IMlsService
 
         // MIP-03: All relay messages (both JSON events and raw bytes) are
         // ChaCha20-Poly1305 encrypted with the group's MLS exporter secret.
-        // Always apply MIP-03 decryption unless the bytes are already a valid MLS message
-        // (starts with PrivateMessage header: version 0x0001, wire_format 0x0002).
-        bool isMlsPrivateMessage = payloadBytes.Length >= 4 &&
+        // Always apply MIP-03 decryption unless the bytes are already a valid MLS message.
+        // MLS wire format: version 0x0001 followed by wire_format:
+        //   0x0001 = PublicMessage (commits/proposals)
+        //   0x0002 = PrivateMessage (application messages)
+        bool isRawMlsMessage = payloadBytes.Length >= 4 &&
             payloadBytes[0] == 0x00 && payloadBytes[1] == 0x01 &&
-            payloadBytes[2] == 0x00 && payloadBytes[3] == 0x02;
+            payloadBytes[2] == 0x00 && (payloadBytes[3] == 0x01 || payloadBytes[3] == 0x02);
 
         byte[] mlsBytes;
-        if (!isMlsPrivateMessage)
+        if (!isRawMlsMessage)
         {
             _logger.LogDebug("DecryptMessage: applying MIP-03 ChaCha20-Poly1305 decryption ({Len} bytes)",
                 payloadBytes.Length);

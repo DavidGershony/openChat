@@ -350,14 +350,10 @@ public class WhitenoiseGroupInteropTests : IAsyncLifetime
         // differs between OpenChat (managed C#) and Whitenoise (Rust MDK 0.7.1).
         // The forward direction (OC→WN) is proven above. The reverse (WN→OC) may
         // require MIP-03 alignment work — log the result but don't fail the test.
-        if (aliceDecryptedReply)
-            _output.WriteLine("PASS: Alice decrypted Charlie's WN reply — full bidirectional interop!");
-        else
-            _output.WriteLine("INFO: Alice could NOT decrypt Charlie's WN reply — MIP-03 format mismatch (known gap)");
-        if (bobDecryptedReply)
-            _output.WriteLine("PASS: Bob decrypted Charlie's WN reply — full bidirectional interop!");
-        else
-            _output.WriteLine("INFO: Bob could NOT decrypt Charlie's WN reply — MIP-03 format mismatch (known gap)");
+        _output.WriteLine($"  Alice decrypted WN reply: {aliceDecryptedReply}");
+        _output.WriteLine($"  Bob decrypted WN reply:   {bobDecryptedReply}");
+        Assert.True(aliceDecryptedReply, "Alice must decrypt Charlie's WN reply");
+        Assert.True(bobDecryptedReply, "Bob must decrypt Charlie's WN reply");
 
         _output.WriteLine("\n═══════════════════════════════════════════════════════════");
         _output.WriteLine("  3-user interop test COMPLETE — full round-trip verified");
@@ -618,23 +614,16 @@ public class WhitenoiseGroupInteropTests : IAsyncLifetime
     private async Task ProcessCommitForMember(
         OpenChatUser member, byte[] mlsGroupId, string commitEventId, string nostrGroupIdHex)
     {
-        try
-        {
-            var commitEvents = await FetchRawEventsFromRelay(RelayUrl,
-                new { kinds = new[] { 445 }, ids = new[] { commitEventId }, limit = 1 });
-            if (commitEvents.Count > 0)
-            {
-                using var commitDoc = JsonDocument.Parse(commitEvents[0]);
-                var commitContent = commitDoc.RootElement.GetProperty("content").GetString()!;
-                var commitBytes = Convert.FromBase64String(commitContent);
-                var commitResult = await member.MlsService.DecryptMessageAsync(mlsGroupId, commitBytes);
-                _output.WriteLine($"{member.Name} processed commit: IsCommit={commitResult.IsCommit}");
-            }
-        }
-        catch (Exception ex)
-        {
-            _output.WriteLine($"{member.Name} commit processing failed: {ex.Message}");
-        }
+        var commitEvents = await FetchRawEventsFromRelay(RelayUrl,
+            new { kinds = new[] { 445 }, ids = new[] { commitEventId }, limit = 1 });
+        Assert.NotEmpty(commitEvents);
+
+        using var commitDoc = JsonDocument.Parse(commitEvents[0]);
+        var commitContent = commitDoc.RootElement.GetProperty("content").GetString()!;
+        var commitBytes = Convert.FromBase64String(commitContent);
+        var commitResult = await member.MlsService.DecryptMessageAsync(mlsGroupId, commitBytes);
+        Assert.True(commitResult.IsCommit, $"{member.Name} must receive a commit, got plaintext instead");
+        _output.WriteLine($"{member.Name} processed commit: IsCommit={commitResult.IsCommit}");
     }
 
     private async Task<List<string>> FetchRawEventsFromRelay(string relayUrl, object filter)

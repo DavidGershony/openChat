@@ -131,18 +131,12 @@ public class ExporterSecretComparisonTests : IAsyncLifetime
         var welcomeCharlie = await aliceMls.AddMemberAsync(group.GroupId, kpCharlie);
         _output.WriteLine($"Added Charlie: welcome={welcomeCharlie.WelcomeData.Length} bytes");
 
-        // Bob processes commit
+        // Bob processes commit — must succeed for epoch sync
         if (welcomeCharlie.CommitData is { Length: > 0 })
         {
-            try
-            {
-                var r = await bobMls.DecryptMessageAsync(bobGroup.GroupId, welcomeCharlie.CommitData);
-                _output.WriteLine($"Bob processed commit: IsCommit={r.IsCommit}");
-            }
-            catch (Exception ex)
-            {
-                _output.WriteLine($"Bob commit failed: {ex.Message}");
-            }
+            var r = await bobMls.DecryptMessageAsync(bobGroup.GroupId, welcomeCharlie.CommitData);
+            Assert.True(r.IsCommit, "Bob must process commit for Charlie's add");
+            _output.WriteLine($"Bob processed commit: IsCommit={r.IsCommit}");
         }
 
         // Charlie processes Welcome
@@ -348,6 +342,7 @@ public class ExporterSecretComparisonTests : IAsyncLifetime
                     catch (Exception ex)
                     {
                         _output.WriteLine($"    {eName} commit FAILED: {ex.Message}");
+                        throw new Exception($"{eName} failed to process commit adding member {i}: {ex.Message}", ex);
                     }
                 }
             }
@@ -387,6 +382,7 @@ public class ExporterSecretComparisonTests : IAsyncLifetime
             }
             catch (Exception ex)
             {
+                totalFailed++;
                 _output.WriteLine($"  {sName} ENCRYPT FAILED: {ex.Message}");
                 continue;
             }
@@ -438,8 +434,7 @@ public class ExporterSecretComparisonTests : IAsyncLifetime
             _output.WriteLine($"  *** {totalFailed} failures (rust commit processing is a known separate issue) ***");
         _output.WriteLine("═══════════════════════════════════════════════════════════");
 
-        // Don't assert zero failures — rust members have a known commit-epoch sync issue.
-        // Instead verify that managed members all work and that the test actually ran.
-        Assert.True(totalDecrypted > 0, "At least some messages should decrypt");
+        Assert.Equal(0, totalFailed);
+        Assert.Equal(totalSent * (users.Count - 1), totalDecrypted);
     }
 }
