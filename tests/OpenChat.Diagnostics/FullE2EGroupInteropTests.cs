@@ -277,6 +277,150 @@ public class FullE2EGroupInteropTests : IAsyncLifetime
     }
 
     // ══════════════════════════════════════════════════════════════════════════
+    // Test 1b: Offline catch-up — Bob misses a commit while offline, fetches from relay
+    // ══════════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task E2E_OfflineCatchUp_BobProcessesMissedCommitFromRelay()
+    {
+        _output.WriteLine("═══════════════════════════════════════════════════════════");
+        _output.WriteLine("  OFFLINE CATCH-UP: Bob misses Charlie's add, syncs from relay");
+        _output.WriteLine($"  Relay: {RelayUrl}");
+        _output.WriteLine("═══════════════════════════════════════════════════════════");
+
+        var alice = await CreateOCUser("Alice");
+        var bob = await CreateOCUser("Bob");
+        var charlie = await CreateOCUser("Charlie");
+
+        // Step 1: KeyPackages
+        _output.WriteLine("\n[Step 1] Publishing KeyPackages");
+        var kpBob = await bob.MlsService.GenerateKeyPackageAsync();
+        await bob.NostrService.PublishKeyPackageAsync(kpBob.Data, bob.PrivKeyHex, kpBob.NostrTags);
+        var kpCharlie = await charlie.MlsService.GenerateKeyPackageAsync();
+        await charlie.NostrService.PublishKeyPackageAsync(kpCharlie.Data, charlie.PrivKeyHex, kpCharlie.NostrTags);
+        await Task.Delay(2000);
+
+        // Step 2: Alice creates group with Bob + Charlie
+        _output.WriteLine("\n[Step 2] Alice creates group");
+        var chat = await alice.MessageService.CreateGroupAsync("Offline Catch-Up Test",
+            new[] { bob.PubKeyHex, charlie.PubKeyHex });
+        _output.WriteLine($"  Group created, Alice epoch={chat.MlsEpoch}");
+        await Task.Delay(3000);
+
+        // Step 3: Bob accepts invite but does NOT subscribe to group messages.
+        // This simulates Bob being offline when Charlie is added — he won't receive
+        // the kind-445 commit event via live subscription.
+        _output.WriteLine("\n[Step 3] Bob accepts invite (no group subscription — simulating offline)");
+        await bob.NostrService.SubscribeToWelcomesAsync(bob.PubKeyHex, bob.PrivKeyHex);
+        await Task.Delay(2000);
+        await bob.MessageService.RescanInvitesAsync();
+        var bobInvites = (await bob.Storage.GetPendingInvitesAsync()).ToList();
+        Assert.NotEmpty(bobInvites);
+        var chatBob = await bob.MessageService.AcceptInviteAsync(bobInvites[0].Id);
+        _output.WriteLine($"  Bob joined: epoch={chatBob.MlsEpoch}");
+
+        // Disconnect Bob to ensure no events arrive via subscription
+        await bob.NostrService.DisconnectAsync();
+        _output.WriteLine("  Bob disconnected from relay");
+
+        // Step 4: Charlie accepts invite (Bob is offline)
+        _output.WriteLine("\n[Step 4] Charlie accepts invite (Bob is offline)");
+        await charlie.NostrService.SubscribeToWelcomesAsync(charlie.PubKeyHex, charlie.PrivKeyHex);
+        await Task.Delay(2000);
+        await charlie.MessageService.RescanInvitesAsync();
+        var charlieInvites = (await charlie.Storage.GetPendingInvitesAsync()).ToList();
+        Assert.NotEmpty(charlieInvites);
+        var chatCharlie = await charlie.MessageService.AcceptInviteAsync(charlieInvites[0].Id);
+        _output.WriteLine($"  Charlie joined: epoch={chatCharlie.MlsEpoch}");
+
+        // Verify Bob is behind — he should still be at epoch 1
+        var bobEpochBefore = (await bob.MlsService.GetGroupInfoAsync(chatBob.MlsGroupId!))?.Epoch;
+        var aliceEpoch = (await alice.MlsService.GetGroupInfoAsync(chat.MlsGroupId!))?.Epoch;
+        _output.WriteLine($"  Alice epoch={aliceEpoch}, Bob epoch={bobEpochBefore} (should be behind)");
+
+        // Step 5: Bob comes back online and catches up from the relay.
+        // This is the real-world scenario: fetch missed kind-445 events and process them.
+        _output.WriteLine("\n[Step 5] Bob reconnects and catches up from relay");
+        await bob.NostrService.ConnectAsync(RelayUrl);
+        await Task.Delay(1000);
+
+        var nostrGroupIdHex = chat.NostrGroupId != null
+            ? Convert.ToHexString(chat.NostrGroupId).ToLowerInvariant()
+            : Convert.ToHexString(chat.MlsGroupId!).ToLowerInvariant();
+
+        var groupEvents = await FetchRawEventsFromRelay(RelayUrl,
+            new { kinds = new[] { 445 }, @__h = new[] { nostrGroupIdHex }, limit = 50 });
+        _output.WriteLine($"  Found {groupEvents.Count} kind-445 events on relay");
+
+        var bobProcessedCommit = false;
+        var commitErrors = new List<string>();
+        foreach (var ev in groupEvents)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(ev);
+                var content = doc.RootElement.GetProperty("content").GetString()!;
+                var bytes = Convert.FromBase64String(content);
+                var result = await bob.MlsService.DecryptMessageAsync(chatBob.MlsGroupId!, bytes);
+                if (result.IsCommit)
+                {
+                    bobProcessedCommit = true;
+                    _output.WriteLine($"  Bob processed commit (epoch transition)");
+                }
+                else
+                    _output.WriteLine($"  Bob decrypted: \"{result.Plaintext}\"");
+            }
+            catch (Exception ex)
+            {
+                // Some events will fail (e.g., Bob's own add commit from epoch 0) — that's expected.
+                // Only the Charlie-add commit (at Bob's current epoch) should succeed.
+                commitErrors.Add($"{ex.GetType().Name}: {ex.Message[..Math.Min(80, ex.Message.Length)]}");
+                _output.WriteLine($"  Bob skip: {ex.GetType().Name}: {ex.Message[..Math.Min(80, ex.Message.Length)]}");
+            }
+        }
+
+        Assert.True(bobProcessedCommit,
+            $"Bob must process at least one commit to catch up. Errors: {string.Join("; ", commitErrors)}");
+
+        // Epoch check — Bob must now match Alice and Charlie
+        aliceEpoch = (await alice.MlsService.GetGroupInfoAsync(chat.MlsGroupId!))?.Epoch;
+        var bobEpochAfter = (await bob.MlsService.GetGroupInfoAsync(chatBob.MlsGroupId!))?.Epoch;
+        var charlieEpoch = (await charlie.MlsService.GetGroupInfoAsync(chatCharlie.MlsGroupId!))?.Epoch;
+        _output.WriteLine($"\n  EPOCH CHECK: Alice={aliceEpoch}, Bob={bobEpochAfter}, Charlie={charlieEpoch}");
+        Assert.Equal(aliceEpoch, bobEpochAfter);
+        Assert.Equal(aliceEpoch, charlieEpoch);
+
+        // Step 6: Verify Bob can send and receive at the new epoch
+        _output.WriteLine("\n[Step 6] Post-catch-up messaging");
+
+        // Subscribe everyone to group messages now
+        await alice.NostrService.SubscribeToGroupMessagesAsync(new[] { nostrGroupIdHex });
+        var bobGroupId = chatBob.NostrGroupId != null
+            ? Convert.ToHexString(chatBob.NostrGroupId).ToLowerInvariant()
+            : Convert.ToHexString(chatBob.MlsGroupId!).ToLowerInvariant();
+        await bob.NostrService.SubscribeToGroupMessagesAsync(new[] { bobGroupId });
+        var charlieGroupId = chatCharlie.NostrGroupId != null
+            ? Convert.ToHexString(chatCharlie.NostrGroupId).ToLowerInvariant()
+            : Convert.ToHexString(chatCharlie.MlsGroupId!).ToLowerInvariant();
+        await charlie.NostrService.SubscribeToGroupMessagesAsync(new[] { charlieGroupId });
+
+        await bob.MessageService.SendMessageAsync(chatBob.Id, "Bob is back online!");
+        await Task.Delay(5000);
+
+        var aliceMsgs = (await alice.Storage.GetMessagesForChatAsync(chat.Id)).ToList();
+        var charlieRecv = (await charlie.Storage.GetMessagesForChatAsync(chatCharlie.Id)).ToList();
+        Assert.True(aliceMsgs.Any(m => m.Content.Contains("Bob is back")),
+            $"Alice must receive Bob's post-catch-up message. Messages: [{string.Join(", ", aliceMsgs.Select(m => m.Content))}]");
+        Assert.True(charlieRecv.Any(m => m.Content.Contains("Bob is back")),
+            $"Charlie must receive Bob's post-catch-up message. Messages: [{string.Join(", ", charlieRecv.Select(m => m.Content))}]");
+
+        _output.WriteLine("  Alice and Charlie received Bob's post-catch-up message");
+        _output.WriteLine("\n═══════════════════════════════════════════════════════════");
+        _output.WriteLine("  OFFLINE CATCH-UP TEST COMPLETE");
+        _output.WriteLine("═══════════════════════════════════════════════════════════");
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
     // Test 2: 2 OC + 1 WN full E2E via relay
     // ══════════════════════════════════════════════════════════════════════════
 
