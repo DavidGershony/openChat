@@ -8,7 +8,7 @@
         android:icon="@android:drawable/ic_menu_search"
         android:iconTint="?attr/colorOnSurface"
         app:iconTint="?attr/colorOnSurface"
-        app:showAsAction="ifRoom|collapseActionView"
+        app:showAsAction="always|collapseActionView"
         app:actionViewClass="androidx.appcompat.widget.SearchView" />
 
     <item
@@ -22,12 +22,6 @@
     <item
         android:id="@+id/action_reconnect_all"
         android:title="Reconnect All Relays"
-        app:showAsAction="never" />
-
-    <item
-        android:id="@+id/action_my_profile"
-        android:title="My Profile"
-        android:icon="@android:drawable/ic_menu_my_calendar"
         app:showAsAction="never" />
 
     <item

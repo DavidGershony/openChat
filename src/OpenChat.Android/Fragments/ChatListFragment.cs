@@ -75,21 +75,48 @@ public class ChatListFragment : Fragment
         var skippedText = view.FindViewById<TextView>(Resource.Id.skipped_invites_text)!;
         var skippedDismiss = view.FindViewById<MaterialButton>(Resource.Id.skipped_invites_dismiss)!;
 
-        // Bind toolbar title to HeaderDisplayName (shows npub until metadata loads)
-        toolbar.Title = _mainViewModel.HeaderDisplayName;
-        _mainViewModel.WhenAnyValue(x => x.HeaderDisplayName)
+        // Profile avatar (left side of toolbar) — shows user image or default icon
+        var profileAvatar = view.FindViewById<ImageView>(Resource.Id.toolbar_profile_avatar)!;
+        var relayText = view.FindViewById<TextView>(Resource.Id.toolbar_relay_text)!;
+
+        // Only show profile avatar for app-created users
+        _mainViewModel.WhenAnyValue(x => x.CurrentUser)
             .ObserveOn(RxApp.MainThreadScheduler)
-            .Subscribe(name => toolbar.Title = name ?? "OpenChat")
+            .Subscribe(user =>
+            {
+                var hasPrivateKey = !string.IsNullOrEmpty(user?.PrivateKeyHex);
+                profileAvatar.Visibility = hasPrivateKey ? ViewStates.Visible : ViewStates.Gone;
+            })
             .DisposeWith(_disposables);
 
-        // Show relay count as toolbar subtitle
-        toolbar.Subtitle = _mainViewModel.RelayCountText;
+        // Load profile picture into avatar or show default person icon
+        _mainViewModel.WhenAnyValue(x => x.MyPictureUrl)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(url =>
+            {
+                if (!string.IsNullOrEmpty(url) && Activity != null)
+                {
+                    // Load the image from URL
+                    _ = LoadProfileImageAsync(profileAvatar, url);
+                }
+                else
+                {
+                    profileAvatar.SetImageResource(Resource.Drawable.ic_account_circle);
+                }
+            })
+            .DisposeWith(_disposables);
+
+        // Tap profile avatar to open My Profile dialog
+        profileAvatar.Click += (s, e) => ShowMyProfileDialog();
+
+        // Relay count text next to avatar
+        relayText.Text = _mainViewModel.RelayCountText;
         _mainViewModel.WhenAnyValue(x => x.RelayCountText)
             .ObserveOn(RxApp.MainThreadScheduler)
-            .Subscribe(text => toolbar.Subtitle = text)
+            .Subscribe(text => relayText.Text = text)
             .DisposeWith(_disposables);
 
-        // Tint the toolbar action icon to match the theme's on-surface color
+        // Tint the toolbar action icons
         var newChatItem = toolbar.Menu?.FindItem(Resource.Id.action_new_chat);
         if (newChatItem?.Icon != null)
         {
@@ -113,11 +140,6 @@ public class ChatListFragment : Fragment
             else if (item?.ItemId == Resource.Id.action_reconnect_all)
             {
                 _mainViewModel.ReconnectCommand.Execute().Subscribe();
-                return true;
-            }
-            else if (item?.ItemId == Resource.Id.action_my_profile)
-            {
-                ShowMyProfileDialog();
                 return true;
             }
             else if (item?.ItemId == Resource.Id.action_settings)
@@ -520,6 +542,29 @@ public class ChatListFragment : Fragment
             var clip = ClipData.NewPlainText(label, text);
             clipboard.PrimaryClip = clip;
             Toast.MakeText(Activity, "Copied!", ToastLength.Short)?.Show();
+        }
+    }
+
+    private static readonly System.Net.Http.HttpClient _httpClient = new();
+
+    private async Task LoadProfileImageAsync(ImageView imageView, string url)
+    {
+        try
+        {
+            var bytes = await _httpClient.GetByteArrayAsync(url);
+            if (bytes.Length > 0 && Activity != null)
+            {
+                Activity.RunOnUiThread(() =>
+                {
+                    var bitmap = global::Android.Graphics.BitmapFactory.DecodeByteArray(bytes, 0, bytes.Length);
+                    if (bitmap != null)
+                        imageView.SetImageBitmap(bitmap);
+                });
+            }
+        }
+        catch
+        {
+            // Failed to load — keep default icon
         }
     }
 
