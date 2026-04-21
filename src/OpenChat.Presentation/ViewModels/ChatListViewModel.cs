@@ -49,6 +49,7 @@ public class ChatListViewModel : ViewModelBase
     [Reactive] public string NewChatName { get; set; } = string.Empty;
     [Reactive] public string NewChatDescription { get; set; } = string.Empty;
     [Reactive] public string NewChatParticipantInput { get; set; } = string.Empty;
+    [Reactive] public bool IsParticipantInputInvalid { get; set; }
     public ObservableCollection<FollowContactViewModel> NewChatParticipants { get; } = new();
     [Reactive] public string? NewChatError { get; set; }
     [Reactive] public bool IsLookingUpKeyPackages { get; set; }
@@ -280,7 +281,7 @@ public class ChatListViewModel : ViewModelBase
             RenameChatInput = string.Empty;
         });
 
-        // Filter Following list as the user types in the participant input
+        // Filter Following list and validate npub as the user types
         this.WhenAnyValue(x => x.NewChatParticipantInput)
             .Throttle(TimeSpan.FromMilliseconds(120))
             .ObserveOn(RxApp.MainThreadScheduler)
@@ -288,6 +289,29 @@ public class ChatListViewModel : ViewModelBase
             {
                 var query = (q ?? string.Empty).Trim();
                 bool isFullNpub = query.StartsWith("npub1") && query.Length >= 60;
+
+                // Validate: mark invalid if it looks like a complete npub but fails to decode
+                if (isFullNpub)
+                {
+                    try
+                    {
+                        var data = Core.Crypto.Bech32.Decode(query, out var hrp);
+                        IsParticipantInputInvalid = hrp != "npub" || data.Length != 32;
+                    }
+                    catch
+                    {
+                        IsParticipantInputInvalid = true;
+                    }
+                }
+                else if (query.Length == 64 && query.All(Uri.IsHexDigit))
+                {
+                    IsParticipantInputInvalid = false;
+                }
+                else
+                {
+                    IsParticipantInputInvalid = false;
+                }
+
                 foreach (var f in Following)
                 {
                     if (isFullNpub)
@@ -938,6 +962,10 @@ public class ChatListViewModel : ViewModelBase
         }
 
         NewChatError = null;
+
+        // Auto-trigger key package lookup when a participant is added
+        RxApp.MainThreadScheduler.Schedule(() =>
+            LookupKeyPackagesCommand.Execute().Subscribe());
     }
 
     private async Task LookupKeyPackagesAsync()

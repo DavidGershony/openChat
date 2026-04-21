@@ -45,6 +45,7 @@ public class NewChatFragment : Fragment
         var nameInput = view.FindViewById<TextInputEditText>(Resource.Id.new_chat_name_input)!;
         var descInput = view.FindViewById<TextInputEditText>(Resource.Id.new_chat_desc_input)!;
         var participantInput = view.FindViewById<TextInputEditText>(Resource.Id.new_chat_participant_input)!;
+        var participantLayout = view.FindViewById<TextInputLayout>(Resource.Id.new_chat_participant_layout)!;
         var addParticipantButton = view.FindViewById<MaterialButton>(Resource.Id.new_chat_add_participant_button)!;
         _chipGroup = view.FindViewById<ChipGroup>(Resource.Id.new_chat_participant_chips)!;
         var contactsHeader = view.FindViewById<TextView>(Resource.Id.contacts_header)!;
@@ -137,6 +138,22 @@ public class NewChatFragment : Fragment
             .Subscribe(progress =>
             {
                 sendingStatusText.Text = progress ?? "Creating chat...";
+            })
+            .DisposeWith(_disposables);
+
+        // Sync participant input to ViewModel as user types (for real-time validation)
+        participantInput.TextChanged += (s, e) =>
+        {
+            ViewModel.NewChatParticipantInput = participantInput.Text ?? string.Empty;
+        };
+
+        // Show red border on invalid npub
+        ViewModel.WhenAnyValue(x => x.IsParticipantInputInvalid)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(invalid =>
+            {
+                participantLayout.Error = invalid ? "Invalid npub" : null;
+                participantLayout.ErrorEnabled = invalid;
             })
             .DisposeWith(_disposables);
 

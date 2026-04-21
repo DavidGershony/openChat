@@ -75,6 +75,7 @@
                 android:layout_marginTop="8dp">
 
                 <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/new_chat_participant_layout"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
@@ -125,6 +126,7 @@
                 android:layout_height="wrap_content"
                 android:text="Lookup KeyPackages"
                 android:layout_marginTop="16dp"
+                android:visibility="gone"
                 style="@style/Widget.Material3.Button.OutlinedButton" />
 
             <TextView
