@@ -132,6 +132,7 @@ public class MainActivity : AppCompatActivity, IActivatableView
     public void NavigateToAddBot()
     {
         if (_shellViewModel?.MainViewModel == null) return;
+        _shellViewModel.MainViewModel.ChatListViewModel.AddBotCommand.Execute().Subscribe();
         var fragment = new AddBotFragment(_shellViewModel.MainViewModel);
         SupportFragmentManager.BeginTransaction()
             .Replace(Resource.Id.fragment_container, fragment, "addbot")

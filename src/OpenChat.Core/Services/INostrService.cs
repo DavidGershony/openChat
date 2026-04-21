@@ -13,6 +13,11 @@ public interface INostrService
     IReadOnlyList<string> ConnectedRelayUrls { get; }
 
     /// <summary>
+    /// URLs of all configured relays (connected or not).
+    /// </summary>
+    IReadOnlyList<string> ConfiguredRelayUrls { get; }
+
+    /// <summary>
     /// Observable stream of connection status changes.
     /// </summary>
     IObservable<NostrConnectionStatus> ConnectionStatus { get; }

@@ -54,6 +54,7 @@ public class NostrService : INostrService, IDisposable
     private string? _subscribedUserPrivKey;
 
     public IReadOnlyList<string> ConnectedRelayUrls => _connectedRelays.Keys.ToList();
+    public IReadOnlyList<string> ConfiguredRelayUrls => _relayConnections.Keys.ToList();
     private IExternalSigner? _externalSigner;
     private bool _disposed;
 

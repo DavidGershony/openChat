@@ -197,7 +197,12 @@ public class ChatListViewModel : ViewModelBase
             BotAvailableRelays.Clear();
             if (_nostrService != null)
             {
-                foreach (var url in _nostrService.ConnectedRelayUrls)
+                var relays = _nostrService.ConnectedRelayUrls.Count > 0
+                    ? _nostrService.ConnectedRelayUrls
+                    : _nostrService.ConfiguredRelayUrls.Count > 0
+                        ? _nostrService.ConfiguredRelayUrls
+                        : (IReadOnlyList<string>)Core.NostrConstants.DefaultRelays;
+                foreach (var url in relays)
                     BotAvailableRelays.Add(new RelayCheckItem(url, true));
             }
             ShowAddBotDialog = true;
