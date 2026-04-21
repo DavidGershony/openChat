@@ -243,6 +243,12 @@ public class SettingsFragment : Fragment
             ViewModel.NotificationModeBackground = !isPush;
             pushSettingsPanel.Visibility = isPush ? ViewStates.Visible : ViewStates.Gone;
             notifBgDescription.Visibility = isPush ? ViewStates.Gone : ViewStates.Visible;
+
+            // Start or stop the relay foreground service
+            if (!isPush)
+                StartRelayServiceWithPermissionCheck();
+            else if (Activity != null)
+                OpenChat.Android.Services.RelayForegroundService.Stop(Activity);
         };
 
         // Set initial panel state from ViewModel
@@ -687,6 +693,22 @@ public class SettingsFragment : Fragment
         }
     }
 
+    private void StartRelayServiceWithPermissionCheck()
+    {
+        if (Activity == null) return;
+
+        // Android 13+ requires POST_NOTIFICATIONS permission for foreground service notifications
+        if (OperatingSystem.IsAndroidVersionAtLeast(33) &&
+            ContextCompat.CheckSelfPermission(RequireContext(), Manifest.Permission.PostNotifications) != Permission.Granted)
+        {
+            RequestPermissions(new[] { Manifest.Permission.PostNotifications }, 1004);
+            return;
+        }
+
+        OpenChat.Android.Services.RelayForegroundService.Start(Activity);
+        _logger.LogInformation("Relay foreground service started from settings");
+    }
+
     public override void OnRequestPermissionsResult(int requestCode, string[] permissions, Permission[] grantResults)
     {
         base.OnRequestPermissionsResult(requestCode, permissions, grantResults);
@@ -702,6 +724,22 @@ public class SettingsFragment : Fragment
             {
                 _logger.LogWarning("MIP-04 permissions denied");
                 Toast.MakeText(Activity, "Media permissions required for MIP-04", ToastLength.Short)?.Show();
+            }
+        }
+        else if (requestCode == 1004)
+        {
+            if (grantResults.Length > 0 && grantResults[0] == Permission.Granted)
+            {
+                _logger.LogInformation("POST_NOTIFICATIONS granted, starting relay foreground service");
+                if (Activity != null)
+                    OpenChat.Android.Services.RelayForegroundService.Start(Activity);
+            }
+            else
+            {
+                _logger.LogWarning("POST_NOTIFICATIONS denied — foreground service notification won't be visible");
+                // Start anyway — the service works without visible notification on some devices
+                if (Activity != null)
+                    OpenChat.Android.Services.RelayForegroundService.Start(Activity);
             }
         }
     }

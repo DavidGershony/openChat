@@ -45,6 +45,9 @@ public class MainActivity : AppCompatActivity, IActivatableView
 
         SetContentView(Resource.Layout.activity_main);
 
+        // Create notification channel for relay foreground service (safe to call multiple times)
+        Services.RelayForegroundService.CreateNotificationChannel(this);
+
         if (!_servicesInitialized)
         {
             // Create services only once — they survive Activity.Recreate()
@@ -78,9 +81,14 @@ public class MainActivity : AppCompatActivity, IActivatableView
                 if (isLoggedIn && _shellViewModel.MainViewModel != null)
                 {
                     ShowFragment(new ChatListFragment(_shellViewModel.MainViewModel), "chatlist");
+
+                    // Auto-start relay foreground service if background mode is enabled
+                    StartRelayServiceIfEnabled(_shellViewModel.MainViewModel);
                 }
                 else
                 {
+                    // Stop the foreground service on logout
+                    Services.RelayForegroundService.Stop(this);
                     ShowFragment(new LoginFragment(_shellViewModel), "login");
                 }
             })
@@ -197,5 +205,21 @@ public class MainActivity : AppCompatActivity, IActivatableView
     {
         _disposables.Dispose();
         base.OnDestroy();
+    }
+
+    private void StartRelayServiceIfEnabled(MainViewModel mainVm)
+    {
+        // SettingsViewModel loads notification_mode in its constructor (LoadSettingsAsync).
+        // Give it a moment to load, then check the mode.
+        var settingsVm = mainVm.SettingsViewModel;
+        settingsVm.WhenAnyValue(x => x.NotificationModeBackground)
+            .Take(1)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(isBackground =>
+            {
+                if (isBackground)
+                    Services.RelayForegroundService.Start(this);
+            })
+            .DisposeWith(_disposables);
     }
 }
