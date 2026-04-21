@@ -47,10 +47,12 @@ public class ChatListFragment : Fragment
         var emptyState = view.FindViewById<LinearLayout>(Resource.Id.empty_state)!;
         var chatTabs = view.FindViewById<TabLayout>(Resource.Id.chat_tabs)!;
 
-        // Set up tab toggle for Chats / Archived
+        // Set up tab toggle for Chats / Agents (DVM) / Archived
         var chatsTab = chatTabs.NewTab()!.SetText("Chats")!;
+        var agentsTab = chatTabs.NewTab()!.SetText("Agents (DVM)")!;
         var archivedTab = chatTabs.NewTab()!.SetText("Archived (0)")!;
         chatTabs.AddTab(chatsTab);
+        chatTabs.AddTab(agentsTab);
         chatTabs.AddTab(archivedTab);
 
         ViewModel.WhenAnyValue(x => x.ArchivedChatsCount)
@@ -58,10 +60,15 @@ public class ChatListFragment : Fragment
             .Subscribe(count => archivedTab.SetText($"Archived ({count})"))
             .DisposeWith(_disposables);
 
+        ViewModel.WhenAnyValue(x => x.AgentChatsCount)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(count => agentsTab.SetText($"Agents (DVM){(count > 0 ? $" ({count})" : "")}"))
+            .DisposeWith(_disposables);
+
         chatTabs.TabSelected += (s, e) =>
         {
-            var showArchived = e.Tab == archivedTab;
-            ViewModel.ShowArchivedSection = showArchived;
+            ViewModel.ShowArchivedSection = e.Tab == archivedTab;
+            ViewModel.ShowAgentsSection = e.Tab == agentsTab;
         };
 
         // Pending invites views
@@ -210,15 +217,22 @@ public class ChatListFragment : Fragment
             {
                 var items = ViewModel.ShowArchivedSection
                     ? ViewModel.ArchivedChats.ToList()
-                    : ViewModel.Chats.ToList();
+                    : ViewModel.ShowAgentsSection
+                        ? ViewModel.AgentChats.ToList()
+                        : ViewModel.Chats.ToList();
                 _adapter.UpdateItems(items);
                 emptyState.Visibility = items.Count == 0 ? ViewStates.Visible : ViewStates.Gone;
             });
         }
 
         ViewModel.Chats.CollectionChanged += (s, e) => RefreshChatList();
+        ViewModel.AgentChats.CollectionChanged += (s, e) => RefreshChatList();
         ViewModel.ArchivedChats.CollectionChanged += (s, e) => RefreshChatList();
         ViewModel.WhenAnyValue(x => x.ShowArchivedSection)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(_ => RefreshChatList())
+            .DisposeWith(_disposables);
+        ViewModel.WhenAnyValue(x => x.ShowAgentsSection)
             .ObserveOn(RxApp.MainThreadScheduler)
             .Subscribe(_ => RefreshChatList())
             .DisposeWith(_disposables);

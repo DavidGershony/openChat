@@ -30,6 +30,7 @@ public class ChatListViewModel : ViewModelBase
     private IDisposable? _skippedInviteSubscription;
 
     public ObservableCollection<ChatItemViewModel> Chats { get; } = new();
+    public ObservableCollection<ChatItemViewModel> AgentChats { get; } = new();
     public ObservableCollection<ChatItemViewModel> ArchivedChats { get; } = new();
     public ObservableCollection<PendingInviteItemViewModel> PendingInvites { get; } = new();
     public ObservableCollection<FollowContactViewModel> Following { get; } = new();
@@ -37,7 +38,9 @@ public class ChatListViewModel : ViewModelBase
 
     [Reactive] public ChatItemViewModel? SelectedChat { get; set; }
     [Reactive] public int ArchivedChatsCount { get; set; }
+    [Reactive] public int AgentChatsCount { get; set; }
     [Reactive] public bool ShowArchivedSection { get; set; }
+    [Reactive] public bool ShowAgentsSection { get; set; }
     [Reactive] public string SearchText { get; set; } = string.Empty;
     [Reactive] public bool IsLoading { get; set; }
     [Reactive] public int PendingInviteCount { get; set; }
@@ -115,6 +118,7 @@ public class ChatListViewModel : ViewModelBase
     public ReactiveCommand<ChatItemViewModel, Unit> UnarchiveChatCommand { get; }
     public ReactiveCommand<ChatItemViewModel, Unit> ToggleMuteCommand { get; }
     public ReactiveCommand<Unit, Unit> ToggleArchivedViewCommand { get; }
+    public ReactiveCommand<Unit, Unit> ToggleAgentsViewCommand { get; }
     public ReactiveCommand<Unit, Unit> ConfirmResetGroupCommand { get; }
     public ReactiveCommand<Unit, Unit> CancelResetGroupCommand { get; }
     public ReactiveCommand<Unit, Unit> LookupKeyPackagesCommand { get; }
@@ -354,6 +358,13 @@ public class ChatListViewModel : ViewModelBase
         ToggleArchivedViewCommand = ReactiveCommand.Create(() =>
         {
             ShowArchivedSection = !ShowArchivedSection;
+            if (ShowArchivedSection) ShowAgentsSection = false;
+        });
+
+        ToggleAgentsViewCommand = ReactiveCommand.Create(() =>
+        {
+            ShowAgentsSection = !ShowAgentsSection;
+            if (ShowAgentsSection) ShowArchivedSection = false;
         });
 
         ToggleMuteCommand = ReactiveCommand.CreateFromTask<ChatItemViewModel>(async chat =>
@@ -449,6 +460,7 @@ public class ChatListViewModel : ViewModelBase
             _logger.LogInformation("LoadChats: {Total} chats loaded from DB (IsArchived=0)", chats.Count());
 
             Chats.Clear();
+            AgentChats.Clear();
             foreach (var chat in chats
                 .OrderByDescending(c => c.IsPinned).ThenByDescending(c => c.LastActivityAt))
             {
@@ -473,8 +485,12 @@ public class ChatListViewModel : ViewModelBase
                     if (resolved != null) chatItem.LocalAvatarPath = resolved;
                 }
 
-                Chats.Add(chatItem);
+                if (chat.Type == Core.Models.ChatType.Bot)
+                    AgentChats.Add(chatItem);
+                else
+                    Chats.Add(chatItem);
             }
+            AgentChatsCount = AgentChats.Count;
 
             // Load archived chats
             var archivedChats = await _storageService.GetArchivedChatsAsync();
@@ -1563,16 +1579,21 @@ public class ChatListViewModel : ViewModelBase
     private void OnChatUpdated(Chat chat)
     {
         var existingInChats = Chats.FirstOrDefault(c => c.Id == chat.Id);
+        var existingInAgents = AgentChats.FirstOrDefault(c => c.Id == chat.Id);
         var existingInArchived = ArchivedChats.FirstOrDefault(c => c.Id == chat.Id);
 
         var isParticipant = _currentUserPubKeyHex == null ||
             chat.ParticipantPublicKeys.Any(p => string.Equals(p, _currentUserPubKeyHex, StringComparison.OrdinalIgnoreCase));
 
+        var isAgent = chat.Type == Core.Models.ChatType.Bot;
+        var targetCollection = isAgent ? AgentChats : Chats;
+        var existingInTarget = isAgent ? existingInAgents : existingInChats;
+
         if (chat.IsArchived)
         {
-            // Move to archived if it was in main list
-            if (existingInChats != null)
-                Chats.Remove(existingInChats);
+            // Move to archived if it was in main or agents list
+            if (existingInChats != null) Chats.Remove(existingInChats);
+            if (existingInAgents != null) { AgentChats.Remove(existingInAgents); AgentChatsCount = AgentChats.Count; }
 
             if (existingInArchived != null)
             {
@@ -1586,44 +1607,49 @@ public class ChatListViewModel : ViewModelBase
         }
         else
         {
-            // Move to main list if it was archived
+            // Move from archived if needed
             if (existingInArchived != null)
             {
                 ArchivedChats.Remove(existingInArchived);
                 ArchivedChatsCount = ArchivedChats.Count;
             }
+            // Remove from wrong collection if chat type changed
+            if (!isAgent && existingInAgents != null) { AgentChats.Remove(existingInAgents); AgentChatsCount = AgentChats.Count; }
+            if (isAgent && existingInChats != null) Chats.Remove(existingInChats);
 
-            if (existingInChats != null)
+            if (existingInTarget != null)
             {
-                existingInChats.Update(chat);
-                existingInChats.NeedsRepair = !isParticipant;
+                existingInTarget.Update(chat);
+                existingInTarget.NeedsRepair = !isParticipant;
                 // Re-sort if needed
-                var index = Chats.IndexOf(existingInChats);
-                var newIndex = GetInsertIndex(chat);
-                if (index != newIndex && newIndex < Chats.Count)
+                var index = targetCollection.IndexOf(existingInTarget);
+                var newIndex = GetInsertIndex(chat, targetCollection);
+                if (index != newIndex && newIndex < targetCollection.Count)
                 {
-                    Chats.Move(index, newIndex > index ? newIndex - 1 : newIndex);
+                    targetCollection.Move(index, newIndex > index ? newIndex - 1 : newIndex);
                 }
             }
             else
             {
                 var newItem = new ChatItemViewModel(chat);
                 newItem.NeedsRepair = !isParticipant;
-                var insertIndex = GetInsertIndex(chat);
-                Chats.Insert(insertIndex, newItem);
+                var insertIndex = GetInsertIndex(chat, targetCollection);
+                targetCollection.Insert(insertIndex, newItem);
+                if (isAgent) AgentChatsCount = AgentChats.Count;
             }
         }
     }
 
-    private int GetInsertIndex(Chat chat)
+    private int GetInsertIndex(Chat chat, ObservableCollection<ChatItemViewModel>? collection = null)
     {
+        var target = collection ?? Chats;
         if (chat.IsPinned)
         {
-            return Chats.TakeWhile(c => c.IsPinned && c.LastActivityAt > chat.LastActivityAt).Count();
+            return target.TakeWhile(c => c.IsPinned && c.LastActivityAt > chat.LastActivityAt).Count();
         }
 
-        var pinnedCount = Chats.Count(c => c.IsPinned);
-        return pinnedCount + Chats.Skip(pinnedCount).TakeWhile(c => c.LastActivityAt > chat.LastActivityAt).Count();
+        var pinnedCount = target.Count(c => c.IsPinned);
+        return pinnedCount + target.Skip(pinnedCount).TakeWhile(c => c.LastActivityAt > chat.LastActivityAt).Count();
     }
 
     private void ApplyFilter()
