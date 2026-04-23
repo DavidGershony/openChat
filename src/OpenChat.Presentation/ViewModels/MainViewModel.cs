@@ -23,6 +23,7 @@ public class MainViewModel : ViewModelBase
     private readonly IMlsService _mlsService;
     private readonly IPlatformClipboard _clipboard;
     private readonly IQrCodeGenerator _qrCodeGenerator;
+    private NotificationOrchestrator? _notificationOrchestrator;
 
     [Reactive] public User? CurrentUser { get; set; }
     [Reactive] public bool IsLoggedIn { get; set; }
@@ -302,6 +303,10 @@ public class MainViewModel : ViewModelBase
 
         _logger.LogDebug("Initializing message service");
         await _messageService.InitializeAsync();
+
+        // Start notification orchestrator (delegates to platform-specific INotificationService)
+        _notificationOrchestrator = new NotificationOrchestrator(_messageService);
+        _notificationOrchestrator.Initialize();
 
         // Set user context on ChatViewModel for signing events and contact resolution.
         // For signer users, PrivateKeyHex is null but PublicKeyHex is still needed.
@@ -683,6 +688,8 @@ public class MainViewModel : ViewModelBase
     private Task LogoutAsync()
     {
         _logger.LogInformation("Logout requested — delegating to ShellViewModel");
+        _notificationOrchestrator?.Dispose();
+        _notificationOrchestrator = null;
         RelayStatuses.Clear();
         ChatListViewModel.ClearChats();
         ChatViewModel.ClearChat();

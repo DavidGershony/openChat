@@ -54,8 +54,6 @@ public class SettingsFragment : Fragment
         var aboutInput = view.FindViewById<TextInputEditText>(Resource.Id.about_input)!;
         var saveProfileButton = view.FindViewById<MaterialButton>(Resource.Id.save_profile_button)!;
         var profileCard = view.FindViewById<MaterialCardView>(Resource.Id.profile_card)!;
-        var npubText = view.FindViewById<TextView>(Resource.Id.npub_text)!;
-        var copyNpubButton = view.FindViewById<ImageButton>(Resource.Id.copy_npub_button)!;
 
         // Relay views
         var reconnectRelaysButton = view.FindViewById<MaterialButton>(Resource.Id.reconnect_relays_button)!;
@@ -119,12 +117,6 @@ public class SettingsFragment : Fragment
             ViewModel.Username = usernameInput.Text;
             ViewModel.About = aboutInput.Text;
             ViewModel.SaveProfileCommand.Execute().Subscribe().DisposeWith(_disposables);
-        };
-
-        // Copy npub
-        copyNpubButton.Click += (s, e) =>
-        {
-            CopyToClipboard("npub", ViewModel.Npub);
         };
 
         // Relay management
@@ -360,11 +352,6 @@ public class SettingsFragment : Fragment
                 if (aboutInput.Text != about)
                     aboutInput.Text = about;
             })
-            .DisposeWith(_disposables);
-
-        ViewModel.WhenAnyValue(x => x.Npub)
-            .ObserveOn(RxApp.MainThreadScheduler)
-            .Subscribe(npub => npubText.Text = npub ?? "No key available")
             .DisposeWith(_disposables);
 
         // Relay collection — rebind on add/remove

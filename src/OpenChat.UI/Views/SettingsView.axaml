@@ -24,6 +24,22 @@
     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
         <StackPanel Spacing="24" Margin="24">
 
+            <!-- Theme Section -->
+            <Border Classes="card">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="Theme" FontWeight="SemiBold" FontSize="16" />
+                    <TextBlock Text="Customize the app appearance" Classes="secondary" />
+                    <ComboBox SelectedIndex="{Binding SelectedThemeIndex}"
+                              HorizontalAlignment="Stretch">
+                        <ComboBoxItem Content="Nostr" />
+                        <ComboBoxItem Content="Golden Axe" />
+                        <ComboBoxItem Content="Cyber Teal" />
+                        <ComboBoxItem Content="AMOLED Black" />
+                        <ComboBoxItem Content="AMOLED Purple" />
+                    </ComboBox>
+                </StackPanel>
+            </Border>
+
             <!-- Profile Section (hidden when using external signer) -->
             <Border Classes="card" IsVisible="{Binding CanEditProfile}">
                 <StackPanel Spacing="16">
@@ -295,22 +311,6 @@
                 </StackPanel>
             </Border>
 
-            <!-- Theme Section -->
-            <Border Classes="card">
-                <StackPanel Spacing="12">
-                    <TextBlock Text="Theme" FontWeight="SemiBold" FontSize="16" />
-                    <TextBlock Text="Customize the app appearance" Classes="secondary" />
-                    <ComboBox SelectedIndex="{Binding SelectedThemeIndex}"
-                              HorizontalAlignment="Stretch">
-                        <ComboBoxItem Content="Nostr" />
-                        <ComboBoxItem Content="Golden Axe" />
-                        <ComboBoxItem Content="Cyber Teal" />
-                        <ComboBoxItem Content="AMOLED Black" />
-                        <ComboBoxItem Content="AMOLED Purple" />
-                    </ComboBox>
-                </StackPanel>
-            </Border>
-
             <!-- About Section -->
             <Border Classes="card">
                 <StackPanel Spacing="12">
@@ -333,7 +333,7 @@
     </ScrollViewer>
 
         <!-- Log Viewer Dialog Overlay -->
-    <Border IsVisible="{Binding ShowLogViewer}"
+    <Border Grid.RowSpan="2" IsVisible="{Binding ShowLogViewer}"
             Background="#E0000000"
             HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
         <Border Classes="card"

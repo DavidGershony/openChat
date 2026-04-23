@@ -347,6 +347,8 @@ public class ChatViewModel : ViewModelBase
 
         _currentChat = chat;
         ChatId = chat.Id;
+        Services.NotificationOrchestrator.ActiveChatId = chat.Id;
+        Services.NotificationOrchestrator.NotificationService?.ClearNotificationsForChat(chat.Id);
         ChatName = chat.Name;
         ChatAvatarUrl = chat.AvatarUrl;
         IsGroup = chat.Type == ChatType.Group &&
@@ -411,6 +413,7 @@ public class ChatViewModel : ViewModelBase
     {
         _currentChat = null;
         ChatId = null;
+        Services.NotificationOrchestrator.ActiveChatId = null;
         ChatName = string.Empty;
         ChatAvatarUrl = null;
         IsGroup = false;

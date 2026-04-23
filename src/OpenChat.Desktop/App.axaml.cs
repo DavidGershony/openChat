@@ -11,6 +11,7 @@ using OpenChat.Core.Configuration;
 using OpenChat.Core.Logging;
 using OpenChat.UI.Views;
 using OpenChat.UI.Services;
+using OpenChat.Presentation.Services;
 using OpenChat.Presentation.ViewModels;
 using OpenChat.Core.Services;
 using ReactiveUI;
@@ -95,11 +96,18 @@ public partial class App : Application
                 _logger?.LogInformation("Using {Backend} MLS backend", ProfileConfiguration.ActiveMdkBackend);
 
                 _logger?.LogDebug("Creating MainWindow...");
+                // Set platform notification service
+                NotificationOrchestrator.NotificationService = new DesktopNotificationService();
+
                 desktop.MainWindow = new MainWindow
                 {
                     DataContext = shellViewModel
                 };
                 desktop.MainWindow.Title = "OpenChat" + ProfileConfiguration.WindowTitleSuffix;
+
+                // Track window focus for notification suppression
+                desktop.MainWindow.Activated += (_, _) => NotificationOrchestrator.IsAppInForeground = true;
+                desktop.MainWindow.Deactivated += (_, _) => NotificationOrchestrator.IsAppInForeground = false;
 
                 // File picker for image/media attach (needs MainWindow reference)
                 ChatViewModel.FilePickerFunc = async () =>

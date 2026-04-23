@@ -10,6 +10,7 @@ using OpenChat.Android.Services;
 using OpenChat.Core.Configuration;
 using OpenChat.Core.Logging;
 using OpenChat.Core.Services;
+using OpenChat.Presentation.Services;
 using OpenChat.Presentation.ViewModels;
 using ReactiveUI;
 using System.Reactive.Disposables;
@@ -45,8 +46,12 @@ public class MainActivity : AppCompatActivity, IActivatableView
 
         SetContentView(Resource.Layout.activity_main);
 
-        // Create notification channel for relay foreground service (safe to call multiple times)
+        // Create notification channels (safe to call multiple times)
         Services.RelayForegroundService.CreateNotificationChannel(this);
+        Services.AndroidNotificationService.CreateChannel(this);
+
+        // Set platform notification service for the orchestrator
+        NotificationOrchestrator.NotificationService = new Services.AndroidNotificationService(this);
 
         if (!_servicesInitialized)
         {
@@ -148,9 +153,16 @@ public class MainActivity : AppCompatActivity, IActivatableView
             .Commit();
     }
 
+    protected override void OnPause()
+    {
+        base.OnPause();
+        NotificationOrchestrator.IsAppInForeground = false;
+    }
+
     protected override void OnResume()
     {
         base.OnResume();
+        NotificationOrchestrator.IsAppInForeground = true;
 
         // Reconnect relay WebSockets after returning from background
         // (Android suspends network connections when app is backgrounded)
