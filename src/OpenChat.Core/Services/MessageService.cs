@@ -1501,6 +1501,7 @@ public class MessageService : IMessageService, IDisposable
             var eventId = await _nostrService.PublishKeyPackageAsync(
                 keyPackage.Data, _currentUser.PrivateKeyHex, keyPackage.NostrTags);
             keyPackage.NostrEventId = eventId;
+            keyPackage.RelayUrls = _nostrService.ConnectedRelayUrls.ToList();
             await _storageService.SaveKeyPackageAsync(keyPackage);
 
             _logger.LogInformation("AutoPublishKP: published new KeyPackage {EventId}", eventId[..Math.Min(16, eventId.Length)]);

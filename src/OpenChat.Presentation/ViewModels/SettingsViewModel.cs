@@ -497,6 +497,10 @@ public class SettingsViewModel : ViewModelBase
             var eventId = await _nostrService.PublishKeyPackageAsync(keyPackage.Data, PrivateKeyHex, keyPackage.NostrTags);
             _logger.LogInformation("Published key package with event ID: {EventId} using {TagCount} MDK tags", eventId, keyPackage.NostrTags.Count);
 
+            // Record which relays the key package was published to
+            keyPackage.NostrEventId = eventId;
+            keyPackage.RelayUrls = _nostrService.ConnectedRelayUrls.ToList();
+
             // Save key package locally
             await _storageService.SaveKeyPackageAsync(keyPackage);
 
