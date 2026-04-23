@@ -22,7 +22,12 @@ public interface IExternalSigner
     string? Npub { get; }
 
     /// <summary>
-    /// Relay URL used for the NIP-46 connection (for session persistence).
+    /// Relay URLs used for the NIP-46 connection (for session persistence).
+    /// </summary>
+    IReadOnlyList<string> RelayUrls { get; }
+
+    /// <summary>
+    /// Primary relay URL (first in the list, for backward compat).
     /// </summary>
     string? RelayUrl { get; }
 
@@ -82,14 +87,14 @@ public interface IExternalSigner
     /// Generate a connection URI for the user to scan/click.
     /// Used when initiating connection from the app side.
     /// </summary>
-    string GenerateConnectionUri(string relayUrl);
+    string GenerateConnectionUri(IEnumerable<string> relayUrls);
 
     /// <summary>
-    /// Generate a nostrconnect:// URI, connect to the relay, and listen for an
+    /// Generate a nostrconnect:// URI, connect to the relays, and listen for an
     /// incoming connection from a remote signer. Returns the URI for QR display.
     /// Status observable will fire Connected when the signer connects.
     /// </summary>
-    Task<string> GenerateAndListenForConnectionAsync(string relayUrl);
+    Task<string> GenerateAndListenForConnectionAsync(IEnumerable<string> relayUrls);
 
     /// <summary>
     /// Reconnect to the relay after the WebSocket was dropped (e.g. app backgrounded).
@@ -103,7 +108,7 @@ public interface IExternalSigner
     /// Reuses the original ephemeral keypair (Amber remembers this authorization).
     /// Does NOT send a connect request — just connects WebSocket and subscribes.
     /// </summary>
-    Task<bool> RestoreSessionAsync(string relayUrl, string remotePubKey, string localPrivateKeyHex, string localPublicKeyHex, string? secret = null);
+    Task<bool> RestoreSessionAsync(IEnumerable<string> relayUrls, string remotePubKey, string localPrivateKeyHex, string localPublicKeyHex, string? secret = null);
 
     /// <summary>
     /// The ephemeral local private key used for NIP-46 communication.

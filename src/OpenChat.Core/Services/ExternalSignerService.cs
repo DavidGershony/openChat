@@ -26,9 +26,8 @@ public class ExternalSignerService : IExternalSigner, IDisposable
 {
     private readonly ILogger<ExternalSignerService> _logger;
     private readonly Subject<ExternalSignerStatus> _status = new();
-    private ClientWebSocket? _webSocket;
+    private readonly List<RelayConnection> _relayConnections = new();
     private CancellationTokenSource? _cts;
-    private string? _relayUrl;
     private string? _remotePubKey;
     private string? _secret;
     private string? _localPrivateKeyHex;
@@ -37,6 +36,16 @@ public class ExternalSignerService : IExternalSigner, IDisposable
     private string? _replayedSignEventResult;
     private long _subscriptionSince;
     private bool _disposed;
+
+    private class RelayConnection : IDisposable
+    {
+        public string Url { get; }
+        public ClientWebSocket? WebSocket { get; set; }
+
+        public RelayConnection(string url) => Url = url;
+
+        public void Dispose() => WebSocket?.Dispose();
+    }
 
     public ExternalSignerService()
     {
@@ -47,7 +56,8 @@ public class ExternalSignerService : IExternalSigner, IDisposable
     public bool IsConnected { get; private set; }
     public string? PublicKeyHex { get; private set; }
     public string? Npub => PublicKeyHex != null ? Bech32.Encode("npub", Convert.FromHexString(PublicKeyHex)) : null;
-    public string? RelayUrl => _relayUrl;
+    public IReadOnlyList<string> RelayUrls => _relayConnections.Select(c => c.Url).ToList();
+    public string? RelayUrl => _relayConnections.FirstOrDefault()?.Url;
     public string? RemotePubKey => _remotePubKey;
     public string? Secret => _secret;
     public string? LocalPrivateKeyHex => _localPrivateKeyHex;
@@ -69,7 +79,7 @@ public class ExternalSignerService : IExternalSigner, IDisposable
             _status.OnNext(new ExternalSignerStatus { State = ExternalSignerState.Connecting });
 
             // Parse the connection string
-            if (!ParseConnectionString(connectionString, out var remotePubKey, out var relayUrl, out var secret))
+            if (!ParseConnectionString(connectionString, out var remotePubKey, out var relayUrls, out var secret))
             {
                 _logger.LogError("Failed to parse connection string - invalid format");
                 _status.OnNext(new ExternalSignerStatus
@@ -80,21 +90,33 @@ public class ExternalSignerService : IExternalSigner, IDisposable
                 return false;
             }
 
-            _logger.LogDebug("Parsed connection string - Relay: {Relay}, RemotePubKey: {PubKey}", relayUrl, remotePubKey?[..16] + "...");
+            _logger.LogDebug("Parsed connection string - Relays: {Relays}, RemotePubKey: {PubKey}", string.Join(", ", relayUrls!), remotePubKey?[..16] + "...");
 
             _remotePubKey = remotePubKey;
-            _relayUrl = relayUrl;
             _secret = secret;
 
-            // Validate relay URL before connecting (SSRF / scheme check)
-            var validationError = await ValidateSignerRelayUrlAsync(_relayUrl!);
-            if (validationError != null)
+            // Validate all relay URLs before connecting (SSRF / scheme check)
+            foreach (var url in relayUrls!)
             {
-                _logger.LogError("Signer relay URL rejected: {Error}", validationError);
+                var validationError = await ValidateSignerRelayUrlAsync(url);
+                if (validationError != null)
+                {
+                    _logger.LogWarning("Signer relay URL rejected: {Url} — {Error}", url, validationError);
+                }
+            }
+            var validUrls = new List<string>();
+            foreach (var url in relayUrls)
+            {
+                var err = await ValidateSignerRelayUrlAsync(url);
+                if (err == null) validUrls.Add(url);
+            }
+            if (validUrls.Count == 0)
+            {
+                _logger.LogError("No valid signer relay URLs");
                 _status.OnNext(new ExternalSignerStatus
                 {
                     State = ExternalSignerState.Error,
-                    Error = $"Invalid relay URL: {validationError}"
+                    Error = "No valid relay URLs"
                 });
                 return false;
             }
@@ -103,22 +125,11 @@ public class ExternalSignerService : IExternalSigner, IDisposable
             GenerateLocalKeyPair();
             _logger.LogDebug("Generated ephemeral keypair for NIP-46 communication");
 
-            // Connect to relay
-            _logger.LogInformation("Connecting to relay: {RelayUrl}", _relayUrl);
+            // Connect to all relays
+            _logger.LogInformation("Connecting to {Count} signer relays: {Relays}", validUrls.Count, string.Join(", ", validUrls));
             _subscriptionSince = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 5;
             _cts = new CancellationTokenSource();
-            _webSocket = new ClientWebSocket();
-            _webSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(30);
-            await _webSocket.ConnectAsync(new Uri(_relayUrl!), _cts.Token);
-            _logger.LogInformation("Successfully connected to relay");
-
-            // Start listening for messages
-            _ = Task.Run(() => ListenForMessagesAsync(_cts.Token));
-            _logger.LogDebug("Started message listener");
-
-            // Subscribe to responses from the signer
-            await SubscribeToSignerAsync();
-            _logger.LogDebug("Subscribed to signer responses");
+            await ConnectToRelaysAsync(validUrls);
 
             // Send connect request
             _logger.LogInformation("Sending connect request to signer, waiting for approval...");
@@ -164,30 +175,38 @@ public class ExternalSignerService : IExternalSigner, IDisposable
         }
     }
 
-    public async Task<bool> RestoreSessionAsync(string relayUrl, string remotePubKey, string localPrivateKeyHex, string localPublicKeyHex, string? secret = null)
+    public async Task<bool> RestoreSessionAsync(IEnumerable<string> relayUrls, string remotePubKey, string localPrivateKeyHex, string localPublicKeyHex, string? secret = null)
     {
-        _logger.LogInformation("Restoring NIP-46 session: relay={Relay}, remotePubKey={PubKey}, localPubKey={LocalPub}",
-            relayUrl, remotePubKey[..Math.Min(16, remotePubKey.Length)], localPublicKeyHex[..Math.Min(16, localPublicKeyHex.Length)]);
+        var urls = relayUrls.Distinct().ToList();
+        _logger.LogInformation("Restoring NIP-46 session: relays={Relays}, remotePubKey={PubKey}, localPubKey={LocalPub}",
+            string.Join(", ", urls), remotePubKey[..Math.Min(16, remotePubKey.Length)], localPublicKeyHex[..Math.Min(16, localPublicKeyHex.Length)]);
 
         try
         {
             _status.OnNext(new ExternalSignerStatus { State = ExternalSignerState.Connecting });
 
-            _relayUrl = relayUrl;
             _remotePubKey = remotePubKey;
             _secret = secret;
             _localPrivateKeyHex = localPrivateKeyHex;
             _localPublicKeyHex = localPublicKeyHex;
 
-            // Validate relay URL before connecting (SSRF / scheme check)
-            var validationError = await ValidateSignerRelayUrlAsync(_relayUrl);
-            if (validationError != null)
+            // Validate relay URLs (SSRF / scheme check)
+            var validUrls = new List<string>();
+            foreach (var url in urls)
             {
-                _logger.LogError("Signer relay URL rejected during restore: {Error}", validationError);
+                var err = await ValidateSignerRelayUrlAsync(url);
+                if (err != null)
+                    _logger.LogWarning("Signer relay URL rejected during restore: {Url} — {Error}", url, err);
+                else
+                    validUrls.Add(url);
+            }
+            if (validUrls.Count == 0)
+            {
+                _logger.LogError("No valid signer relay URLs during restore");
                 _status.OnNext(new ExternalSignerStatus
                 {
                     State = ExternalSignerState.Error,
-                    Error = $"Invalid relay URL: {validationError}"
+                    Error = "No valid relay URLs"
                 });
                 return false;
             }
@@ -195,22 +214,13 @@ public class ExternalSignerService : IExternalSigner, IDisposable
             // The signer's public key is the remote pubkey (what Amber uses as its identity)
             PublicKeyHex = remotePubKey;
 
-            // Connect WebSocket to relay
+            // Connect WebSockets to all relays
             _subscriptionSince = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 5;
             _cts = new CancellationTokenSource();
-            _webSocket = new ClientWebSocket();
-            _webSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(30);
-            await _webSocket.ConnectAsync(new Uri(_relayUrl), _cts.Token);
-            _logger.LogInformation("WebSocket connected to {Relay} for session restore", _relayUrl);
-
-            // Start listening
-            _ = Task.Run(() => ListenForMessagesAsync(_cts.Token));
-
-            // Subscribe to signer responses — no connect request needed
-            await SubscribeToSignerAsync();
+            await ConnectToRelaysAsync(validUrls);
 
             IsConnected = true;
-            _logger.LogInformation("NIP-46 session restored successfully. Ready to send requests.");
+            _logger.LogInformation("NIP-46 session restored on {Count} relays. Ready to send requests.", _relayConnections.Count);
             _status.OnNext(new ExternalSignerStatus
             {
                 State = ExternalSignerState.Connected,
@@ -238,17 +248,19 @@ public class ExternalSignerService : IExternalSigner, IDisposable
 
         _cts?.Cancel();
 
-        if (_webSocket != null && _webSocket.State == WebSocketState.Open)
+        foreach (var conn in _relayConnections)
         {
-            try
+            if (conn.WebSocket?.State == WebSocketState.Open)
             {
-                await _webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Disconnecting", CancellationToken.None);
+                try
+                {
+                    await conn.WebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Disconnecting", CancellationToken.None);
+                }
+                catch { }
             }
-            catch { }
+            conn.Dispose();
         }
-
-        _webSocket?.Dispose();
-        _webSocket = null;
+        _relayConnections.Clear();
         _cts?.Dispose();
         _cts = null;
 
@@ -288,34 +300,39 @@ public class ExternalSignerService : IExternalSigner, IDisposable
         return response;
     }
 
-    public string GenerateConnectionUri(string relayUrl)
+    public string GenerateConnectionUri(IEnumerable<string> relayUrls)
     {
         GenerateLocalKeyPair();
         _secret = GenerateRandomSecret();
-        // NIP-46 current spec: individual params instead of deprecated metadata JSON
         var perms = "nip04_encrypt,nip04_decrypt,nip44_encrypt,nip44_decrypt,sign_event:443,sign_event:444,sign_event:445,sign_event:1059";
-        var uri = $"nostrconnect://{_localPublicKeyHex}?relay={Uri.EscapeDataString(relayUrl)}&secret={_secret}&name=OpenChat&perms={Uri.EscapeDataString(perms)}";
-        _logger.LogInformation("Generated nostrconnect URI for relay {Relay}, local pubkey {PubKey}", relayUrl, _localPublicKeyHex?[..16]);
+        var relayParams = string.Join("", relayUrls.Select(r => $"&relay={Uri.EscapeDataString(r)}"));
+        var uri = $"nostrconnect://{_localPublicKeyHex}?{relayParams.TrimStart('&')}&secret={_secret}&name=OpenChat&perms={Uri.EscapeDataString(perms)}";
+        _logger.LogInformation("Generated nostrconnect URI for {Count} relays, local pubkey {PubKey}", relayUrls.Count(), _localPublicKeyHex?[..16]);
         return uri;
     }
 
-    public async Task<string> GenerateAndListenForConnectionAsync(string relayUrl)
+    public async Task<string> GenerateAndListenForConnectionAsync(IEnumerable<string> relayUrls)
     {
-        _logger.LogInformation("Generating nostrconnect URI and listening on relay: {Relay}", relayUrl);
+        var urls = relayUrls.Distinct().ToList();
+        _logger.LogInformation("Generating nostrconnect URI and listening on {Count} relays: {Relays}", urls.Count, string.Join(", ", urls));
 
-        // Validate relay URL before connecting (SSRF / scheme check)
-        var validationError = await ValidateSignerRelayUrlAsync(relayUrl);
-        if (validationError != null)
+        // Validate all relay URLs (SSRF / scheme check)
+        var validUrls = new List<string>();
+        foreach (var url in urls)
         {
-            _logger.LogError("Signer relay URL rejected: {Error}", validationError);
-            throw new ArgumentException($"Invalid relay URL: {validationError}", nameof(relayUrl));
+            var err = await ValidateSignerRelayUrlAsync(url);
+            if (err != null)
+                _logger.LogWarning("Signer relay URL rejected: {Url} — {Error}", url, err);
+            else
+                validUrls.Add(url);
         }
+        if (validUrls.Count == 0)
+            throw new ArgumentException("No valid relay URLs provided");
 
         // Reset connection state so Amber's connect ack is recognized (not cached as "replayed")
         IsConnected = false;
 
-        var uri = GenerateConnectionUri(relayUrl);
-        _relayUrl = relayUrl;
+        var uri = GenerateConnectionUri(validUrls);
 
         _logger.LogInformation("Generated nostrconnect URI. Local pubkey: {PubKey}", _localPublicKeyHex);
 
@@ -323,16 +340,8 @@ public class ExternalSignerService : IExternalSigner, IDisposable
 
         _subscriptionSince = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 120; // 2 min window for slow connections
         _cts = new CancellationTokenSource();
-        _webSocket = new ClientWebSocket();
-        _webSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(30);
-        using var connectTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, connectTimeout.Token);
-        await _webSocket.ConnectAsync(new Uri(relayUrl), linked.Token);
-        _logger.LogInformation("WebSocket connected to {Relay}. State: {State}", relayUrl, _webSocket.State);
-
-        _ = Task.Run(() => ListenForMessagesAsync(_cts.Token));
-        await SubscribeToSignerAsync();
-        _logger.LogInformation("Subscribed to kind 24133 events for pubkey {PubKey}. Waiting for signer...", _localPublicKeyHex?[..16]);
+        await ConnectToRelaysAsync(validUrls);
+        _logger.LogInformation("Subscribed to kind 24133 events on {Count} relays. Waiting for signer...", _relayConnections.Count);
 
         _status.OnNext(new ExternalSignerStatus { State = ExternalSignerState.WaitingForApproval });
 
@@ -342,64 +351,80 @@ public class ExternalSignerService : IExternalSigner, IDisposable
     public async Task ReconnectAsync()
     {
         // No-op if already connected or no prior connection state
-        if (IsConnected || _relayUrl == null || _localPrivateKeyHex == null || _localPublicKeyHex == null)
+        if (IsConnected || _relayConnections.Count == 0 || _localPrivateKeyHex == null || _localPublicKeyHex == null)
         {
-            _logger.LogDebug("ReconnectAsync: skipping (IsConnected={IsConnected}, hasRelay={HasRelay})",
-                IsConnected, _relayUrl != null);
+            _logger.LogDebug("ReconnectAsync: skipping (IsConnected={IsConnected}, relayCount={Count})",
+                IsConnected, _relayConnections.Count);
             return;
         }
 
-        _logger.LogInformation("Reconnecting to relay {Relay} after app resume", _relayUrl);
+        _logger.LogInformation("Reconnecting to {Count} signer relays after app resume", _relayConnections.Count);
 
         try
         {
-            // Re-validate relay URL on reconnect (URL may have been persisted from older version)
-            var validationError = await ValidateSignerRelayUrlAsync(_relayUrl);
-            if (validationError != null)
-            {
-                _logger.LogError("Signer relay URL rejected on reconnect: {Error}", validationError);
-                return;
-            }
-
-            // Clean up old WebSocket
+            // Clean up old connections
             _cts?.Cancel();
-            if (_webSocket != null)
+            foreach (var conn in _relayConnections)
             {
-                try { _webSocket.Dispose(); } catch { }
-                _webSocket = null;
+                try { conn.WebSocket?.Dispose(); } catch { }
+                conn.WebSocket = null;
             }
             _cts?.Dispose();
 
-            // Re-establish connection (keep the original _subscriptionSince so we don't miss events)
+            // Re-establish connections (keep the original _subscriptionSince so we don't miss events)
             _cts = new CancellationTokenSource();
-            _webSocket = new ClientWebSocket();
-            _webSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(30);
-            await _webSocket.ConnectAsync(new Uri(_relayUrl), _cts.Token);
-            _logger.LogInformation("Reconnected WebSocket to {Relay}. State: {State}", _relayUrl, _webSocket.State);
-
-            // Restart listener and re-subscribe
-            _ = Task.Run(() => ListenForMessagesAsync(_cts.Token));
-            await SubscribeToSignerAsync();
-
-            IsConnected = true;
-            _status.OnNext(new ExternalSignerStatus
+            var reconnected = 0;
+            foreach (var conn in _relayConnections)
             {
-                State = ExternalSignerState.Connected,
-                IsConnected = true,
-                PublicKeyHex = PublicKeyHex
-            });
-            _logger.LogInformation("Reconnected and restored signer session (since={Since})", _subscriptionSince);
+                try
+                {
+                    var validationError = await ValidateSignerRelayUrlAsync(conn.Url);
+                    if (validationError != null)
+                    {
+                        _logger.LogWarning("Signer relay URL rejected on reconnect: {Url} — {Error}", conn.Url, validationError);
+                        continue;
+                    }
+
+                    conn.WebSocket = new ClientWebSocket();
+                    conn.WebSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(30);
+                    await conn.WebSocket.ConnectAsync(new Uri(conn.Url), _cts.Token);
+                    _ = Task.Run(() => ListenForMessagesAsync(conn, _cts.Token));
+                    await SubscribeToSignerAsync(conn);
+                    reconnected++;
+                    _logger.LogInformation("Reconnected to signer relay {Relay}", conn.Url);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to reconnect to signer relay {Relay}", conn.Url);
+                }
+            }
+
+            if (reconnected > 0)
+            {
+                IsConnected = true;
+                _status.OnNext(new ExternalSignerStatus
+                {
+                    State = ExternalSignerState.Connected,
+                    IsConnected = true,
+                    PublicKeyHex = PublicKeyHex
+                });
+                _logger.LogInformation("Reconnected to {Count} signer relays (since={Since})", reconnected, _subscriptionSince);
+            }
+            else
+            {
+                _logger.LogError("Failed to reconnect to any signer relay");
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to reconnect to relay");
+            _logger.LogError(ex, "Failed to reconnect to signer relays");
         }
     }
 
-    private bool ParseConnectionString(string connectionString, out string? remotePubKey, out string? relayUrl, out string? secret)
+    private bool ParseConnectionString(string connectionString, out string? remotePubKey, out List<string>? relayUrls, out string? secret)
     {
         remotePubKey = null;
-        relayUrl = null;
+        relayUrls = null;
         secret = null;
 
         try
@@ -423,16 +448,71 @@ public class ExternalSignerService : IExternalSigner, IDisposable
                 return false;
             }
 
-            // Parse query parameters
+            // Parse query parameters — collect all relay= values
             var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
-            relayUrl = query["relay"];
+            var relays = query.GetValues("relay");
+            relayUrls = relays?.Where(r => !string.IsNullOrEmpty(r)).Distinct().ToList() ?? new();
             secret = query["secret"];
 
-            return !string.IsNullOrEmpty(remotePubKey) && !string.IsNullOrEmpty(relayUrl);
+            return !string.IsNullOrEmpty(remotePubKey) && relayUrls.Count > 0;
         }
         catch
         {
             return false;
+        }
+    }
+
+    private async Task ConnectToRelaysAsync(List<string> urls)
+    {
+        // Clean up existing connections
+        foreach (var conn in _relayConnections)
+            conn.Dispose();
+        _relayConnections.Clear();
+
+        foreach (var url in urls)
+        {
+            var conn = new RelayConnection(url);
+            try
+            {
+                conn.WebSocket = new ClientWebSocket();
+                conn.WebSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(30);
+                using var connectTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                using var linked = CancellationTokenSource.CreateLinkedTokenSource(_cts!.Token, connectTimeout.Token);
+                await conn.WebSocket.ConnectAsync(new Uri(url), linked.Token);
+                _relayConnections.Add(conn);
+                _ = Task.Run(() => ListenForMessagesAsync(conn, _cts.Token));
+                await SubscribeToSignerAsync(conn);
+                _logger.LogInformation("Connected to signer relay {Relay}", url);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to connect to signer relay {Relay}", url);
+                conn.Dispose();
+            }
+        }
+
+        if (_relayConnections.Count == 0)
+            throw new InvalidOperationException("Failed to connect to any signer relay");
+
+        _logger.LogInformation("Connected to {Count}/{Total} signer relays", _relayConnections.Count, urls.Count);
+    }
+
+    private async Task BroadcastToRelaysAsync(byte[] bytes)
+    {
+        var ct = _cts?.Token ?? CancellationToken.None;
+        foreach (var conn in _relayConnections)
+        {
+            if (conn.WebSocket?.State == WebSocketState.Open)
+            {
+                try
+                {
+                    await conn.WebSocket.SendAsync(bytes, WebSocketMessageType.Text, true, ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to send to signer relay {Relay}", conn.Url);
+                }
+            }
         }
     }
 
@@ -461,9 +541,9 @@ public class ExternalSignerService : IExternalSigner, IDisposable
         return Convert.ToHexString(bytes).ToLowerInvariant();
     }
 
-    private async Task SubscribeToSignerAsync()
+    private async Task SubscribeToSignerAsync(RelayConnection conn)
     {
-        if (_webSocket == null || _localPublicKeyHex == null) return;
+        if (conn.WebSocket == null || _localPublicKeyHex == null) return;
 
         // Subscribe to kind 24133 events (NIP-46 responses) tagged to our local pubkey
         // Use the original subscription time so reconnects don't miss events sent while backgrounded
@@ -476,9 +556,9 @@ public class ExternalSignerService : IExternalSigner, IDisposable
         };
 
         var req = JsonSerializer.Serialize(new object[] { "REQ", subscriptionId, filter });
-        _logger.LogDebug("NIP-46 sending REQ: {Req}", req);
+        _logger.LogDebug("NIP-46 sending REQ to {Relay}: {Req}", conn.Url, req);
         var bytes = Encoding.UTF8.GetBytes(req);
-        await _webSocket.SendAsync(bytes, WebSocketMessageType.Text, true, _cts?.Token ?? CancellationToken.None);
+        await conn.WebSocket.SendAsync(bytes, WebSocketMessageType.Text, true, _cts?.Token ?? CancellationToken.None);
     }
 
     private Task<string> SendRequestAsync(string method, string[] @params)
@@ -491,18 +571,19 @@ public class ExternalSignerService : IExternalSigner, IDisposable
             throw new InvalidOperationException("Not connected — no signer session");
         }
 
-        // Auto-reconnect if WebSocket died (e.g. app was backgrounded)
-        if (_webSocket == null || _webSocket.State != WebSocketState.Open)
+        // Auto-reconnect if no WebSockets are open (e.g. app was backgrounded)
+        var hasOpenSocket = _relayConnections.Any(c => c.WebSocket?.State == WebSocketState.Open);
+        if (!hasOpenSocket)
         {
-            _logger.LogWarning("WebSocket not open (state: {State}) for {Method} — attempting reconnect",
-                _webSocket?.State.ToString() ?? "null", method);
+            _logger.LogWarning("No open WebSockets for {Method} — attempting reconnect", method);
             _replayedSignEventResult = null;
             IsConnected = false;
             await ReconnectAsync();
-            if (_webSocket == null || _webSocket.State != WebSocketState.Open)
+            hasOpenSocket = _relayConnections.Any(c => c.WebSocket?.State == WebSocketState.Open);
+            if (!hasOpenSocket)
             {
                 throw new InvalidOperationException(
-                    $"Cannot send {method}: WebSocket reconnect failed (state: {_webSocket?.State})");
+                    $"Cannot send {method}: WebSocket reconnect failed — no relays connected");
             }
 
             // Wait briefly for the relay to replay stored responses from while we were offline.
@@ -576,7 +657,7 @@ public class ExternalSignerService : IExternalSigner, IDisposable
         var tcs = new TaskCompletionSource<string>();
         _pendingRequests[requestId] = tcs;
 
-        await _webSocket.SendAsync(bytes, WebSocketMessageType.Text, true, _cts?.Token ?? CancellationToken.None);
+        await BroadcastToRelaysAsync(bytes);
 
         // Wait for response with timeout (sign_event needs longer for user approval)
         using var timeoutCts = new CancellationTokenSource(timeout);
@@ -686,7 +767,7 @@ public class ExternalSignerService : IExternalSigner, IDisposable
 
     private async Task SendNip46ResponseAsync(string requestId, string result, string recipientPubKey)
     {
-        if (_webSocket == null || _localPrivateKeyHex == null || _localPublicKeyHex == null) return;
+        if (_localPrivateKeyHex == null || _localPublicKeyHex == null) return;
 
         try
         {
@@ -724,7 +805,7 @@ public class ExternalSignerService : IExternalSigner, IDisposable
             }
 
             var bytes = Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(ms.ToArray()));
-            await _webSocket.SendAsync(bytes, WebSocketMessageType.Text, true, _cts?.Token ?? CancellationToken.None);
+            await BroadcastToRelaysAsync(bytes);
             _logger.LogDebug("NIP-46 sent ack response for request {Id}", requestId);
         }
         catch (Exception ex)
@@ -733,21 +814,21 @@ public class ExternalSignerService : IExternalSigner, IDisposable
         }
     }
 
-    private async Task ListenForMessagesAsync(CancellationToken ct)
+    private async Task ListenForMessagesAsync(RelayConnection conn, CancellationToken ct)
     {
-        _logger.LogInformation("NIP-46 WebSocket listener started. State: {State}", _webSocket?.State);
+        _logger.LogInformation("NIP-46 WebSocket listener started for {Relay}. State: {State}", conn.Url, conn.WebSocket?.State);
         var buffer = new byte[8192];
         var messageBuffer = new List<byte>();
 
-        while (!ct.IsCancellationRequested && _webSocket?.State == WebSocketState.Open)
+        while (!ct.IsCancellationRequested && conn.WebSocket?.State == WebSocketState.Open)
         {
             try
             {
-                var result = await _webSocket.ReceiveAsync(buffer, ct);
+                var result = await conn.WebSocket.ReceiveAsync(buffer, ct);
 
                 if (result.MessageType == WebSocketMessageType.Close)
                 {
-                    _logger.LogWarning("NIP-46 WebSocket closed by relay");
+                    _logger.LogWarning("NIP-46 WebSocket closed by relay {Relay}", conn.Url);
                     break;
                 }
 
@@ -757,32 +838,31 @@ public class ExternalSignerService : IExternalSigner, IDisposable
                 {
                     var message = Encoding.UTF8.GetString(messageBuffer.ToArray());
                     messageBuffer.Clear();
-                    _logger.LogInformation("NIP-46 raw relay data ({Len} bytes): {Data}",
-                        message.Length, message.Length > 300 ? message[..300] + "..." : message);
-                    ProcessMessage(message);
+                    _logger.LogInformation("NIP-46 raw relay data from {Relay} ({Len} bytes): {Data}",
+                        conn.Url, message.Length, message.Length > 300 ? message[..300] + "..." : message);
+                    ProcessMessage(message, conn);
                 }
             }
             catch (OperationCanceledException)
             {
-                _logger.LogDebug("NIP-46 WebSocket listener cancelled");
+                _logger.LogDebug("NIP-46 WebSocket listener cancelled for {Relay}", conn.Url);
                 break;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "NIP-46 WebSocket listener error. State: {State}", _webSocket?.State);
-                // Continue listening on transient errors
+                _logger.LogError(ex, "NIP-46 WebSocket listener error for {Relay}. State: {State}", conn.Url, conn.WebSocket?.State);
             }
         }
 
-        _logger.LogWarning("NIP-46 WebSocket listener exited. State: {State}, Cancelled: {Cancelled}",
-            _webSocket?.State, ct.IsCancellationRequested);
+        _logger.LogWarning("NIP-46 WebSocket listener exited for {Relay}. State: {State}, Cancelled: {Cancelled}",
+            conn.Url, conn.WebSocket?.State, ct.IsCancellationRequested);
     }
 
-    private void ProcessMessage(string message)
+    private void ProcessMessage(string message, RelayConnection conn)
     {
         try
         {
-            _logger.LogDebug("NIP-46 relay message: {Message}", message.Length > 500 ? message[..500] + "..." : message);
+            _logger.LogDebug("NIP-46 relay message from {Relay}: {Message}", conn.Url, message.Length > 500 ? message[..500] + "..." : message);
 
             using var doc = JsonDocument.Parse(message);
             var root = doc.RootElement;
@@ -798,26 +878,26 @@ public class ExternalSignerService : IExternalSigner, IDisposable
                 var accepted = root[2].GetBoolean();
                 var reason = root.GetArrayLength() > 3 ? root[3].GetString() : "";
                 if (accepted)
-                    _logger.LogInformation("NIP-46 event {EventId} accepted by relay", eventId?[..16]);
+                    _logger.LogInformation("NIP-46 event {EventId} accepted by {Relay}", eventId?[..16], conn.Url);
                 else
-                    _logger.LogError("NIP-46 event {EventId} REJECTED by relay: {Reason}", eventId?[..16], reason);
+                    _logger.LogError("NIP-46 event {EventId} REJECTED by {Relay}: {Reason}", eventId?[..16], conn.Url, reason);
             }
             else if (messageType == "NOTICE")
             {
                 var notice = root[1].GetString();
-                _logger.LogWarning("NIP-46 relay NOTICE: {Notice}", notice);
+                _logger.LogWarning("NIP-46 relay NOTICE from {Relay}: {Notice}", conn.Url, notice);
             }
             else if (messageType == "EOSE")
             {
-                _logger.LogDebug("NIP-46 end of stored events");
+                _logger.LogDebug("NIP-46 end of stored events from {Relay}", conn.Url);
             }
             else if (messageType == "AUTH" && root.GetArrayLength() >= 2)
             {
                 var challenge = root[1].GetString();
-                _logger.LogInformation("NIP-42 AUTH challenge from relay: {Challenge}", challenge);
+                _logger.LogInformation("NIP-42 AUTH challenge from {Relay}: {Challenge}", conn.Url, challenge);
                 if (!string.IsNullOrEmpty(challenge))
                 {
-                    _ = HandleAuthChallengeAsync(challenge);
+                    _ = HandleAuthChallengeAsync(challenge, conn);
                 }
             }
             else if (messageType == "EVENT" && root.GetArrayLength() >= 3)
@@ -858,19 +938,19 @@ public class ExternalSignerService : IExternalSigner, IDisposable
         }
     }
 
-    private async Task HandleAuthChallengeAsync(string challenge)
+    private async Task HandleAuthChallengeAsync(string challenge, RelayConnection conn)
     {
         try
         {
-            if (_webSocket == null || _webSocket.State != WebSocketState.Open ||
-                _localPrivateKeyHex == null || _localPublicKeyHex == null || _relayUrl == null)
+            if (conn.WebSocket == null || conn.WebSocket.State != WebSocketState.Open ||
+                _localPrivateKeyHex == null || _localPublicKeyHex == null)
             {
                 _logger.LogWarning("NIP-42: cannot respond to AUTH — no connection or keys");
                 return;
             }
 
             var createdAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            var tags = new[] { new[] { "relay", _relayUrl }, new[] { "challenge", challenge } };
+            var tags = new[] { new[] { "relay", conn.Url }, new[] { "challenge", challenge } };
             var eventId = ComputeEventId(22242, _localPublicKeyHex, createdAt, tags, "");
             var signature = SignEventId(eventId, _localPrivateKeyHex);
 
@@ -900,8 +980,8 @@ public class ExternalSignerService : IExternalSigner, IDisposable
             }
 
             var bytes = ms.ToArray();
-            await _webSocket.SendAsync(bytes, WebSocketMessageType.Text, true, _cts?.Token ?? CancellationToken.None);
-            _logger.LogInformation("NIP-42: sent AUTH response to {Relay}", _relayUrl);
+            await conn.WebSocket.SendAsync(bytes, WebSocketMessageType.Text, true, _cts?.Token ?? CancellationToken.None);
+            _logger.LogInformation("NIP-42: sent AUTH response to {Relay}", conn.Url);
         }
         catch (Exception ex)
         {
@@ -1065,7 +1145,9 @@ public class ExternalSignerService : IExternalSigner, IDisposable
         if (_disposed) return;
 
         _cts?.Cancel();
-        _webSocket?.Dispose();
+        foreach (var conn in _relayConnections)
+            conn.Dispose();
+        _relayConnections.Clear();
         _cts?.Dispose();
         _status.Dispose();
 

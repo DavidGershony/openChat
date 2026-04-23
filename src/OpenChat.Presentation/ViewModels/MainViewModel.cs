@@ -328,7 +328,7 @@ public class MainViewModel : ViewModelBase
                     // Restore session using persisted ephemeral keypair — no connect request needed,
                     // Amber already authorized this keypair during initial login
                     var connected = await ExternalSigner!.RestoreSessionAsync(
-                        CurrentUser.SignerRelayUrl,
+                        CurrentUser.GetSignerRelayUrls(),
                         CurrentUser.SignerRemotePubKey,
                         CurrentUser.SignerLocalPrivateKeyHex,
                         CurrentUser.SignerLocalPublicKeyHex,

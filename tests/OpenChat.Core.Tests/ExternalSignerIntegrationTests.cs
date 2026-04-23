@@ -37,6 +37,7 @@ public class ExternalSignerIntegrationTests
         public bool IsConnected => true;
         public string? PublicKeyHex => _publicKeyHex;
         public string? Npub => null;
+        public IReadOnlyList<string> RelayUrls => Array.Empty<string>();
         public string? RelayUrl => null;
         public string? RemotePubKey => null;
         public string? Secret => null;
@@ -106,10 +107,10 @@ public class ExternalSignerIntegrationTests
         public Task<bool> ConnectAsync(string bunkerUrl) => throw new NotImplementedException();
         public Task<bool> ConnectWithStringAsync(string connectionString) => throw new NotImplementedException();
         public Task DisconnectAsync() => Task.CompletedTask;
-        public string GenerateConnectionUri(string relayUrl) => throw new NotImplementedException();
-        public Task<string> GenerateAndListenForConnectionAsync(string relayUrl) => throw new NotImplementedException();
+        public string GenerateConnectionUri(IEnumerable<string> relayUrls) => throw new NotImplementedException();
+        public Task<string> GenerateAndListenForConnectionAsync(IEnumerable<string> relayUrls) => throw new NotImplementedException();
         public Task ReconnectAsync() => throw new NotImplementedException();
-        public Task<bool> RestoreSessionAsync(string relayUrl, string remotePubKey,
+        public Task<bool> RestoreSessionAsync(IEnumerable<string> relayUrls, string remotePubKey,
             string localPrivateKeyHex, string localPublicKeyHex, string? secret = null) =>
             throw new NotImplementedException();
     }

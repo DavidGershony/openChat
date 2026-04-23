@@ -79,9 +79,16 @@ public class User
     public bool IsRemoteSigner => string.IsNullOrEmpty(PrivateKeyHex) && !string.IsNullOrEmpty(SignerRemotePubKey);
 
     /// <summary>
-    /// Relay URL for NIP-46 external signer session (persisted for auto-reconnect on restart).
+    /// Relay URL(s) for NIP-46 external signer session (persisted for auto-reconnect on restart).
+    /// Multiple URLs are stored semicolon-delimited.
     /// </summary>
     public string? SignerRelayUrl { get; set; }
+
+    public List<string> GetSignerRelayUrls() =>
+        SignerRelayUrl?.Split(';', StringSplitOptions.RemoveEmptyEntries).ToList() ?? new();
+
+    public void SetSignerRelayUrls(IEnumerable<string> urls) =>
+        SignerRelayUrl = string.Join(";", urls);
 
     /// <summary>
     /// Remote public key of the NIP-46 signer (persisted for auto-reconnect on restart).

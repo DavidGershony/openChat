@@ -154,7 +154,7 @@ public class SecurityAuditTests
     public void GenerateConnectionUri_DoesNotLogSecret()
     {
         var signer = new ExternalSignerService();
-        var uri = signer.GenerateConnectionUri("wss://relay.example.com");
+        var uri = signer.GenerateConnectionUri(new[] { "wss://relay.example.com" });
 
         // The URI should contain a secret
         Assert.Contains("secret=", uri);

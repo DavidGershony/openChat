@@ -153,7 +153,8 @@ public class LoginViewModel : ViewModelBase
         try
         {
             var signerRelay = string.IsNullOrWhiteSpace(SignerRelayInput) ? "wss://relay.damus.io" : SignerRelayInput.Trim();
-            var uri = await ExternalSigner!.GenerateAndListenForConnectionAsync(signerRelay);
+            var relays = new[] { signerRelay, "wss://relay.nsec.app" }.Distinct().ToList();
+            var uri = await ExternalSigner!.GenerateAndListenForConnectionAsync(relays);
             NostrConnectUri = uri;
             NostrConnectQrPngBytes = _qrCodeGenerator.GeneratePng(uri);
             _logger.LogInformation("Generated nostrconnect QR code (URI redacted — contains secret)");
@@ -261,7 +262,7 @@ public class LoginViewModel : ViewModelBase
                 PrivateKeyHex = null,
                 Nsec = null,
                 // Persist signer session details for auto-reconnect on app restart
-                SignerRelayUrl = ExternalSigner.RelayUrl,
+                SignerRelayUrl = string.Join(";", ExternalSigner.RelayUrls),
                 SignerRemotePubKey = ExternalSigner.RemotePubKey,
                 SignerSecret = ExternalSigner.Secret,
                 SignerLocalPrivateKeyHex = ExternalSigner.LocalPrivateKeyHex,
