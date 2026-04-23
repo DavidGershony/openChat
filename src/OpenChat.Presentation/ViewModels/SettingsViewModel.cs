@@ -280,7 +280,7 @@ public class SettingsViewModel : ViewModelBase
         {
             PublicKeyHex = user.PublicKeyHex;
             PrivateKeyHex = user.PrivateKeyHex;
-            CanEditProfile = !string.IsNullOrEmpty(user.PrivateKeyHex);
+            CanEditProfile = !user.IsRemoteSigner;
             Npub = user.Npub;
             DisplayName = user.DisplayName;
             Username = user.Username;

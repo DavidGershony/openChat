@@ -73,6 +73,12 @@ public class User
     public bool IsCurrentUser { get; set; }
 
     /// <summary>
+    /// Whether this user authenticates via an external signer (e.g. Amber / NIP-46)
+    /// rather than holding a local private key.
+    /// </summary>
+    public bool IsRemoteSigner => string.IsNullOrEmpty(PrivateKeyHex) && !string.IsNullOrEmpty(SignerRemotePubKey);
+
+    /// <summary>
     /// Relay URL for NIP-46 external signer session (persisted for auto-reconnect on restart).
     /// </summary>
     public string? SignerRelayUrl { get; set; }

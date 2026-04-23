@@ -86,13 +86,12 @@ public class ChatListFragment : Fragment
         var profileAvatar = view.FindViewById<ImageView>(Resource.Id.toolbar_profile_avatar)!;
         var relayText = view.FindViewById<TextView>(Resource.Id.toolbar_relay_text)!;
 
-        // Only show profile avatar for app-created users
+        // Show profile avatar for all logged-in users (including external signer)
         _mainViewModel.WhenAnyValue(x => x.CurrentUser)
             .ObserveOn(RxApp.MainThreadScheduler)
             .Subscribe(user =>
             {
-                var hasPrivateKey = !string.IsNullOrEmpty(user?.PrivateKeyHex);
-                profileAvatar.Visibility = hasPrivateKey ? ViewStates.Visible : ViewStates.Gone;
+                profileAvatar.Visibility = user != null ? ViewStates.Visible : ViewStates.Gone;
             })
             .DisposeWith(_disposables);
 
@@ -466,9 +465,9 @@ public class ChatListFragment : Fragment
         var loadingIndicator = dialogView.FindViewById<ProgressBar>(Resource.Id.my_profile_loading)!;
         var qrImage = dialogView.FindViewById<ImageView>(Resource.Id.my_npub_qr)!;
 
-        // Show nsec section only for app-created users
-        var hasNsec = !string.IsNullOrEmpty(_mainViewModel.CurrentUser?.PrivateKeyHex);
-        nsecSection.Visibility = hasNsec ? ViewStates.Visible : ViewStates.Gone;
+        // Hide nsec section for remote signer users (e.g. Amber)
+        var isRemoteSigner = _mainViewModel.CurrentUser?.IsRemoteSigner == true;
+        nsecSection.Visibility = isRemoteSigner ? ViewStates.Gone : ViewStates.Visible;
 
         var dialog = new MaterialAlertDialogBuilder(Context)
             .SetTitle("My Profile")!
