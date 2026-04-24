@@ -126,8 +126,8 @@ public class WhitenoiseDockerClient : IAsyncDisposable
 
         using var doc = JsonDocument.Parse(json);
         var result = UnwrapResult(doc);
-        var groupId = (result.TryGetProperty("group_id", out var gid) ? gid.GetString()
-                       : result.TryGetProperty("mls_group_id", out var gid2) ? gid2.GetString()
+        var groupId = (result.TryGetProperty("group_id", out var gid) ? WhitenoiseGroup.ExtractGroupIdHex(gid)
+                       : result.TryGetProperty("mls_group_id", out var gid2) ? WhitenoiseGroup.ExtractGroupIdHex(gid2)
                        : null) ?? throw new InvalidOperationException($"No group_id in response: {json}");
         return groupId;
     }
