@@ -105,9 +105,9 @@ public class MlsService : IMlsService
             var root = doc.RootElement;
 
             // Check kind
-            if (root.TryGetProperty("kind", out var kindProp) && kindProp.GetInt32() != 443)
+            if (root.TryGetProperty("kind", out var kindProp) && kindProp.GetInt32() != 30443)
             {
-                throw new InvalidOperationException($"KeyPackage event has wrong kind: {kindProp.GetInt32()} (expected 443)");
+                throw new InvalidOperationException($"KeyPackage event has wrong kind: {kindProp.GetInt32()} (expected 30443)");
             }
 
             // Check content is non-empty and reasonable

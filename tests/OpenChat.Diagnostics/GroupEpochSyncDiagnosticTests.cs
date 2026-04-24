@@ -247,26 +247,30 @@ public class GroupEpochSyncDiagnosticTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Build a synthetic kind-443 Nostr event JSON for a KeyPackage so AddMemberAsync can parse it.
+    /// Build a synthetic kind-30443 Nostr event JSON for a KeyPackage so AddMemberAsync can parse it.
     /// In production this comes from the relay; in tests we build it locally.
     /// </summary>
     private static KeyPackage WrapKeyPackageWithEventJson(KeyPackage kp, string ownerPubKeyHex)
     {
         var content = Convert.ToBase64String(kp.Data);
         var tags = kp.NostrTags ?? new List<List<string>>();
+        // Ensure relays tag has at least one URL (Rust MDK validates this)
+        var relaysTag = tags.FirstOrDefault(t => t.Count >= 1 && t[0] == "relays");
+        if (relaysTag != null && relaysTag.Count <= 1)
+            relaysTag.Add("wss://test.thedude.cloud");
         var tagsJson = JsonSerializer.Serialize(tags);
 
         // Generate valid 64-char hex strings for id and sig (Rust MDK validates format)
         var fakeId = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
         var fakeSig = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(64)).ToLowerInvariant();
 
-        // Build a minimal but valid kind-443 event JSON
+        // Build a minimal but valid kind-30443 event JSON
         var eventJson = $$"""
         {
             "id": "{{fakeId}}",
             "pubkey": "{{ownerPubKeyHex}}",
             "created_at": {{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}},
-            "kind": 443,
+            "kind": 30443,
             "tags": {{tagsJson}},
             "content": "{{content}}",
             "sig": "{{fakeSig}}"

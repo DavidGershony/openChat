@@ -19,7 +19,7 @@ namespace OpenChat.Diagnostics;
 [Trait("Category", "WebInterop")]
 public class ExporterSecretDiagnosticTests : IAsyncLifetime
 {
-    private const string RelayUrl = "wss://relay2.angor.io";
+    private const string RelayUrl = "wss://test.thedude.cloud";
     private readonly ITestOutputHelper _output;
     private readonly List<string> _dbPaths = new();
     private readonly List<NostrService> _nostrServices = new();
@@ -112,7 +112,7 @@ public class ExporterSecretDiagnosticTests : IAsyncLifetime
 
         // Create a fake event JSON for the KeyPackage (needed by AddMemberAsync)
         var kpContent = Convert.ToBase64String(kpBob.Data);
-        var fakeEventJson = $"{{\"id\":\"fake\",\"pubkey\":\"{bob.pubHex}\",\"created_at\":0,\"kind\":443,\"tags\":[],\"content\":\"{kpContent}\",\"sig\":\"fake\"}}";
+        var fakeEventJson = $"{{\"id\":\"fake\",\"pubkey\":\"{bob.pubHex}\",\"created_at\":0,\"kind\":30443,\"tags\":[],\"content\":\"{kpContent}\",\"sig\":\"fake\"}}";
         var kp = new KeyPackage
         {
             Id = Guid.NewGuid().ToString(),

@@ -25,7 +25,7 @@ namespace OpenChat.Diagnostics;
 [Trait("Category", "WebInterop")]
 public class WebAppInteropInvestigationTests : IAsyncLifetime
 {
-    private const string RelayUrl = "wss://relay2.angor.io";
+    private const string RelayUrl = "wss://test.thedude.cloud";
 
     private readonly ITestOutputHelper _output;
     private readonly List<string> _dbPaths = new();
@@ -160,11 +160,11 @@ public class WebAppInteropInvestigationTests : IAsyncLifetime
         // ── Step 4: Fetch and inspect raw KeyPackage events from relay ──
         _output.WriteLine("\n--- Fetching raw KeyPackage events from relay ---");
         var bobKpRaw = await FetchRawEventsFromRelay(RelayUrl,
-            new { kinds = new[] { 443 }, authors = new[] { bob.PubKeyHex }, limit = 5 });
+            new { kinds = new[] { 30443 }, authors = new[] { bob.PubKeyHex }, limit = 5 });
         LogRawEvents("Bob's KeyPackage events", bobKpRaw);
 
         var charlieKpRaw = await FetchRawEventsFromRelay(RelayUrl,
-            new { kinds = new[] { 443 }, authors = new[] { charlie.PubKeyHex }, limit = 5 });
+            new { kinds = new[] { 30443 }, authors = new[] { charlie.PubKeyHex }, limit = 5 });
         LogRawEvents("Charlie's KeyPackage events", charlieKpRaw);
 
         // ── Step 5: Alice creates a group ──
@@ -479,10 +479,10 @@ public class WebAppInteropInvestigationTests : IAsyncLifetime
         _output.WriteLine("  TEST: Fetch existing events from relay2.angor.io");
         _output.WriteLine("═══════════════════════════════════════════════════════════");
 
-        // Fetch recent KeyPackage events (kind 443)
-        _output.WriteLine("\n--- Recent KeyPackage events (kind 443) ---");
+        // Fetch recent KeyPackage events (kind 30443)
+        _output.WriteLine("\n--- Recent KeyPackage events (kind 30443) ---");
         var kpEvents = await FetchRawEventsFromRelay(RelayUrl,
-            new { kinds = new[] { 443 }, limit = 10 });
+            new { kinds = new[] { 30443 }, limit = 10 });
         LogRawEvents("Recent KeyPackages", kpEvents);
 
         // Analyze each KP event for tag format
@@ -545,7 +545,7 @@ public class WebAppInteropInvestigationTests : IAsyncLifetime
 
         // Fetch the event back and compare
         var rawEvents = await FetchRawEventsFromRelay(RelayUrl,
-            new { kinds = new[] { 443 }, authors = new[] { user.PubKeyHex }, limit = 1 });
+            new { kinds = new[] { 30443 }, authors = new[] { user.PubKeyHex }, limit = 1 });
 
         if (rawEvents.Count > 0)
         {

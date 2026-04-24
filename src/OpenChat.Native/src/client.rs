@@ -59,11 +59,11 @@ impl MarmotClient {
         let relays = self.default_relays.clone();
 
         let mdk = self.mdk.read();
-        let (key_package_base64, mdk_tags, _raw_kp) = mdk.create_key_package_for_event(&public_key, relays)
+        let kp_data = mdk.create_key_package_for_event(&public_key, relays)
             .map_err(|e| MarmotError::Internal(format!("Failed to create key package: {}", e)))?;
 
-        // Convert nostr::Tag array to Vec<Vec<String>> for JSON serialization
-        let tags: Vec<Vec<String>> = mdk_tags
+        // Use kind 30443 tags (addressable events, current MIP-00 spec)
+        let tags: Vec<Vec<String>> = kp_data.tags_30443
             .into_iter()
             .map(|tag: nostr::Tag| tag.to_vec())
             .collect();
@@ -76,7 +76,7 @@ impl MarmotClient {
         }
 
         let result = KeyPackageResult {
-            content: key_package_base64,
+            content: kp_data.content,
             tags,
         };
 
@@ -212,7 +212,7 @@ impl MarmotClient {
         );
 
         let mdk = self.mdk.write();
-        let event = mdk.create_message(&mls_group_id, rumor)
+        let event = mdk.create_message(&mls_group_id, rumor, None)
             .map_err(|e| MarmotError::Internal(format!("Failed to encrypt message: {}", e)))?;
 
         // Serialize to JSON

@@ -323,7 +323,7 @@ public class Mip01InteropTests : IAsyncLifetime
         var content = Convert.ToBase64String(keyPackageData);
         var createdAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
-        var serialized = NostrService.SerializeForEventId(publicKeyHex, createdAt, 443, tags, content);
+        var serialized = NostrService.SerializeForEventId(publicKeyHex, createdAt, 30443, tags, content);
         var idBytes = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(serialized));
         var eventId = Convert.ToHexString(idBytes).ToLowerInvariant();
 
@@ -336,7 +336,7 @@ public class Mip01InteropTests : IAsyncLifetime
         w.WriteString("id", eventId);
         w.WriteString("pubkey", publicKeyHex);
         w.WriteNumber("created_at", createdAt);
-        w.WriteNumber("kind", 443);
+        w.WriteNumber("kind", 30443);
         w.WritePropertyName("tags");
         w.WriteStartArray();
         foreach (var tag in tags)
@@ -355,7 +355,7 @@ public class Mip01InteropTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Builds a minimal signed kind 443 event JSON from Rust KeyPackage result.
+    /// Builds a minimal signed kind 30443 event JSON from Rust KeyPackage result.
     /// </summary>
     private string BuildRustKeyPackageEventJson(MarmotWrapper.KeyPackageResult rustKp)
     {
@@ -366,7 +366,7 @@ public class Mip01InteropTests : IAsyncLifetime
         // Convert List<List<string>> to the format SerializeForEventId expects
         var tagsList = tags.Select(t => (List<string>)t).ToList();
 
-        var serialized = NostrService.SerializeForEventId(_rustPubKey, createdAt, 443, tagsList, content);
+        var serialized = NostrService.SerializeForEventId(_rustPubKey, createdAt, 30443, tagsList, content);
         var idBytes = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(serialized));
         var eventId = Convert.ToHexString(idBytes).ToLowerInvariant();
 
@@ -379,7 +379,7 @@ public class Mip01InteropTests : IAsyncLifetime
         w.WriteString("id", eventId);
         w.WriteString("pubkey", _rustPubKey);
         w.WriteNumber("created_at", createdAt);
-        w.WriteNumber("kind", 443);
+        w.WriteNumber("kind", 30443);
         w.WritePropertyName("tags");
         w.WriteStartArray();
         foreach (var tag in tags)

@@ -1,6 +1,6 @@
 # Migrate KeyPackage events from kind 443 to kind 30443
 
-## Status: Not Started
+## Status: Done
 
 ## Problem
 
@@ -14,10 +14,9 @@ MIP-00 has migrated KeyPackage events from kind 443 (regular) to kind 30443 (add
 - No NIP-09 deletion needed for rotation
 - Old KPs don't pile up — only the latest per `d` tag exists
 
-### Migration window (now through 2026-05-01)
-- **Publishing**: dual-publish kind 443 + kind 30443
-- **Fetching**: prefer kind 30443, fall back to kind 443
-- **After cutover**: drop kind 443 entirely
+### Migration approach
+- Clean switch: kind 443 dropped entirely, kind 30443 only
+- No dual-publish needed (NIP-EE already marked "unrecommended")
 
 ## Files to modify
 - `src/OpenChat.Core/Services/NostrService.cs` — PublishKeyPackageAsync (dual-publish with `d` tag), FetchKeyPackagesAsync (prefer 30443)

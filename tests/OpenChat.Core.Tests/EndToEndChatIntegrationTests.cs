@@ -123,7 +123,7 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
         await _storageA.SaveChatAsync(chatA);
 
         // ── Phase 4: Add Member (MLS level) ──
-        // Build a fake kind-443 event JSON using the real MDK-provided tags
+        // Build a fake kind-30443 event JSON using the real MDK-provided tags
         var fakeKeyPackageEventJson = CreateFakeKeyPackageEventJson(_pubKeyB, keyPackageB.Data, keyPackageB.NostrTags);
         keyPackageB.EventJson = fakeKeyPackageEventJson;
         keyPackageB.NostrEventId = "fake443event" + Guid.NewGuid().ToString("N");
@@ -1062,7 +1062,7 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Builds a minimal kind-443 Nostr event JSON that passes
+    /// Builds a minimal kind-30443 Nostr event JSON that passes
     /// MlsService.AddMemberAsync pre-validation and native MDK add_member.
     /// Uses the actual MDK-provided tags from the KeyPackage to ensure all
     /// required tags (encoding, mls_protocol_version, mls_ciphersuite, mls_extensions) are present.
@@ -1082,7 +1082,7 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
             id = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N"),
             pubkey = ownerPubKey,
             created_at = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-            kind = 443,
+            kind = 30443,
             tags = tagsArray,
             content = contentBase64,
             sig = new string('a', 128) // fake 64-byte hex signature

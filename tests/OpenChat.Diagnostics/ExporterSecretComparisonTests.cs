@@ -73,7 +73,7 @@ public class ExporterSecretComparisonTests : IAsyncLifetime
         var tags = JsonSerializer.Serialize(kp.NostrTags ?? new List<List<string>>());
         var id = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
         var sig = Convert.ToHexString(RandomNumberGenerator.GetBytes(64)).ToLowerInvariant();
-        kp.EventJson = $$"""{"id":"{{id}}","pubkey":"{{pubkey}}","created_at":{{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}},"kind":443,"tags":{{tags}},"content":"{{content}}","sig":"{{sig}}"}""";
+        kp.EventJson = $$"""{"id":"{{id}}","pubkey":"{{pubkey}}","created_at":{{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}},"kind":30443,"tags":{{tags}},"content":"{{content}}","sig":"{{sig}}"}""";
         kp.NostrEventId = id;
         return kp;
     }

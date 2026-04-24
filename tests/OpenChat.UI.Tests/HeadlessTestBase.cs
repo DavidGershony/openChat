@@ -142,7 +142,7 @@ public abstract class HeadlessTestBase : IDisposable
     }
 
     /// <summary>
-    /// Builds a minimal kind-443 Nostr event JSON for AddMemberAsync.
+    /// Builds a minimal kind-30443 Nostr event JSON for AddMemberAsync.
     /// Uses actual MDK-provided tags from the KeyPackage.
     /// </summary>
     protected static string CreateFakeKeyPackageEventJson(string ownerPubKey, byte[] keyPackageData, List<List<string>>? tags = null)
@@ -160,7 +160,7 @@ public abstract class HeadlessTestBase : IDisposable
             id = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N"),
             pubkey = ownerPubKey,
             created_at = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-            kind = 443,
+            kind = 30443,
             tags = tagsArray,
             content = contentBase64,
             sig = new string('a', 128)

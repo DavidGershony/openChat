@@ -63,13 +63,13 @@ public class KeyPackage
     public byte[] Data { get; set; } = Array.Empty<byte>();
 
     /// <summary>
-    /// The full JSON-serialized Nostr event (kind 443) containing this KeyPackage.
+    /// The full JSON-serialized Nostr event (kind 30443) containing this KeyPackage.
     /// Required for MLS processing.
     /// </summary>
     public string? EventJson { get; set; }
 
     /// <summary>
-    /// Nostr event ID where this KeyPackage was published (kind 443).
+    /// Nostr event ID where this KeyPackage was published (kind 30443).
     /// </summary>
     public string? NostrEventId { get; set; }
 

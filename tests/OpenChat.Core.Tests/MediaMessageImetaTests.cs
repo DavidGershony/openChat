@@ -47,7 +47,7 @@ public class MediaMessageImetaTests
             // Create group and add member
             var group = await mlsA.CreateGroupAsync("Test", new[] { "wss://relay.test" });
             var kpB = await mlsB.GenerateKeyPackageAsync();
-            var fakeEvent = $"{{\"id\":\"fake\",\"pubkey\":\"{keysB.publicKeyHex}\",\"created_at\":0,\"kind\":443,\"tags\":[],\"content\":\"{Convert.ToBase64String(kpB.Data)}\",\"sig\":\"fake\"}}";
+            var fakeEvent = $"{{\"id\":\"fake\",\"pubkey\":\"{keysB.publicKeyHex}\",\"created_at\":0,\"kind\":30443,\"tags\":[],\"content\":\"{Convert.ToBase64String(kpB.Data)}\",\"sig\":\"fake\"}}";
             var kp = new OpenChat.Core.Models.KeyPackage
             {
                 Id = Guid.NewGuid().ToString(), Data = kpB.Data,

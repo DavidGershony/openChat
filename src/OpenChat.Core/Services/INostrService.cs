@@ -92,7 +92,7 @@ public interface INostrService
     void SetAuthCredentials(string? privateKeyHex);
 
     /// <summary>
-    /// Publish a KeyPackage (kind 443).
+    /// Publish a KeyPackage (kind 30443).
     /// </summary>
     /// <param name="keyPackageData">Base64-encoded KeyPackage content bytes.</param>
     /// <param name="privateKeyHex">Sender's private key (null when using external signer).</param>

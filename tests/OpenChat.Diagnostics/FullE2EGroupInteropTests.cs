@@ -25,7 +25,7 @@ namespace OpenChat.Diagnostics;
 [Trait("Category", "FullE2E")]
 public class FullE2EGroupInteropTests : IAsyncLifetime
 {
-    private const string RelayUrl = "wss://nos.lol";
+    private const string RelayUrl = "wss://test.thedude.cloud";
 
     private readonly ITestOutputHelper _output;
     private readonly List<string> _dbPaths = new();

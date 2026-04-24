@@ -1105,7 +1105,7 @@ public class NostrService : INostrService, IDisposable
             _logger.LogDebug("KP Tag: [{Tags}]", string.Join(", ", tag));
         }
 
-        var eventId = await PublishEventAsync(443, Convert.ToBase64String(keyPackageData), tags, privateKeyHex);
+        var eventId = await PublishEventAsync(30443, Convert.ToBase64String(keyPackageData), tags, privateKeyHex);
         return eventId;
     }
 
@@ -1740,10 +1740,10 @@ public class NostrService : INostrService, IDisposable
         // Generate a unique subscription ID
         var subId = $"kp_{Guid.NewGuid():N}"[..16];
 
-        // Build REQ message: ["REQ", subId, {"kinds": [443], "authors": [pubkey], "limit": 5}]
+        // Build REQ message: ["REQ", subId, {"kinds": [30443], "authors": [pubkey], "limit": 5}]
         var filter = new
         {
-            kinds = new[] { 443 },
+            kinds = new[] { 30443 },
             authors = new[] { publicKeyHex },
             limit = 5
         };
@@ -1779,7 +1779,7 @@ public class NostrService : INostrService, IDisposable
                     var eventData = root[2];
                     var kind = eventData.GetProperty("kind").GetInt32();
 
-                    if (kind == 443)
+                    if (kind == 30443)
                     {
                         var content = eventData.GetProperty("content").GetString();
                         var eventId = eventData.GetProperty("id").GetString();

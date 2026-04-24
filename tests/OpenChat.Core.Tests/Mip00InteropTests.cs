@@ -14,7 +14,7 @@ namespace OpenChat.Core.Tests;
 
 /// <summary>
 /// MIP-00 interop tests verifying that C# and Rust MDK implementations
-/// produce compatible kind 443 KeyPackage events.
+/// produce compatible kind 30443 KeyPackage events.
 ///
 /// These tests exercise the native DLL directly (no relay needed).
 /// Requires: openchat_native.dll in test output directory.
@@ -83,7 +83,7 @@ public class Mip00InteropTests : IAsyncLifetime
     // ═══════════════════════════════════════════════════════════════════
 
     /// <summary>
-    /// Verifies that a kind 443 event built by marmot-cs KeyPackageEventBuilder
+    /// Verifies that a kind 30443 event built by marmot-cs KeyPackageEventBuilder
     /// (with all MIP-00 tags) is accepted by the Rust MDK's add_member.
     /// This is the core MIP-00 interop test — no relay needed.
     /// </summary>
@@ -103,7 +103,7 @@ public class Mip00InteropTests : IAsyncLifetime
         if (relaysTag != null && relaysTag.Count <= 1)
             relaysTag.Add("wss://relay.example.com");
 
-        // Build a signed kind 443 Nostr event from the C# KeyPackage
+        // Build a signed kind 30443 Nostr event from the C# KeyPackage
         var eventJson = BuildSignedKeyPackageEvent(
             keyPackage.Data, tags, _managedPrivKey, _managedPubKey);
         _output.WriteLine($"Event JSON ({eventJson.Length} chars): {eventJson[..Math.Min(200, eventJson.Length)]}...");
@@ -111,7 +111,7 @@ public class Mip00InteropTests : IAsyncLifetime
         // Verify the event JSON has all required MIP-00 tags
         using var doc = JsonDocument.Parse(eventJson);
         var root = doc.RootElement;
-        Assert.Equal(443, root.GetProperty("kind").GetInt32());
+        Assert.Equal(30443, root.GetProperty("kind").GetInt32());
         var jsonTags = root.GetProperty("tags");
         AssertHasTag(jsonTags, "encoding", "base64");
         AssertHasTag(jsonTags, "mls_protocol_version", "1.0");
@@ -209,7 +209,7 @@ public class Mip00InteropTests : IAsyncLifetime
 
     /// <summary>
     /// Verifies that a KeyPackage built by C# ManagedMlsService, serialized as
-    /// a signed kind 443 event, and then parsed back by KeyPackageEventParser
+    /// a signed kind 30443 event, and then parsed back by KeyPackageEventParser
     /// produces the same bytes and KeyPackageRef.
     /// </summary>
     [SkippableFact]
@@ -259,7 +259,7 @@ public class Mip00InteropTests : IAsyncLifetime
     // ═══════════════════════════════════════════════════════════════════
 
     /// <summary>
-    /// Verifies that the Rust MDK produces kind 443 events with the correct
+    /// Verifies that the Rust MDK produces kind 30443 events with the correct
     /// MIP-00 tag names (mls_protocol_version, mls_ciphersuite, etc).
     /// </summary>
     [SkippableFact]
@@ -295,7 +295,7 @@ public class Mip00InteropTests : IAsyncLifetime
     // ═══════════════════════════════════════════════════════════════════
 
     /// <summary>
-    /// Builds a fully signed kind 443 Nostr event JSON from KeyPackage bytes and tags.
+    /// Builds a fully signed kind 30443 Nostr event JSON from KeyPackage bytes and tags.
     /// This simulates what NostrService.PublishKeyPackageAsync does internally.
     /// </summary>
     private static string BuildSignedKeyPackageEvent(
@@ -306,7 +306,7 @@ public class Mip00InteropTests : IAsyncLifetime
         var createdAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
         // Compute event ID: SHA-256 of [0, pubkey, created_at, kind, tags, content]
-        var serialized = NostrService.SerializeForEventId(publicKeyHex, createdAt, 443, tags, content);
+        var serialized = NostrService.SerializeForEventId(publicKeyHex, createdAt, 30443, tags, content);
         var idBytes = SHA256.HashData(Encoding.UTF8.GetBytes(serialized));
         var eventId = Convert.ToHexString(idBytes).ToLowerInvariant();
 
@@ -321,7 +321,7 @@ public class Mip00InteropTests : IAsyncLifetime
         w.WriteString("id", eventId);
         w.WriteString("pubkey", publicKeyHex);
         w.WriteNumber("created_at", createdAt);
-        w.WriteNumber("kind", 443);
+        w.WriteNumber("kind", 30443);
         w.WritePropertyName("tags");
         w.WriteStartArray();
         foreach (var tag in tags)

@@ -174,7 +174,7 @@ public class MarmotProtocolComplianceTests
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    // MIP-00: KeyPackage Event (kind 443)
+    // MIP-00: KeyPackage Event (kind 30443)
     // ══════════════════════════════════════════════════════════════════════════
 
     [Fact]

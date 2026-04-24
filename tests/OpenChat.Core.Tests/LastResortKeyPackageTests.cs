@@ -189,7 +189,7 @@ public class LastResortKeyPackageTests : IAsyncLifetime
             id = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N"),
             pubkey = ownerPubKey,
             created_at = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-            kind = 443,
+            kind = 30443,
             tags = tagsArray,
             content = contentBase64,
             sig = new string('a', 128)

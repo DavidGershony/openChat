@@ -228,7 +228,7 @@ public class NativeMarmotIntegrationTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Builds a minimal kind-443 Nostr event JSON for AddMember tests.
+    /// Builds a minimal kind-30443 Nostr event JSON for AddMember tests.
     /// Same pattern used in EndToEndChatIntegrationTests.CreateFakeKeyPackageEventJson.
     /// </summary>
     private static string BuildKeyPackageEventJson(string publicKeyHex, string base64Content, List<List<string>> tags)
@@ -239,7 +239,7 @@ public class NativeMarmotIntegrationTests : IAsyncLifetime
             id = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N"),
             pubkey = publicKeyHex,
             created_at = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-            kind = 443,
+            kind = 30443,
             tags = tagsArray,
             content = base64Content,
             sig = new string('a', 128) // fake 64-byte hex signature
