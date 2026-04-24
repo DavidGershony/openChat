@@ -527,6 +527,16 @@ public class WhitenoiseGroupInteropTests : IAsyncLifetime
         await bob.NostrService.ConnectAsync(RelayUrl);
         await Task.Delay(2000);
 
+        // Publish NIP-65 relay lists so WN knows where to send Welcomes
+        var relayPrefs = new List<RelayPreference>
+        {
+            new() { Url = RelayUrl, Usage = RelayUsage.Both },
+            new() { Url = GroupRelayUrl, Usage = RelayUsage.Both }
+        };
+        await alice.NostrService.PublishRelayListAsync(relayPrefs, alice.PrivKeyHex);
+        await bob.NostrService.PublishRelayListAsync(relayPrefs, bob.PrivKeyHex);
+        _output.WriteLine("Published NIP-65 relay lists for Alice and Bob");
+
         // Alice and Bob publish KeyPackages
         var kpAlice = await alice.MlsService.GenerateKeyPackageAsync();
         await alice.NostrService.PublishKeyPackageAsync(kpAlice.Data, alice.PrivKeyHex, kpAlice.NostrTags);
@@ -540,17 +550,25 @@ public class WhitenoiseGroupInteropTests : IAsyncLifetime
         var wnGroupId = await _wnClient.CreateGroupAsync("WN-Created Group", alice.PubKeyHex, bob.PubKeyHex);
         _output.WriteLine($"WN group created: {wnGroupId[..16]}...");
 
-        // Step 3: Wait for OpenChat users to receive Welcomes
+        // Step 3: Wait for OpenChat users to receive Welcomes (poll with retry)
         _output.WriteLine("\n--- Waiting for OC users to receive invites ---");
         await alice.NostrService.SubscribeToWelcomesAsync(alice.PubKeyHex, alice.PrivKeyHex);
         await bob.NostrService.SubscribeToWelcomesAsync(bob.PubKeyHex, bob.PrivKeyHex);
-        await Task.Delay(3000);
 
-        await alice.MessageService.RescanInvitesAsync();
-        await bob.MessageService.RescanInvitesAsync();
-
-        var aliceInvites = (await alice.Storage.GetPendingInvitesAsync()).ToList();
-        var bobInvites = (await bob.Storage.GetPendingInvitesAsync()).ToList();
+        var aliceInvites = new List<OpenChat.Core.Models.PendingInvite>();
+        var bobInvites = new List<OpenChat.Core.Models.PendingInvite>();
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (sw.ElapsedMilliseconds < 30_000)
+        {
+            await Task.Delay(2000);
+            await alice.MessageService.RescanInvitesAsync();
+            await bob.MessageService.RescanInvitesAsync();
+            aliceInvites = (await alice.Storage.GetPendingInvitesAsync()).ToList();
+            bobInvites = (await bob.Storage.GetPendingInvitesAsync()).ToList();
+            _output.WriteLine($"  Poll {sw.ElapsedMilliseconds}ms: Alice={aliceInvites.Count}, Bob={bobInvites.Count}");
+            if (aliceInvites.Count > 0 && bobInvites.Count > 0)
+                break;
+        }
         _output.WriteLine($"Alice invites: {aliceInvites.Count}, Bob invites: {bobInvites.Count}");
 
         Assert.NotEmpty(aliceInvites);
