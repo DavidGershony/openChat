@@ -120,7 +120,9 @@ public class LastResortKeyPackageTests : IAsyncLifetime
             Tags = new List<List<string>>
             {
                 new() { "p", _pubKeyB },
-                new() { "h", Convert.ToHexString(groupA.GroupId).ToLowerInvariant() }
+                new() { "h", Convert.ToHexString(groupA.GroupId).ToLowerInvariant() },
+                new() { "e", kpForA.NostrEventId! },
+                new() { "encoding", "base64" }
             },
             RelayUrl = "wss://test.relay"
         };
@@ -157,7 +159,9 @@ public class LastResortKeyPackageTests : IAsyncLifetime
             Tags = new List<List<string>>
             {
                 new() { "p", _pubKeyB },
-                new() { "h", Convert.ToHexString(groupC.GroupId).ToLowerInvariant() }
+                new() { "h", Convert.ToHexString(groupC.GroupId).ToLowerInvariant() },
+                new() { "e", kpForC.NostrEventId! },
+                new() { "encoding", "base64" }
             },
             RelayUrl = "wss://test.relay"
         };
