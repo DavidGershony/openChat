@@ -34,12 +34,12 @@ class Program
         }
         else
         {
-            // Auto-derive profile from last active user, if available
-            var lastPubKey = ProfileConfiguration.ReadLastUserPubKey();
-            if (lastPubKey != null)
+            // Auto-derive profile from last active account in registry
+            AccountRegistryService.Load();
+            var activeAccount = AccountRegistryService.GetActiveAccount();
+            if (activeAccount != null)
             {
-                var derived = ProfileConfiguration.DeriveProfileName(lastPubKey);
-                ProfileConfiguration.SetProfile(derived);
+                ProfileConfiguration.SetProfileForAccount(activeAccount.PublicKeyHex);
             }
             // else: default profile (login screen)
         }

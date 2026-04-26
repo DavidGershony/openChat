@@ -10,6 +10,7 @@ using Google.Android.Material.Snackbar;
 using Google.Android.Material.Tabs;
 using Google.Android.Material.TextField;
 using OpenChat.Android.Adapters;
+using OpenChat.Core.Configuration;
 using OpenChat.Presentation.ViewModels;
 using ReactiveUI;
 using System.Reactive;
@@ -22,14 +23,16 @@ namespace OpenChat.Android.Fragments;
 public class ChatListFragment : Fragment
 {
     private readonly MainViewModel _mainViewModel;
+    private readonly ShellViewModel _shellViewModel;
     private ChatListViewModel ViewModel => _mainViewModel.ChatListViewModel;
     private CompositeDisposable _disposables = new();
     private ChatListAdapter? _adapter;
     private PendingInviteAdapter? _inviteAdapter;
 
-    public ChatListFragment(MainViewModel mainViewModel)
+    public ChatListFragment(MainViewModel mainViewModel, ShellViewModel? shellViewModel = null)
     {
         _mainViewModel = mainViewModel;
+        _shellViewModel = shellViewModel!;
     }
 
     public override View? OnCreateView(LayoutInflater inflater, ViewGroup? container, Bundle? savedInstanceState)
@@ -112,8 +115,8 @@ public class ChatListFragment : Fragment
             })
             .DisposeWith(_disposables);
 
-        // Tap profile avatar to open My Profile dialog
-        profileAvatar.Click += (s, e) => ShowMyProfileDialog();
+        // Tap profile avatar to open account switcher
+        profileAvatar.Click += (s, e) => ShowAccountSwitcher();
 
         // Relay count text next to avatar
         relayText.Text = _mainViewModel.RelayCountText;
@@ -442,6 +445,53 @@ public class ChatListFragment : Fragment
             .SetNegativeButton("Cancel", (s, e) =>
             {
                 ViewModel.CancelResetGroupCommand.Execute().Subscribe().DisposeWith(_disposables);
+            })!
+            .Show();
+    }
+
+    private void ShowAccountSwitcher()
+    {
+        if (Context == null || _shellViewModel == null) return;
+
+        var accounts = AccountRegistryService.GetAccounts();
+        var items = new List<string>();
+
+        // Build display items: account names
+        foreach (var account in accounts)
+        {
+            var name = !string.IsNullOrEmpty(account.DisplayName)
+                ? account.DisplayName
+                : account.Npub?[..Math.Min(16, account.Npub.Length)] + "...";
+            var isActive = string.Equals(account.PublicKeyHex,
+                _shellViewModel.ActiveAccountEntry?.PublicKeyHex, StringComparison.OrdinalIgnoreCase);
+            items.Add(isActive ? $"{name} (active)" : name);
+        }
+
+        // Add actions at the bottom
+        items.Add("View Profile");
+        items.Add("Add Account");
+
+        new MaterialAlertDialogBuilder(Context)
+            .SetTitle("Accounts")!
+            .SetItems(items.ToArray(), (s, e) =>
+            {
+                var accountCount = accounts.Count;
+                if (e.Which < accountCount)
+                {
+                    // Switch to selected account
+                    var selected = accounts[e.Which];
+                    _ = _shellViewModel.SwitchAccountAsync(selected.PublicKeyHex);
+                }
+                else if (e.Which == accountCount)
+                {
+                    // View Profile
+                    ShowMyProfileDialog();
+                }
+                else if (e.Which == accountCount + 1)
+                {
+                    // Add Account
+                    _ = _shellViewModel.AddAccountAsync();
+                }
             })!
             .Show();
     }

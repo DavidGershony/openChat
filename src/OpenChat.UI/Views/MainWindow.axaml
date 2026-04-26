@@ -6,6 +6,7 @@
         xmlns:views="using:OpenChat.UI.Views"
         xmlns:asyncImageLoader="using:AsyncImageLoader"
         xmlns:converters="using:OpenChat.UI.Converters"
+        xmlns:config="using:OpenChat.Core.Configuration"
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
         x:Class="OpenChat.UI.Views.MainWindow"
         x:DataType="vm:ShellViewModel"
@@ -76,10 +77,10 @@
                             <!-- Top row: avatar + name + action buttons -->
                             <Grid ColumnDefinitions="Auto,*,Auto">
                                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12">
-                                    <!-- User Avatar (clickable - opens profile dialog) -->
+                                    <!-- User Avatar (clickable - opens account switcher) -->
                                     <Button x:Name="AvatarButton" Classes="icon"
                                             Click="AvatarButton_Click"
-                                            ToolTip.Tip="My Profile / Export npub"
+                                            ToolTip.Tip="Switch Account"
                                             Padding="0" CornerRadius="20">
                                         <Panel Width="40" Height="40">
                                             <!-- Fallback avatar icon (no picture) -->
@@ -269,6 +270,113 @@
 
         <!-- Login View (shown when not logged in) -->
         <views:LoginView x:Name="LoginViewControl" DataContext="{Binding LoginViewModel}" />
+
+        <!-- Account Switcher Overlay (bound to ShellViewModel) -->
+        <Border x:Name="AccountSwitcherOverlay" IsVisible="{Binding ShowAccountSwitcher}"
+                Background="#80000000"
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+            <Border Classes="card"
+                    Background="{DynamicResource BackgroundCardBrush}"
+                    CornerRadius="16"
+                    Padding="20"
+                    VerticalAlignment="Top"
+                    HorizontalAlignment="Left"
+                    MinWidth="300" MaxWidth="360"
+                    Margin="16,60,0,0">
+                <StackPanel Spacing="12">
+                    <!-- Header -->
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Accounts"
+                                   FontSize="18" FontWeight="Bold"
+                                   VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Classes="icon"
+                                Command="{Binding ToggleAccountSwitcherCommand}"
+                                ToolTip.Tip="Close">
+                            <PathIcon Data="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+                                      Width="16" Height="16" />
+                        </Button>
+                    </Grid>
+
+                    <!-- Account List -->
+                    <ScrollViewer MaxHeight="320" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl x:Name="AccountList" ItemsSource="{Binding KnownAccounts}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="config:AccountEntry">
+                                    <Button HorizontalAlignment="Stretch"
+                                            HorizontalContentAlignment="Left"
+                                            Background="Transparent" BorderThickness="0"
+                                            Padding="8,8"
+                                            Command="{Binding #AccountList.((vm:ShellViewModel)DataContext).SwitchAccountCommand}"
+                                            CommandParameter="{Binding PublicKeyHex}">
+                                        <Grid ColumnDefinitions="Auto,*,Auto">
+                                            <!-- Avatar circle with initial -->
+                                            <Border Grid.Column="0" Width="36" Height="36" CornerRadius="18"
+                                                    Background="{DynamicResource NostrPurpleBrush}"
+                                                    Margin="0,0,12,0">
+                                                <Panel>
+                                                    <TextBlock Text="{Binding DisplayName, FallbackValue=?}"
+                                                               FontSize="16" FontWeight="Bold" Foreground="White"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                               IsVisible="{Binding AvatarUrl, Converter={x:Static StringConverters.IsNullOrEmpty}}" />
+                                                    <Border Width="36" Height="36" CornerRadius="18" ClipToBounds="True"
+                                                            IsVisible="{Binding AvatarUrl, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                                        <Image asyncImageLoader:ImageLoader.Source="{Binding AvatarUrl}"
+                                                               Stretch="UniformToFill" />
+                                                    </Border>
+                                                </Panel>
+                                            </Border>
+                                            <!-- Name + npub -->
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                                                <TextBlock Text="{Binding DisplayName, FallbackValue=Unknown}"
+                                                           FontSize="14" FontWeight="SemiBold"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           IsVisible="{Binding DisplayName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                                <TextBlock Text="{Binding Npub}"
+                                                           FontSize="11" Classes="muted"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           MaxWidth="200" />
+                                            </StackPanel>
+                                            <!-- Active indicator -->
+                                            <Panel Grid.Column="2" VerticalAlignment="Center" Margin="8,0,0,0">
+                                                <Ellipse Width="8" Height="8"
+                                                         Fill="{DynamicResource StatusOnlineBrush}" />
+                                            </Panel>
+                                        </Grid>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <!-- Divider -->
+                    <Border Height="1" Background="{DynamicResource BorderDefaultBrush}" />
+
+                    <!-- View Profile -->
+                    <Button Classes="secondary" HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"
+                            Click="ViewProfileFromSwitcher_Click"
+                            Padding="8,6">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <PathIcon Data="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"
+                                      Width="16" Height="16" />
+                            <TextBlock Text="View Profile" FontSize="13" />
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Add Account -->
+                    <Button Classes="primary" HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"
+                            Command="{Binding AddAccountCommand}"
+                            Padding="8,6">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <PathIcon Data="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"
+                                      Width="16" Height="16" />
+                            <TextBlock Text="Add Account" FontSize="13" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Border>
+        </Border>
 
         <!-- My Profile / Export npub Dialog (only when logged in and dialog open) -->
         <Border x:Name="ProfileDialogOverlay" IsVisible="False"

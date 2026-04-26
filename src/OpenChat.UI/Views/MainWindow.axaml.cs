@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
+using OpenChat.Core.Configuration;
 using OpenChat.Presentation.ViewModels;
 using ReactiveUI;
 
@@ -30,6 +31,9 @@ public partial class MainWindow : Window
                         var loginView = this.FindControl<UserControl>("LoginViewControl");
                         if (mainGrid != null) mainGrid.IsVisible = isLoggedIn;
                         if (loginView != null) loginView.IsVisible = !isLoggedIn;
+
+                        // Update window title with active account name
+                        Title = "OpenChat" + ProfileConfiguration.WindowTitleSuffix;
                     });
 
                 // Track profile dialog visibility through MainViewModel changes
@@ -59,9 +63,21 @@ public partial class MainWindow : Window
 
     private void AvatarButton_Click(object? sender, RoutedEventArgs e)
     {
-        if (DataContext is ShellViewModel shell && shell.MainViewModel is { } mainVm)
+        if (DataContext is ShellViewModel shell)
         {
-            mainVm.ShowMyProfileCommand.Execute().Subscribe();
+            shell.ToggleAccountSwitcherCommand.Execute().Subscribe();
+        }
+    }
+
+    private void ViewProfileFromSwitcher_Click(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is ShellViewModel shell)
+        {
+            shell.ShowAccountSwitcher = false;
+            if (shell.MainViewModel is { } mainVm)
+            {
+                mainVm.ShowMyProfileCommand.Execute().Subscribe();
+            }
         }
     }
 

@@ -127,9 +127,16 @@ public static class ProfileConfiguration
         => publicKeyHex[..16].ToLowerInvariant();
 
     /// <summary>
+    /// Convenience: sets the profile for a given public key hex (derives the profile name automatically).
+    /// </summary>
+    public static void SetProfileForAccount(string publicKeyHex)
+        => SetProfile(DeriveProfileName(publicKeyHex));
+
+    /// <summary>
     /// Reads the last active user's public key from the registry file (last_user.json).
     /// Returns null if the file doesn't exist or can't be read.
     /// </summary>
+    [Obsolete("Use AccountRegistryService.GetActiveAccount() instead. Kept for migration.")]
     public static string? ReadLastUserPubKey()
     {
         try
@@ -157,6 +164,7 @@ public static class ProfileConfiguration
     /// <summary>
     /// Saves the active user's public key to the registry file (last_user.json).
     /// </summary>
+    [Obsolete("Use AccountRegistryService.SetActiveAccount() instead. Kept for migration.")]
     public static void WriteLastUserPubKey(string publicKeyHex)
     {
         try
@@ -177,6 +185,7 @@ public static class ProfileConfiguration
     /// <summary>
     /// Clears the last user registry. Called on logout so the next launch shows the login screen.
     /// </summary>
+    [Obsolete("Use AccountRegistryService.ClearActiveAccount() instead. Kept for migration.")]
     public static void ClearLastUser()
     {
         try

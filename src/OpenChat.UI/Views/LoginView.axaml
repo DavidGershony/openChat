@@ -256,6 +256,15 @@
                         </Button>
                     </StackPanel>
 
+                    <!-- Cancel button (visible only when adding a new account) -->
+                    <Button Classes="secondary" HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"
+                            IsVisible="{Binding IsAddAccountMode}"
+                            Click="CancelAddAccount_Click"
+                            Padding="8,8" Margin="0,8,0,0">
+                        <TextBlock Text="Cancel — Return to previous account" FontSize="13" />
+                    </Button>
+
                 </StackPanel>
             </Border>
         </ScrollViewer>

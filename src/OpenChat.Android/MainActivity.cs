@@ -85,7 +85,7 @@ public class MainActivity : AppCompatActivity, IActivatableView
             {
                 if (isLoggedIn && _shellViewModel.MainViewModel != null)
                 {
-                    ShowFragment(new ChatListFragment(_shellViewModel.MainViewModel), "chatlist");
+                    ShowFragment(new ChatListFragment(_shellViewModel.MainViewModel, _shellViewModel), "chatlist");
 
                     // Auto-start relay foreground service if background mode is enabled
                     StartRelayServiceIfEnabled(_shellViewModel.MainViewModel);

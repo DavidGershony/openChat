@@ -28,6 +28,12 @@ public class LoginViewModel : ViewModelBase
     [Reactive] public bool IsLoading { get; set; }
     [Reactive] public User? LoggedInUser { get; set; }
 
+    /// <summary>
+    /// True when the login screen was opened via "Add Account" (shows a Cancel button).
+    /// Set by ShellViewModel.
+    /// </summary>
+    [Reactive] public bool IsAddAccountMode { get; set; }
+
     // Generated key display
     [Reactive] public string? GeneratedNsec { get; set; }
     [Reactive] public string? GeneratedNpub { get; set; }
@@ -330,6 +336,7 @@ public class LoginViewModel : ViewModelBase
         NostrConnectUri = null;
         NostrConnectQrPngBytes = null;
         SelectedLoginMethod = LoginMethod.PrivateKey;
+        IsAddAccountMode = false;
     }
 }
 

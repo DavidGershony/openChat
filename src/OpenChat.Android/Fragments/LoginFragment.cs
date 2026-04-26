@@ -49,6 +49,9 @@ public class LoginFragment : Fragment
         var copyNpubButton = view.FindViewById<ImageButton>(Resource.Id.copy_npub_button)!;
         var copyNsecButton = view.FindViewById<ImageButton>(Resource.Id.copy_nsec_button)!;
 
+        // Cancel add-account button
+        var cancelAddAccountButton = view.FindViewById<MaterialButton>(Resource.Id.cancel_add_account_button)!;
+
         // External signer views
         var qrImageView = view.FindViewById<ImageView>(Resource.Id.nostr_connect_qr)!;
         var connectUriText = view.FindViewById<TextView>(Resource.Id.nostr_connect_uri)!;
@@ -222,6 +225,20 @@ public class LoginFragment : Fragment
             {
                 signerStatus.Text = status ?? "";
                 signerStatus.Visibility = string.IsNullOrEmpty(status) ? ViewStates.Gone : ViewStates.Visible;
+            })
+            .DisposeWith(_disposables);
+
+        // Cancel add-account mode
+        cancelAddAccountButton.Click += (s, e) =>
+        {
+            _ = _shellViewModel.CancelAddAccountAsync();
+        };
+
+        ViewModel.WhenAnyValue(x => x.IsAddAccountMode)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(isAdding =>
+            {
+                cancelAddAccountButton.Visibility = isAdding ? ViewStates.Visible : ViewStates.Gone;
             })
             .DisposeWith(_disposables);
     }
