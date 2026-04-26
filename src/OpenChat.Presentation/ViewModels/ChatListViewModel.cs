@@ -1180,14 +1180,12 @@ public class ChatListViewModel : ViewModelBase
                         try
                         {
                             var commitEventJson = await _mlsService.EncryptCommitAsync(chat.MlsGroupId, welcome.CommitData);
-                            var commitEventId = await _nostrService.PublishRawEventJsonAsync(commitEventJson);
-                            await _nostrService.WaitForRelayOkAsync(commitEventId);
+                            await _nostrService.PublishRawEventJsonAsync(commitEventJson);
                         }
                         catch (NotSupportedException)
                         {
-                            var commitEventId = await _nostrService.PublishCommitAsync(
+                            await _nostrService.PublishCommitAsync(
                                 welcome.CommitData, groupIdHex, currentUser.PrivateKeyHex);
-                            await _nostrService.WaitForRelayOkAsync(commitEventId);
                         }
                     }
 

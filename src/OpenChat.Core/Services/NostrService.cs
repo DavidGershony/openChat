@@ -36,7 +36,7 @@ public class NostrService : INostrService, IDisposable
     private readonly ConcurrentDictionary<string, byte> _recentlyProcessedEventIds = new();
     private readonly ILogger<NostrRelayConnection> _connectionLogger = LoggingConfiguration.CreateLogger<NostrRelayConnection>();
     private readonly NostrConnectionProvider _connectionProvider = new();
-    private readonly ConcurrentDictionary<string, TaskCompletionSource<bool>> _pendingOkCallbacks = new();
+    private readonly ConcurrentDictionary<string, TaskCompletionSource<(bool accepted, string? reason)>> _pendingOkCallbacks = new();
     // Relays connected only for bot chat DM delivery/reception — excluded from group message broadcasts
     private readonly ConcurrentDictionary<string, byte> _botOnlyRelays = new();
 
@@ -409,12 +409,14 @@ public class NostrService : INostrService, IDisposable
                 {
                     _logger.LogDebug("Event {EventId} accepted by {RelayUrl}", eventId, relayUrl);
                     if (eventId != null && _pendingOkCallbacks.TryRemove(eventId, out var tcs))
-                        tcs.TrySetResult(true);
+                        tcs.TrySetResult((true, null));
                 }
                 else
                 {
                     _logger.LogWarning("Event {EventId} rejected by {RelayUrl}: {Reason}",
                         eventId, relayUrl, reason ?? "no reason given");
+                    if (eventId != null && _pendingOkCallbacks.TryRemove(eventId, out var tcs))
+                        tcs.TrySetResult((false, reason ?? "rejected by relay"));
                 }
             }
             else if (messageType == "AUTH" && root.GetArrayLength() >= 2)
@@ -1106,6 +1108,14 @@ public class NostrService : INostrService, IDisposable
         }
 
         var eventId = await PublishEventAsync(30443, Convert.ToBase64String(keyPackageData), tags, privateKeyHex);
+
+        if (!LastPublishOkResult.accepted)
+        {
+            throw new InvalidOperationException(
+                $"KeyPackage publish rejected by all relays: {LastPublishOkResult.reason}. " +
+                "The event was sent but no relay confirmed acceptance.");
+        }
+
         return eventId;
     }
 
@@ -1607,18 +1617,24 @@ public class NostrService : INostrService, IDisposable
     {
         var eventJsonStr = Encoding.UTF8.GetString(eventJsonBytes);
 
-        // Parse the event ID from the JSON
+        // Parse the event ID and kind from the JSON
         using var doc = JsonDocument.Parse(eventJsonStr);
         var eventId = doc.RootElement.GetProperty("id").GetString()
             ?? throw new InvalidOperationException("Pre-built event JSON missing 'id' field");
+        var kind = doc.RootElement.TryGetProperty("kind", out var kindProp) ? kindProp.GetInt32() : -1;
 
-        _logger.LogInformation("Publishing pre-built event {EventId} to {Count} relays",
-            eventId[..Math.Min(16, eventId.Length)], _relayConnections.Count);
+        _logger.LogInformation("Publishing pre-built event {EventId} kind {Kind} to {Count} relays",
+            eventId[..Math.Min(16, eventId.Length)], kind, _relayConnections.Count);
 
         // Wrap in Nostr EVENT message: ["EVENT", {event}]
         var eventMessage = $"[\"EVENT\",{eventJsonStr}]";
         var messageBytes = Encoding.UTF8.GetBytes(eventMessage);
 
+        // Register OK callback BEFORE sending
+        var okTcs = new TaskCompletionSource<(bool accepted, string? reason)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _pendingOkCallbacks[eventId] = okTcs;
+
+        var sentCount = 0;
         foreach (var (relayUrl, connection) in _relayConnections)
         {
             if (IsBotOnlyRelay(relayUrl)) continue;
@@ -1627,6 +1643,7 @@ public class NostrService : INostrService, IDisposable
                 if (connection.IsConnected)
                 {
                     await connection.SendAsync(messageBytes);
+                    sentCount++;
                     _logger.LogDebug("Sent pre-built event to relay {Relay}", relayUrl);
                 }
             }
@@ -1636,30 +1653,57 @@ public class NostrService : INostrService, IDisposable
             }
         }
 
-        _logger.LogInformation("Pre-built event {EventId} published to {Count} relays",
-            eventId, _relayConnections.Count);
+        if (sentCount == 0)
+        {
+            _pendingOkCallbacks.TryRemove(eventId, out _);
+            _logger.LogWarning("Pre-built event {EventId}: no connected relays to publish to", eventId);
+            throw new InvalidOperationException("No connected relays available. Check your relay configuration.");
+        }
+
+        // Wait for at least one relay to confirm acceptance
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        cts.Token.Register(() =>
+        {
+            _pendingOkCallbacks.TryRemove(eventId, out _);
+            okTcs.TrySetResult((false, "timeout"));
+        });
+
+        var okResult = await okTcs.Task;
+        LastPublishOkResult = okResult;
+        if (okResult.accepted)
+        {
+            _logger.LogInformation("Pre-built event {EventId} kind {Kind} confirmed by relay", eventId, kind);
+        }
+        else
+        {
+            _logger.LogWarning("Pre-built event {EventId} kind {Kind} NOT confirmed: {Reason}. Sent to {Count} relays",
+                eventId, kind, okResult.reason, sentCount);
+        }
+
         return eventId;
     }
 
-    public async Task<bool> WaitForRelayOkAsync(string eventId, int timeoutMs = 5000)
+    public async Task<(bool accepted, string? reason)> WaitForRelayOkAsync(string eventId, int timeoutMs = 5000)
     {
-        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var tcs = new TaskCompletionSource<(bool accepted, string? reason)>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pendingOkCallbacks[eventId] = tcs;
 
         using var cts = new CancellationTokenSource(timeoutMs);
         cts.Token.Register(() =>
         {
             _pendingOkCallbacks.TryRemove(eventId, out _);
-            tcs.TrySetResult(false);
+            tcs.TrySetResult((false, "timeout"));
         });
 
-        var result = await tcs.Task;
-        if (result)
+        var (accepted, reason) = await tcs.Task;
+        if (accepted)
             _logger.LogDebug("Relay OK confirmed for event {EventId}", eventId[..Math.Min(16, eventId.Length)]);
-        else
+        else if (reason == "timeout")
             _logger.LogWarning("Relay OK timeout for event {EventId} after {Timeout}ms", eventId[..Math.Min(16, eventId.Length)], timeoutMs);
+        else
+            _logger.LogWarning("Relay rejected event {EventId}: {Reason}", eventId[..Math.Min(16, eventId.Length)], reason);
 
-        return result;
+        return (accepted, reason);
     }
 
     public async Task<IEnumerable<KeyPackage>> FetchKeyPackagesAsync(string publicKeyHex)
@@ -2737,6 +2781,12 @@ public class NostrService : INostrService, IDisposable
         return Nip44Encryption.Decrypt(ciphertext, convKey);
     }
 
+    /// <summary>
+    /// Last publish OK result. Set by PublishEventAsync and PublishRawEventJsonAsync after each publish.
+    /// Callers that need to verify relay acceptance can check this after awaiting the publish method.
+    /// </summary>
+    internal (bool accepted, string? reason) LastPublishOkResult { get; private set; }
+
     private async Task<string> PublishEventAsync(int kind, string content, List<List<string>> tags, string? privateKeyHex)
     {
         _logger.LogInformation("Publishing event kind {Kind} to {Count} relays", kind, _relayConnections.Count);
@@ -2797,6 +2847,10 @@ public class NostrService : INostrService, IDisposable
         var eventBytes = Encoding.UTF8.GetBytes(eventMessage);
         _logger.LogDebug("Publishing event {EventId} to relays", eventId);
 
+        // Register OK callback BEFORE sending so we don't miss fast responses
+        var okTcs = new TaskCompletionSource<(bool accepted, string? reason)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _pendingOkCallbacks[eventId] = okTcs;
+
         // Send to all connected relays (skip bot-only relays)
         var publishTasks = new List<Task>();
         foreach (var (relayUrl, connection) in _relayConnections)
@@ -2810,7 +2864,33 @@ public class NostrService : INostrService, IDisposable
 
         await Task.WhenAll(publishTasks);
 
-        _logger.LogInformation("Event {EventId} published to {Count} relays", eventId, publishTasks.Count);
+        if (publishTasks.Count == 0)
+        {
+            _pendingOkCallbacks.TryRemove(eventId, out _);
+            _logger.LogWarning("Event {EventId} kind {Kind}: no connected relays to publish to", eventId, kind);
+            throw new InvalidOperationException("No connected relays available. Check your relay configuration.");
+        }
+
+        // Wait for at least one relay to confirm acceptance
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        cts.Token.Register(() =>
+        {
+            _pendingOkCallbacks.TryRemove(eventId, out _);
+            okTcs.TrySetResult((false, "timeout"));
+        });
+
+        var okResult = await okTcs.Task;
+        LastPublishOkResult = okResult;
+        if (okResult.accepted)
+        {
+            _logger.LogInformation("Event {EventId} kind {Kind} confirmed by relay", eventId, kind);
+        }
+        else
+        {
+            _logger.LogWarning("Event {EventId} kind {Kind} NOT confirmed: {Reason}. Sent to {Count} relays",
+                eventId, kind, okResult.reason, publishTasks.Count);
+        }
+
         return eventId;
     }
 

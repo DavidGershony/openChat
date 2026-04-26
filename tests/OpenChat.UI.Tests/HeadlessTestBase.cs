@@ -112,7 +112,7 @@ public abstract class HeadlessTestBase : IDisposable
         mockNostr.Setup(n => n.PublishCommitAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync(() => "fakecommit_" + Guid.NewGuid().ToString("N"));
         mockNostr.Setup(n => n.WaitForRelayOkAsync(It.IsAny<string>(), It.IsAny<int>()))
-            .ReturnsAsync(true);
+            .ReturnsAsync((true, (string?)null));
         mockNostr.Setup(n => n.GenerateKeyPair())
             .Returns((privKey, pubKey, nsec, npub));
         mockNostr.Setup(n => n.ImportPrivateKey(It.IsAny<string>()))

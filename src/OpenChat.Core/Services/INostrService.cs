@@ -127,9 +127,9 @@ public interface INostrService
 
     /// <summary>
     /// Waits for at least one relay to confirm acceptance of a published event.
-    /// Returns true if accepted, false on timeout.
+    /// Returns (accepted, reason) — reason is null on success, contains rejection message or "timeout" on failure.
     /// </summary>
-    Task<bool> WaitForRelayOkAsync(string eventId, int timeoutMs = 5000);
+    Task<(bool accepted, string? reason)> WaitForRelayOkAsync(string eventId, int timeoutMs = 5000);
 
     /// <summary>
     /// Fetch KeyPackages for a user.
