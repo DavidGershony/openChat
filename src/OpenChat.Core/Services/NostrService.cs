@@ -1119,7 +1119,7 @@ public class NostrService : INostrService, IDisposable
         return eventId;
     }
 
-    public async Task<string> PublishWelcomeAsync(byte[] welcomeData, string recipientPublicKey, string? privateKeyHex, string? keyPackageEventId = null)
+    public async Task<string> PublishWelcomeAsync(byte[] welcomeData, string recipientPublicKey, string? privateKeyHex, string keyPackageEventId)
     {
         // Create kind 444 Welcome rumor (unsigned) wrapped in NIP-59 Gift Wrap per MIP-02
         var relayUrls = _connectedRelays.Count > 0
@@ -1151,12 +1151,6 @@ public class NostrService : INostrService, IDisposable
         }
 
         // Build the unsigned kind 444 rumor tags via MIP-02 protocol library
-        if (string.IsNullOrEmpty(keyPackageEventId))
-        {
-            _logger.LogError("PublishWelcome: keyPackageEventId is required by MIP-02 but was null/empty");
-            throw new ArgumentException("KeyPackage event ID is required by MIP-02 for Welcome events", nameof(keyPackageEventId));
-        }
-
         var (_, mip02Tags) = WelcomeEventBuilder.BuildWelcomeEvent(
             welcomeData, keyPackageEventId, relayUrls.ToArray());
 

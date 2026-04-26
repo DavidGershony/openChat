@@ -105,8 +105,8 @@ public interface INostrService
     /// <param name="welcomeData">MLS Welcome message data.</param>
     /// <param name="recipientPublicKey">Recipient's public key.</param>
     /// <param name="privateKeyHex">Sender's private key (null when using external signer).</param>
-    /// <param name="keyPackageEventId">Optional KeyPackage event ID (required per MIP-02).</param>
-    Task<string> PublishWelcomeAsync(byte[] welcomeData, string recipientPublicKey, string? privateKeyHex, string? keyPackageEventId = null);
+    /// <param name="keyPackageEventId">KeyPackage event ID referenced by this Welcome (required per MIP-02).</param>
+    Task<string> PublishWelcomeAsync(byte[] welcomeData, string recipientPublicKey, string? privateKeyHex, string keyPackageEventId);
 
     /// <summary>
     /// Publish a commit/evolution message (kind 445).

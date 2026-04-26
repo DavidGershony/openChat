@@ -141,7 +141,12 @@ public class SkippedInviteTests : IDisposable
             PublicKey = senderPubKey,
             Content = Convert.ToBase64String(welcomeData),
             CreatedAt = DateTime.UtcNow,
-            Tags = new List<List<string>> { new() { "h", "abcdef1234" } }
+            Tags = new List<List<string>>
+            {
+                new() { "h", "abcdef1234" },
+                new() { "e", "kp-event-id" },
+                new() { "encoding", "base64" }
+            }
         });
 
         await Task.Delay(200);
@@ -186,7 +191,12 @@ public class SkippedInviteTests : IDisposable
             PublicKey = senderPubKey,
             Content = Convert.ToBase64String(new byte[] { 0x01 }),
             CreatedAt = DateTime.UtcNow,
-            Tags = new List<List<string>> { new() { "h", "abcdef1234" } }
+            Tags = new List<List<string>>
+            {
+                new() { "h", "abcdef1234" },
+                new() { "e", "kp-event-id" },
+                new() { "encoding", "base64" }
+            }
         });
 
         await Task.Delay(200);

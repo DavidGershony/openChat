@@ -788,7 +788,8 @@ public class ChatViewModel : ViewModelBase
             var eventId = await _nostrService.PublishWelcomeAsync(
                 welcome.WelcomeData,
                 pubKeyHex,
-                _currentUserPrivateKeyHex);
+                _currentUserPrivateKeyHex,
+                keyPackage.NostrEventId ?? "unknown");
 
             _logger.LogInformation("Published Welcome message {EventId} for {PubKey}",
                 eventId, pubKeyHex[..16] + "...");

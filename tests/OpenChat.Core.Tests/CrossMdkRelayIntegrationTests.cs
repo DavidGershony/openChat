@@ -166,7 +166,7 @@ public class CrossMdkRelayIntegrationTests : IAsyncLifetime
 
         var randomData = new byte[256];
         RandomNumberGenerator.Fill(randomData);
-        await _nostrServiceA.PublishWelcomeAsync(randomData, _pubKeyB, _privKeyA);
+        await _nostrServiceA.PublishWelcomeAsync(randomData, _pubKeyB, _privKeyA, "fake-kp-event-id".PadLeft(64, '0'));
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         cts.Token.Register(() => inviteTcs.TrySetCanceled());

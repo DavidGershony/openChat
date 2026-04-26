@@ -190,7 +190,7 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
         var add = await _mlsServiceA.AddMemberAsync(groupInfoA.GroupId, fetchedKP);
         _output.WriteLine($"User A produced real welcome: {add.WelcomeData.Length} bytes");
 
-        var eventId = await _nostrServiceA.PublishWelcomeAsync(add.WelcomeData, _pubKeyB, _privKeyA);
+        var eventId = await _nostrServiceA.PublishWelcomeAsync(add.WelcomeData, _pubKeyB, _privKeyA, fetchedKP.NostrEventId ?? "unknown");
         Assert.Equal(64, eventId.Length);
         _output.WriteLine($"Welcome published with eventId: {eventId}");
 
@@ -235,7 +235,8 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
         var fetchedKP = (await _nostrServiceA.FetchKeyPackagesAsync(_pubKeyB)).First();
         var add = await _mlsServiceA.AddMemberAsync(groupInfoA.GroupId, fetchedKP);
 
-        var eventId = await _nostrServiceA.PublishWelcomeAsync(add.WelcomeData, _pubKeyB, _privKeyA);
+        var kpEventIdRescan = fetchedKP.NostrEventId ?? "unknown";
+        var eventId = await _nostrServiceA.PublishWelcomeAsync(add.WelcomeData, _pubKeyB, _privKeyA, kpEventIdRescan);
         _output.WriteLine($"Welcome published with eventId: {eventId}");
 
         await Task.Delay(1000); // Let relay store it
@@ -275,7 +276,7 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
 
         var welcomeData = new byte[256];
         RandomNumberGenerator.Fill(welcomeData);
-        await _nostrServiceA.PublishWelcomeAsync(welcomeData, _pubKeyB, _privKeyA);
+        await _nostrServiceA.PublishWelcomeAsync(welcomeData, _pubKeyB, _privKeyA, "fake-kp-event-id".PadLeft(64, '0'));
 
         if (backend == "managed")
         {

@@ -224,7 +224,8 @@ public class MessageServiceTests : IDisposable
             Tags = new List<List<string>>
             {
                 new() { "h", "abcdef1234" },
-                new() { "e", "kp-event-id" }
+                new() { "e", "kp-event-id" },
+                new() { "encoding", "base64" }
             }
         });
 
@@ -1149,6 +1150,8 @@ public class MessageServiceTests : IDisposable
             Tags = new List<List<string>>
             {
                 new() { "h", "abcdef1234" },
+                new() { "e", "kp-event-id" },
+                new() { "encoding", "base64" },
                 new() { "relays", "wss://relay1.example.com", "wss://relay2.example.com" }
             }
         });

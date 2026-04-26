@@ -126,7 +126,7 @@ public class RelayIntegrationTests : IAsyncLifetime
         RandomNumberGenerator.Fill(welcomeData);
 
         var eventId = await _nostrServiceA.PublishWelcomeAsync(
-            welcomeData, _pubKeyB, _privKeyA);
+            welcomeData, _pubKeyB, _privKeyA, "test-kp-event-id".PadLeft(64, '0'));
 
         Assert.NotNull(eventId);
         Assert.NotEmpty(eventId);
@@ -152,7 +152,7 @@ public class RelayIntegrationTests : IAsyncLifetime
         RandomNumberGenerator.Fill(welcomeData);
 
         var eventId = await _nostrServiceA.PublishWelcomeAsync(
-            welcomeData, _pubKeyB, _privKeyA);
+            welcomeData, _pubKeyB, _privKeyA, "test-kp-event-id".PadLeft(64, '0'));
 
         Assert.NotEmpty(eventId);
 
