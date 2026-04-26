@@ -37,6 +37,66 @@ public class NostrService : INostrService, IDisposable
     private readonly ILogger<NostrRelayConnection> _connectionLogger = LoggingConfiguration.CreateLogger<NostrRelayConnection>();
     private readonly NostrConnectionProvider _connectionProvider = new();
     private readonly ConcurrentDictionary<string, TaskCompletionSource<(bool accepted, string? reason)>> _pendingOkCallbacks = new();
+
+    /// <summary>
+    /// Tracks OK responses from multiple relays for a single published event.
+    /// Succeeds on first accept, fails only when all relays have rejected.
+    /// </summary>
+    private class PublishOkTracker
+    {
+        private readonly TaskCompletionSource<(bool accepted, string? reason)> _tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly int _expectedRelays;
+        private int _responseCount;
+        private readonly List<string> _rejectionReasons = new();
+
+        public PublishOkTracker(int expectedRelays)
+        {
+            _expectedRelays = expectedRelays;
+        }
+
+        public Task<(bool accepted, string? reason)> Task => _tcs.Task;
+
+        public void OnAccepted()
+        {
+            // First accept wins — resolve immediately
+            _tcs.TrySetResult((true, null));
+        }
+
+        public void OnRejected(string reason)
+        {
+            int count;
+            lock (_rejectionReasons)
+            {
+                _rejectionReasons.Add(reason);
+                count = Interlocked.Increment(ref _responseCount);
+            }
+
+            // Only fail if ALL relays have responded and none accepted
+            if (count >= _expectedRelays)
+            {
+                string allReasons;
+                lock (_rejectionReasons)
+                {
+                    allReasons = string.Join("; ", _rejectionReasons.Distinct());
+                }
+                _tcs.TrySetResult((false, allReasons));
+            }
+        }
+
+        public void OnTimeout()
+        {
+            // If we haven't resolved yet (no accepts, not all rejected), fail with timeout
+            string? reasons;
+            lock (_rejectionReasons)
+            {
+                reasons = _rejectionReasons.Count > 0
+                    ? $"timeout (partial rejections: {string.Join("; ", _rejectionReasons.Distinct())})"
+                    : "timeout";
+            }
+            _tcs.TrySetResult((false, reasons));
+        }
+    }
+
     // Relays connected only for bot chat DM delivery/reception — excluded from group message broadcasts
     private readonly ConcurrentDictionary<string, byte> _botOnlyRelays = new();
 
