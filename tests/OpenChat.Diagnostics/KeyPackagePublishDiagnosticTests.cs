@@ -366,6 +366,90 @@ public class KeyPackagePublishDiagnosticTests
         return Encoding.UTF8.GetString(stream.ToArray());
     }
 
+    /// <summary>
+    /// End-to-end test using real NostrService against localhost strfry + user's relays.
+    /// Tests the exact same code path the mobile app uses (minus Amber signing).
+    /// With the multi-relay OK tracker, auth-required rejections from one relay
+    /// should NOT block success if other relays accept.
+    /// </summary>
+    [Fact]
+    public async Task PublishKeyPackage_LocalhostAndUserRelays_RealNostrService()
+    {
+        var relays = new[]
+        {
+            "ws://localhost:7777",
+            "wss://relay.angor.io",
+            "wss://relay.thedude.cloud",
+            "wss://relay2.angor.io",
+            "wss://test.thedude.cloud"
+        };
+
+        var nostrService = new NostrService();
+        var (privKey, pubKey, _, _) = nostrService.GenerateKeyPair();
+        _output.WriteLine($"Test pubkey: {pubKey}");
+
+        var dbPath = Path.Combine(Path.GetTempPath(), $"kp_diag_local_{Guid.NewGuid()}.db");
+        var storage = new StorageService(dbPath, new MockSecureStorage());
+        await storage.InitializeAsync();
+
+        var mlsService = new ManagedMlsService(storage);
+        await mlsService.InitializeAsync(privKey, pubKey);
+
+        // Connect
+        _output.WriteLine("\n--- Connecting to relays ---");
+        foreach (var relay in relays)
+        {
+            try { await nostrService.ConnectAsync(relay); _output.WriteLine($"  Connected: {relay}"); }
+            catch (Exception ex) { _output.WriteLine($"  FAILED: {relay} — {ex.Message}"); }
+        }
+        _output.WriteLine($"Connected: {string.Join(", ", nostrService.ConnectedRelayUrls)}");
+        Assert.True(nostrService.ConnectedRelayUrls.Count > 0, "Must connect to at least one relay");
+        await Task.Delay(1000);
+
+        // Generate + publish
+        var keyPackage = await mlsService.GenerateKeyPackageAsync();
+        _output.WriteLine($"\nKeyPackage: {keyPackage.Data.Length} bytes, {keyPackage.NostrTags.Count} tags");
+
+        _output.WriteLine("\n--- Publishing via NostrService.PublishKeyPackageAsync ---");
+        string? eventId = null;
+        try
+        {
+            eventId = await nostrService.PublishKeyPackageAsync(keyPackage.Data, privKey, keyPackage.NostrTags);
+            _output.WriteLine($"  Published! Event ID: {eventId}");
+            _output.WriteLine($"  OK: accepted={nostrService.LastPublishOkResult.accepted}, reason={nostrService.LastPublishOkResult.reason ?? "none"}");
+        }
+        catch (Exception ex)
+        {
+            _output.WriteLine($"  PUBLISH FAILED: {ex.Message}");
+        }
+
+        // Fetch back
+        _output.WriteLine("\n--- Fetching via NostrService.FetchKeyPackagesAsync ---");
+        var fetched = (await nostrService.FetchKeyPackagesAsync(pubKey)).ToList();
+        _output.WriteLine($"  Found {fetched.Count} KeyPackage(s)");
+        foreach (var pkg in fetched)
+            _output.WriteLine($"    {pkg.NostrEventId} — {pkg.Data.Length}b from {string.Join(", ", pkg.RelayUrls)}");
+
+        // Per-relay raw fetch
+        _output.WriteLine("\n--- Per-relay raw fetch ---");
+        foreach (var relay in relays)
+        {
+            var found = await FetchKind30443FromRelay(relay, pubKey);
+            _output.WriteLine($"  {relay}: {found.Count} event(s)");
+        }
+
+        _output.WriteLine($"\n--- Summary ---");
+        _output.WriteLine($"  Event ID: {eventId ?? "NONE (publish failed)"}");
+        _output.WriteLine($"  FetchKeyPackagesAsync: {fetched.Count} found");
+
+        await nostrService.DisconnectAsync();
+        nostrService.Dispose();
+        try { File.Delete(dbPath); } catch { }
+
+        Assert.NotNull(eventId);
+        Assert.True(fetched.Count > 0, $"Published {eventId} but fetch returned 0");
+    }
+
     private static byte[] DerivePublicKeyFromPrivate(string privateKeyHex)
     {
         var privBytes = Convert.FromHexString(privateKeyHex);

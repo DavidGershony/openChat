@@ -36,7 +36,7 @@ public class NostrService : INostrService, IDisposable
     private readonly ConcurrentDictionary<string, byte> _recentlyProcessedEventIds = new();
     private readonly ILogger<NostrRelayConnection> _connectionLogger = LoggingConfiguration.CreateLogger<NostrRelayConnection>();
     private readonly NostrConnectionProvider _connectionProvider = new();
-    private readonly ConcurrentDictionary<string, TaskCompletionSource<(bool accepted, string? reason)>> _pendingOkCallbacks = new();
+    private readonly ConcurrentDictionary<string, PublishOkTracker> _pendingOkTrackers = new();
 
     /// <summary>
     /// Tracks OK responses from multiple relays for a single published event.
@@ -468,15 +468,18 @@ public class NostrService : INostrService, IDisposable
                 if (accepted)
                 {
                     _logger.LogDebug("Event {EventId} accepted by {RelayUrl}", eventId, relayUrl);
-                    if (eventId != null && _pendingOkCallbacks.TryRemove(eventId, out var tcs))
-                        tcs.TrySetResult((true, null));
+                    if (eventId != null && _pendingOkTrackers.TryGetValue(eventId, out var tracker))
+                    {
+                        tracker.OnAccepted();
+                        _pendingOkTrackers.TryRemove(eventId, out _);
+                    }
                 }
                 else
                 {
                     _logger.LogWarning("Event {EventId} rejected by {RelayUrl}: {Reason}",
                         eventId, relayUrl, reason ?? "no reason given");
-                    if (eventId != null && _pendingOkCallbacks.TryRemove(eventId, out var tcs))
-                        tcs.TrySetResult((false, reason ?? "rejected by relay"));
+                    if (eventId != null && _pendingOkTrackers.TryGetValue(eventId, out var tracker))
+                        tracker.OnRejected(reason ?? "rejected by relay");
                 }
             }
             else if (messageType == "AUTH" && root.GetArrayLength() >= 2)
@@ -1684,22 +1687,32 @@ public class NostrService : INostrService, IDisposable
         var eventMessage = $"[\"EVENT\",{eventJsonStr}]";
         var messageBytes = Encoding.UTF8.GetBytes(eventMessage);
 
-        // Register OK callback BEFORE sending
-        var okTcs = new TaskCompletionSource<(bool accepted, string? reason)>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _pendingOkCallbacks[eventId] = okTcs;
-
-        var sentCount = 0;
+        // Count target relays and register tracker BEFORE sending
+        var targetRelays = new List<(string url, NostrRelayConnection conn)>();
         foreach (var (relayUrl, connection) in _relayConnections)
         {
             if (IsBotOnlyRelay(relayUrl)) continue;
+            if (connection.IsConnected)
+                targetRelays.Add((relayUrl, connection));
+        }
+
+        if (targetRelays.Count == 0)
+        {
+            _logger.LogWarning("Pre-built event {EventId}: no connected relays to publish to", eventId);
+            throw new InvalidOperationException("No connected relays available. Check your relay configuration.");
+        }
+
+        var tracker = new PublishOkTracker(targetRelays.Count);
+        _pendingOkTrackers[eventId] = tracker;
+
+        var sentCount = 0;
+        foreach (var (relayUrl, connection) in targetRelays)
+        {
             try
             {
-                if (connection.IsConnected)
-                {
-                    await connection.SendAsync(messageBytes);
-                    sentCount++;
-                    _logger.LogDebug("Sent pre-built event to relay {Relay}", relayUrl);
-                }
+                await connection.SendAsync(messageBytes);
+                sentCount++;
+                _logger.LogDebug("Sent pre-built event to relay {Relay}", relayUrl);
             }
             catch (Exception ex)
             {
@@ -1707,22 +1720,16 @@ public class NostrService : INostrService, IDisposable
             }
         }
 
-        if (sentCount == 0)
-        {
-            _pendingOkCallbacks.TryRemove(eventId, out _);
-            _logger.LogWarning("Pre-built event {EventId}: no connected relays to publish to", eventId);
-            throw new InvalidOperationException("No connected relays available. Check your relay configuration.");
-        }
-
-        // Wait for at least one relay to confirm acceptance
+        // Wait for first accept or all rejections (5s timeout)
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         cts.Token.Register(() =>
         {
-            _pendingOkCallbacks.TryRemove(eventId, out _);
-            okTcs.TrySetResult((false, "timeout"));
+            tracker.OnTimeout();
+            _pendingOkTrackers.TryRemove(eventId, out _);
         });
 
-        var okResult = await okTcs.Task;
+        var okResult = await tracker.Task;
+        _pendingOkTrackers.TryRemove(eventId, out _);
         LastPublishOkResult = okResult;
         if (okResult.accepted)
         {
@@ -1739,20 +1746,21 @@ public class NostrService : INostrService, IDisposable
 
     public async Task<(bool accepted, string? reason)> WaitForRelayOkAsync(string eventId, int timeoutMs = 5000)
     {
-        var tcs = new TaskCompletionSource<(bool accepted, string? reason)>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _pendingOkCallbacks[eventId] = tcs;
+        var tracker = new PublishOkTracker(1);
+        _pendingOkTrackers[eventId] = tracker;
 
         using var cts = new CancellationTokenSource(timeoutMs);
         cts.Token.Register(() =>
         {
-            _pendingOkCallbacks.TryRemove(eventId, out _);
-            tcs.TrySetResult((false, "timeout"));
+            tracker.OnTimeout();
+            _pendingOkTrackers.TryRemove(eventId, out _);
         });
 
-        var (accepted, reason) = await tcs.Task;
+        var (accepted, reason) = await tracker.Task;
+        _pendingOkTrackers.TryRemove(eventId, out _);
         if (accepted)
             _logger.LogDebug("Relay OK confirmed for event {EventId}", eventId[..Math.Min(16, eventId.Length)]);
-        else if (reason == "timeout")
+        else if (reason?.StartsWith("timeout") == true)
             _logger.LogWarning("Relay OK timeout for event {EventId} after {Timeout}ms", eventId[..Math.Min(16, eventId.Length)], timeoutMs);
         else
             _logger.LogWarning("Relay rejected event {EventId}: {Reason}", eventId[..Math.Min(16, eventId.Length)], reason);
@@ -2901,39 +2909,37 @@ public class NostrService : INostrService, IDisposable
         var eventBytes = Encoding.UTF8.GetBytes(eventMessage);
         _logger.LogDebug("Publishing event {EventId} to relays", eventId);
 
-        // Register OK callback BEFORE sending so we don't miss fast responses
-        var okTcs = new TaskCompletionSource<(bool accepted, string? reason)>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _pendingOkCallbacks[eventId] = okTcs;
-
-        // Send to all connected relays (skip bot-only relays)
-        var publishTasks = new List<Task>();
+        // Count target relays and register tracker BEFORE sending
+        var targetRelays = new List<(string url, NostrRelayConnection conn)>();
         foreach (var (relayUrl, connection) in _relayConnections)
         {
             if (IsBotOnlyRelay(relayUrl)) continue;
             if (connection.IsConnected)
-            {
-                publishTasks.Add(SendToRelayConnectionAsync(relayUrl, connection, eventBytes));
-            }
+                targetRelays.Add((relayUrl, connection));
         }
 
-        await Task.WhenAll(publishTasks);
-
-        if (publishTasks.Count == 0)
+        if (targetRelays.Count == 0)
         {
-            _pendingOkCallbacks.TryRemove(eventId, out _);
             _logger.LogWarning("Event {EventId} kind {Kind}: no connected relays to publish to", eventId, kind);
             throw new InvalidOperationException("No connected relays available. Check your relay configuration.");
         }
 
-        // Wait for at least one relay to confirm acceptance
+        var tracker = new PublishOkTracker(targetRelays.Count);
+        _pendingOkTrackers[eventId] = tracker;
+
+        var publishTasks = targetRelays.Select(r => SendToRelayConnectionAsync(r.url, r.conn, eventBytes));
+        await Task.WhenAll(publishTasks);
+
+        // Wait for first accept or all rejections (5s timeout)
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         cts.Token.Register(() =>
         {
-            _pendingOkCallbacks.TryRemove(eventId, out _);
-            okTcs.TrySetResult((false, "timeout"));
+            tracker.OnTimeout();
+            _pendingOkTrackers.TryRemove(eventId, out _);
         });
 
-        var okResult = await okTcs.Task;
+        var okResult = await tracker.Task;
+        _pendingOkTrackers.TryRemove(eventId, out _);
         LastPublishOkResult = okResult;
         if (okResult.accepted)
         {
@@ -2942,7 +2948,7 @@ public class NostrService : INostrService, IDisposable
         else
         {
             _logger.LogWarning("Event {EventId} kind {Kind} NOT confirmed: {Reason}. Sent to {Count} relays",
-                eventId, kind, okResult.reason, publishTasks.Count);
+                eventId, kind, okResult.reason, targetRelays.Count);
         }
 
         return eventId;
