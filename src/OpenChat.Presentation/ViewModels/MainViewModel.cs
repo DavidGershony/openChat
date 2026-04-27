@@ -349,6 +349,7 @@ public class MainViewModel : ViewModelBase
                                 CurrentUser.PublicKeyHex[..Math.Min(16, CurrentUser.PublicKeyHex.Length)] + "...");
                             CurrentUser.PublicKeyHex = ExternalSigner.PublicKeyHex;
                             CurrentUser.Npub = Bech32.Encode("npub", Convert.FromHexString(ExternalSigner.PublicKeyHex));
+                            _messageService.UpdateCurrentUserPubKey(ExternalSigner.PublicKeyHex);
                         }
                     }
                     else
