@@ -38,11 +38,23 @@ public partial class MainWindow : Window
 
                 // Track profile dialog visibility through MainViewModel changes
                 var profileOverlay = this.FindControl<Avalonia.Controls.Border>("ProfileDialogOverlay");
-                shell.WhenAnyValue(x => x.MainViewModel!.ShowMyProfileDialog)
+                shell.WhenAnyValue(x => x.MainViewModel)
+                    .Where(vm => vm != null)
+                    .Select(vm => vm!.WhenAnyValue(v => v.ShowMyProfileDialog))
+                    .Switch()
                     .ObserveOn(RxApp.MainThreadScheduler)
                     .Subscribe(show =>
                     {
                         if (profileOverlay != null) profileOverlay.IsVisible = show;
+                    });
+
+                // Hide profile dialog when MainViewModel is cleared (logout/switch)
+                shell.WhenAnyValue(x => x.MainViewModel)
+                    .Where(vm => vm == null)
+                    .ObserveOn(RxApp.MainThreadScheduler)
+                    .Subscribe(_ =>
+                    {
+                        if (profileOverlay != null) profileOverlay.IsVisible = false;
                     });
             }
         };
