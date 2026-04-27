@@ -211,7 +211,7 @@ public class ExternalSignerService : IExternalSigner, IDisposable
                 return false;
             }
 
-            // The signer's public key is the remote pubkey (what Amber uses as its identity)
+            // Temporarily use remotePubKey until we can fetch the real signing key
             PublicKeyHex = remotePubKey;
 
             // Connect WebSockets to all relays
@@ -220,6 +220,25 @@ public class ExternalSignerService : IExternalSigner, IDisposable
             await ConnectToRelaysAsync(validUrls);
 
             IsConnected = true;
+
+            // Fetch the actual signing pubkey — remotePubKey is the NIP-46 communication key,
+            // which may differ from the key Amber uses to sign events.
+            try
+            {
+                var signingPubKey = await GetPublicKeyAsync();
+                if (!string.IsNullOrEmpty(signingPubKey) && signingPubKey != remotePubKey)
+                {
+                    _logger.LogInformation("NIP-46 signing pubkey differs from remote pubkey: signing={SigningKey}, remote={RemoteKey}",
+                        signingPubKey[..Math.Min(16, signingPubKey.Length)] + "...",
+                        remotePubKey[..Math.Min(16, remotePubKey.Length)] + "...");
+                    PublicKeyHex = signingPubKey;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to fetch signing pubkey from signer during restore, using remotePubKey as fallback");
+            }
+
             _logger.LogInformation("NIP-46 session restored on {Count} relays. Ready to send requests.", _relayConnections.Count);
             _status.OnNext(new ExternalSignerStatus
             {

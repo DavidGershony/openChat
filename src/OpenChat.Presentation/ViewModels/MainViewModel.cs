@@ -7,6 +7,7 @@ using ReactiveUI;
 using ReactiveUI.Fody.Helpers;
 using Microsoft.Extensions.Logging;
 using OpenChat.Core;
+using OpenChat.Core.Crypto;
 using OpenChat.Core.Logging;
 using OpenChat.Core.Models;
 using OpenChat.Core.Services;
@@ -337,6 +338,18 @@ public class MainViewModel : ViewModelBase
                     if (connected)
                     {
                         _logger.LogInformation("Signer session restored successfully");
+
+                        // The signer's actual signing pubkey may differ from the NIP-46 remote pubkey.
+                        // Update CurrentUser if the signer reported a different key.
+                        if (ExternalSigner!.PublicKeyHex != null &&
+                            ExternalSigner.PublicKeyHex != CurrentUser.PublicKeyHex)
+                        {
+                            _logger.LogWarning("Signer signing pubkey ({SignerKey}) differs from stored user pubkey ({UserKey}) — updating user",
+                                ExternalSigner.PublicKeyHex[..Math.Min(16, ExternalSigner.PublicKeyHex.Length)] + "...",
+                                CurrentUser.PublicKeyHex[..Math.Min(16, CurrentUser.PublicKeyHex.Length)] + "...");
+                            CurrentUser.PublicKeyHex = ExternalSigner.PublicKeyHex;
+                            CurrentUser.Npub = Bech32.Encode("npub", Convert.FromHexString(ExternalSigner.PublicKeyHex));
+                        }
                     }
                     else
                     {

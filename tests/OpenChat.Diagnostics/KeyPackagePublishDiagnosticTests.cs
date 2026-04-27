@@ -198,6 +198,103 @@ public class KeyPackagePublishDiagnosticTests
         try { File.Delete(dbPath); } catch { }
     }
 
+    /// <summary>
+    /// Query relays for the specific event published from mobile (Amber-signed).
+    /// Checks both by event ID and by author+kind to find where the mismatch is.
+    /// </summary>
+    [Fact]
+    public async Task QueryMobileKeyPackageEvent_ByIdAndByAuthor()
+    {
+        // Event IDs from the mobile log (Amber-signed publishes)
+        var mobileEventIds = new[]
+        {
+            "2ec6d0d45e89db5541dec3b6c9cebd9dd09618a8056e595a8bfbfa3180290dc4",
+            "c0d5bec3b97d6061baf5961678207e58229d42e0fc93b8aed7d557358aa7837f"
+        };
+        // The pubkey used in FetchKeyPackagesAsync (from CurrentUser)
+        var fetchPubkey = "8f7d5460983b7210e9c910a761f786ec208e8bc0f8f3213d61bf7244fcec19e0";
+
+        var relays = new[] { "wss://relay.angor.io", "wss://relay2.angor.io", "wss://test.thedude.cloud" };
+
+        foreach (var relay in relays)
+        {
+            _output.WriteLine($"\n== {relay} ==");
+            try
+            {
+                using var ws = new ClientWebSocket();
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                await ws.ConnectAsync(new Uri(relay), cts.Token);
+
+                // Query 1: by event IDs
+                foreach (var evId in mobileEventIds)
+                {
+                    var subId = $"id_{Guid.NewGuid():N}"[..10];
+                    var req = $"[\"REQ\",\"{subId}\",{{\"ids\":[\"{evId}\"]}}]";
+                    await ws.SendAsync(Encoding.UTF8.GetBytes(req), WebSocketMessageType.Text, true, cts.Token);
+
+                    var buf = new byte[65536];
+                    var sb = new StringBuilder();
+                    var found = false;
+                    while (ws.State == WebSocketState.Open)
+                    {
+                        var r = await ws.ReceiveAsync(buf, cts.Token);
+                        sb.Append(Encoding.UTF8.GetString(buf, 0, r.Count));
+                        if (!r.EndOfMessage) continue;
+                        var msg = sb.ToString(); sb.Clear();
+                        if (msg.StartsWith("[\"EVENT\""))
+                        {
+                            found = true;
+                            using var doc = JsonDocument.Parse(msg);
+                            var ev = doc.RootElement[2];
+                            var eventPubkey = ev.GetProperty("pubkey").GetString();
+                            var kind = ev.GetProperty("kind").GetInt32();
+                            _output.WriteLine($"  BY ID {evId[..16]}...: FOUND");
+                            _output.WriteLine($"    pubkey in event: {eventPubkey}");
+                            _output.WriteLine($"    pubkey we query: {fetchPubkey}");
+                            _output.WriteLine($"    MATCH: {eventPubkey == fetchPubkey}");
+                            _output.WriteLine($"    kind: {kind}");
+                        }
+                        if (msg.StartsWith("[\"EOSE\"")) break;
+                    }
+                    if (!found)
+                        _output.WriteLine($"  BY ID {evId[..16]}...: NOT FOUND on relay");
+
+                    var closeMsg = $"[\"CLOSE\",\"{subId}\"]";
+                    await ws.SendAsync(Encoding.UTF8.GetBytes(closeMsg), WebSocketMessageType.Text, true, CancellationToken.None);
+                }
+
+                // Query 2: by author + kind (same filter as FetchKeyPackagesAsync)
+                var subId2 = $"au_{Guid.NewGuid():N}"[..10];
+                var req2 = $"[\"REQ\",\"{subId2}\",{{\"kinds\":[30443],\"authors\":[\"{fetchPubkey}\"],\"limit\":10}}]";
+                _output.WriteLine($"  AUTHOR QUERY: kinds=[30443], authors=[{fetchPubkey[..16]}...]");
+                await ws.SendAsync(Encoding.UTF8.GetBytes(req2), WebSocketMessageType.Text, true, cts.Token);
+
+                var buf2 = new byte[65536];
+                var sb2 = new StringBuilder();
+                var authorCount = 0;
+                while (ws.State == WebSocketState.Open)
+                {
+                    var r = await ws.ReceiveAsync(buf2, cts.Token);
+                    sb2.Append(Encoding.UTF8.GetString(buf2, 0, r.Count));
+                    if (!r.EndOfMessage) continue;
+                    var msg = sb2.ToString(); sb2.Clear();
+                    if (msg.StartsWith("[\"EVENT\""))
+                    {
+                        authorCount++;
+                        using var doc = JsonDocument.Parse(msg);
+                        var ev = doc.RootElement[2];
+                        _output.WriteLine($"  BY AUTHOR: id={ev.GetProperty("id").GetString()?[..16]}..., kind={ev.GetProperty("kind").GetInt32()}");
+                    }
+                    if (msg.StartsWith("[\"EOSE\"")) break;
+                }
+                _output.WriteLine($"  BY AUTHOR TOTAL: {authorCount} events");
+
+                await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None);
+            }
+            catch (Exception ex) { _output.WriteLine($"  ERROR: {ex.Message}"); }
+        }
+    }
+
     // ═══════════════════════════════════════════════════════════════
     // Helpers
     // ═══════════════════════════════════════════════════════════════
