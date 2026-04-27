@@ -99,8 +99,12 @@ public class MainActivity : AppCompatActivity, IActivatableView
             })
             .DisposeWith(_disposables);
 
-        // Start with login fragment
-        ShowFragment(new LoginFragment(_shellViewModel), "login");
+        // Show correct initial fragment based on current state
+        // (handles Activity.Recreate() after theme change when already logged in)
+        if (_shellViewModel.IsLoggedIn && _shellViewModel.MainViewModel != null)
+            ShowFragment(new ChatListFragment(_shellViewModel.MainViewModel, _shellViewModel), "chatlist");
+        else
+            ShowFragment(new LoginFragment(_shellViewModel), "login");
     }
 
     private void ShowFragment(Fragment fragment, string tag)

@@ -261,13 +261,15 @@ public class SettingsViewModel : ViewModelBase
                 catch (Exception ex) { _logger.LogError(ex, "Failed to save notification push URL"); }
             });
 
-        // Theme change handler
+        // Theme change handler — persist to profile DB so it survives account switches
         this.WhenAnyValue(x => x.SelectedThemeIndex)
             .Skip(1)
-            .Subscribe(index =>
+            .Subscribe(async index =>
             {
                 _logger.LogInformation("Theme changed to index {Index}", index);
                 OnThemeChanged?.Invoke(index);
+                try { await _storageService.SaveSettingAsync("theme_index", index.ToString()); }
+                catch (Exception ex) { _logger.LogError(ex, "Failed to save theme index"); }
             });
 
         LoadSettingsAsync().ConfigureAwait(false);
@@ -302,6 +304,15 @@ public class SettingsViewModel : ViewModelBase
             {
                 relay.IsConnected = connectedUrls.Contains(relay.Url);
             }
+        }
+
+        // Load saved theme from profile DB and apply (triggers OnThemeChanged via subscription)
+        var savedTheme = await _storageService.GetSettingAsync("theme_index");
+        if (savedTheme != null && int.TryParse(savedTheme, out var themeIndex) &&
+            themeIndex >= 0 && themeIndex < AvailableThemeNames.Length)
+        {
+            _logger.LogInformation("Loaded theme index {Index} from profile", themeIndex);
+            SelectedThemeIndex = themeIndex;
         }
 
         // Load MIP-04 setting
