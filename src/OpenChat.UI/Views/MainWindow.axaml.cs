@@ -81,6 +81,14 @@ public partial class MainWindow : Window
         }
     }
 
+    private void AccountItem_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.Tag is string pubKeyHex && DataContext is ShellViewModel shell)
+        {
+            _ = shell.SwitchAccountAsync(pubKeyHex);
+        }
+    }
+
     private void ViewProfileFromSwitcher_Click(object? sender, RoutedEventArgs e)
     {
         if (DataContext is ShellViewModel shell)

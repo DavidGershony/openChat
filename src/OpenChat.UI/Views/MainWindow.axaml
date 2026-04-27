@@ -306,8 +306,8 @@
                                             HorizontalContentAlignment="Left"
                                             Background="Transparent" BorderThickness="0"
                                             Padding="8,8"
-                                            Command="{Binding #AccountList.((vm:ShellViewModel)DataContext).SwitchAccountCommand}"
-                                            CommandParameter="{Binding PublicKeyHex}">
+                                            Click="AccountItem_Click"
+                                            Tag="{Binding PublicKeyHex}">
                                         <Grid ColumnDefinitions="Auto,*,Auto">
                                             <!-- Avatar circle with initial -->
                                             <Border Grid.Column="0" Width="36" Height="36" CornerRadius="18"
