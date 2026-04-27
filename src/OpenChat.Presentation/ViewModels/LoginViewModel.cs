@@ -255,6 +255,9 @@ public class LoginViewModel : ViewModelBase
 
     private async Task HandleSignerConnectedAsync(string publicKeyHex)
     {
+        // Guard: skip if already logged in (prevents duplicate login from signer reconnect)
+        if (LoggedInUser != null) return;
+
         try
         {
             var npub = ExternalSigner!.Npub;
@@ -318,7 +321,9 @@ public class LoginViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Resets UI state for re-display after logout.
+    /// Resets UI state for re-display after logout or account switch.
+    /// Disconnects any active external signer session so the old account
+    /// doesn't auto-login when the login screen appears.
     /// </summary>
     public void Reset()
     {
@@ -337,6 +342,14 @@ public class LoginViewModel : ViewModelBase
         NostrConnectQrPngBytes = null;
         SelectedLoginMethod = LoginMethod.PrivateKey;
         IsAddAccountMode = false;
+
+        // Disconnect the external signer to prevent the old Amber session
+        // from auto-logging in when the login screen is re-displayed.
+        // The new account will establish its own signer connection.
+        if (ExternalSigner != null)
+        {
+            _ = ExternalSigner.DisconnectAsync();
+        }
     }
 }
 
