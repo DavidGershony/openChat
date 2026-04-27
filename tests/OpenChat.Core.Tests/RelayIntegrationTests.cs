@@ -77,11 +77,14 @@ public class RelayIntegrationTests : IAsyncLifetime
         var keyPackageData = new byte[256];
         RandomNumberGenerator.Fill(keyPackageData);
 
+        var kpRefHex = Convert.ToHexString(keyPackageData[..32]).ToLowerInvariant();
         var tags = new List<List<string>>
         {
             new() { "encoding", "base64" },
             new() { "mls_protocol_version", "1.0" },
-            new() { "mls_ciphersuite", "0x0001" }
+            new() { "mls_ciphersuite", "0x0001" },
+            new() { "i", kpRefHex },
+            new() { "d", kpRefHex }
         };
 
         var eventId = await _nostrServiceA.PublishKeyPackageAsync(keyPackageData, _privKeyA, tags);
@@ -98,18 +101,21 @@ public class RelayIntegrationTests : IAsyncLifetime
         var keyPackageData = new byte[256];
         RandomNumberGenerator.Fill(keyPackageData);
 
+        var kpRefHex = Convert.ToHexString(keyPackageData[..32]).ToLowerInvariant();
         var tags = new List<List<string>>
         {
             new() { "encoding", "base64" },
             new() { "mls_protocol_version", "1.0" },
-            new() { "mls_ciphersuite", "0x0001" }
+            new() { "mls_ciphersuite", "0x0001" },
+            new() { "i", kpRefHex },
+            new() { "d", kpRefHex }
         };
 
         var eventId = await _nostrServiceA.PublishKeyPackageAsync(keyPackageData, _privKeyA, tags);
         Assert.NotEmpty(eventId);
 
-        // Give the relay time to store the event
-        await Task.Delay(1000);
+        // Give the relay time to store and index the event
+        await Task.Delay(2000);
 
         // User B fetches User A's KeyPackages
         var keyPackages = await _nostrServiceB.FetchKeyPackagesAsync(_pubKeyA);
@@ -193,17 +199,21 @@ public class RelayIntegrationTests : IAsyncLifetime
         var keyPackageData = new byte[256];
         RandomNumberGenerator.Fill(keyPackageData);
 
+        var kpRefHex = Convert.ToHexString(keyPackageData[..32]).ToLowerInvariant();
         var tags = new List<List<string>>
         {
             new() { "encoding", "base64" },
             new() { "mls_protocol_version", "1.0" },
-            new() { "mls_ciphersuite", "0x0001" }
+            new() { "mls_ciphersuite", "0x0001" },
+            new() { "i", kpRefHex },
+            new() { "d", kpRefHex }
         };
 
         var kpEventId = await _nostrServiceA.PublishKeyPackageAsync(keyPackageData, _privKeyA, tags);
         Assert.Equal(64, kpEventId.Length);
 
-        await Task.Delay(500);
+        // Give the relay time to store and index the event
+        await Task.Delay(2000);
 
         // Phase 2: User B fetches User A's KeyPackage
         var fetchedKPs = (await _nostrServiceB.FetchKeyPackagesAsync(_pubKeyA)).ToList();

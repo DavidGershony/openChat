@@ -107,9 +107,9 @@ public class HeadlessDmAndBotTests : HeadlessTestBase
         await chatListVm.LoadChatsAsync();
         Dispatcher.UIThread.RunJobs();
 
-        Assert.Single(chatListVm.Chats);
-        Assert.True(chatListVm.Chats[0].IsBot);
-        Assert.False(chatListVm.Chats[0].IsGroup);
+        Assert.Single(chatListVm.AgentChats);
+        Assert.True(chatListVm.AgentChats[0].IsBot);
+        Assert.False(chatListVm.AgentChats[0].IsGroup);
     }
 
     [AvaloniaTheory]

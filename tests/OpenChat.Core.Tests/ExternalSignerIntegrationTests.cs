@@ -498,12 +498,15 @@ public class ExternalSignerIntegrationTests
     public async Task PublishKeyPackageAsync_WithSigner_ProducesValidEventId()
     {
         // PublishKeyPackageAsync with null privkey should route through the signer
-        // and return a valid 64-char hex event ID. No relays needed — it just won't
-        // send anywhere, but the signing and ID computation still happen.
+        // and return a valid 64-char hex event ID.
 
         var (privKey, pubKey, _, _) = _nostrService.GenerateKeyPair();
         var signer = new TestExternalSigner(privKey, pubKey);
         _nostrService.SetExternalSigner(signer);
+
+        // Connect to a relay so the publish path can send and receive OK responses
+        await _nostrService.ConnectAsync("wss://test.thedude.cloud");
+        await Task.Delay(500);
 
         var kpData = Encoding.UTF8.GetBytes("fake-keypackage");
         var tags = new List<List<string>>

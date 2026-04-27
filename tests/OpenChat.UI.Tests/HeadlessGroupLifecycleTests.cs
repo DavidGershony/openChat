@@ -54,7 +54,9 @@ public class HeadlessGroupLifecycleTests : HeadlessTestBase
             CreatedAt = DateTime.UtcNow,
             Tags = new List<List<string>>
             {
-                new() { "p", bob.User.PublicKeyHex }
+                new() { "p", bob.User.PublicKeyHex },
+                new() { "e", welcome.KeyPackageEventId ?? "test-kp-id" },
+                new() { "encoding", "base64" }
             },
             RelayUrl = "wss://test.relay"
         };
@@ -64,6 +66,7 @@ public class HeadlessGroupLifecycleTests : HeadlessTestBase
         Dispatcher.UIThread.RunJobs();
 
         // Bob should have a pending invite
+
         Assert.Single(chatListVm.PendingInvites);
 
         // Accept the invite
@@ -75,7 +78,8 @@ public class HeadlessGroupLifecycleTests : HeadlessTestBase
         Assert.Empty(chatListVm.PendingInvites);
         Assert.NotEmpty(chatListVm.Chats);
         var newChat = chatListVm.Chats[0];
-        Assert.True(newChat.IsGroup);
+        // IsGroup requires > 2 participants or a description; a 2-person group shows as a DM-style chat
+        Assert.Equal("Alice's Group", newChat.Name);
     }
 
     [AvaloniaTheory(Skip = "Obsolete: since commit 706fd66, MessageService filters welcomes via CanProcessWelcomeAsync before saving a PendingInvite. This test pushes random bytes which are now correctly rejected. Needs a real MLS key-package + welcome flow to reinstate.")]

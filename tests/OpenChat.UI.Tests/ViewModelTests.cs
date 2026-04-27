@@ -22,7 +22,8 @@ public class ViewModelTests
             IsPinned = true,
             IsMuted = false,
             LastActivityAt = DateTime.UtcNow,
-            LastMessage = new Message { Content = "Last message" }
+            LastMessage = new Message { Content = "Last message" },
+            ParticipantPublicKeys = new List<string> { "aaa", "bbb", "ccc" }
         };
 
         // Act
