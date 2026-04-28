@@ -1,4 +1,5 @@
 using Android.App;
+using Android.Content;
 using Android.Content.PM;
 using Android.OS;
 using Android.Views;
@@ -13,12 +14,13 @@ using OpenChat.Core.Services;
 using OpenChat.Presentation.Services;
 using OpenChat.Presentation.ViewModels;
 using ReactiveUI;
+using System.Linq;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
 
 namespace OpenChat.Android;
 
-[Activity(Label = "OpenChat", MainLauncher = true, Theme = "@style/AppTheme",
+[Activity(Label = "OpenChat", MainLauncher = true, LaunchMode = LaunchMode.SingleTop, Theme = "@style/AppTheme",
     ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.ScreenLayout | ConfigChanges.KeyboardHidden)]
 public class MainActivity : AppCompatActivity, IActivatableView
 {
@@ -105,6 +107,9 @@ public class MainActivity : AppCompatActivity, IActivatableView
             ShowFragment(new ChatListFragment(_shellViewModel.MainViewModel, _shellViewModel), "chatlist");
         else
             ShowFragment(new LoginFragment(_shellViewModel), "login");
+
+        // Handle share intent on cold start
+        HandleShareIntent(Intent);
     }
 
     private void ShowFragment(Fragment fragment, string tag)
@@ -155,6 +160,63 @@ public class MainActivity : AppCompatActivity, IActivatableView
             .Replace(Resource.Id.fragment_container, fragment, "addbot")
             .AddToBackStack("addbot")
             .Commit();
+    }
+
+    protected override void OnNewIntent(Intent? intent)
+    {
+        base.OnNewIntent(intent);
+        Intent = intent;
+        HandleShareIntent(intent);
+    }
+
+    /// <summary>
+    /// Pending share intent extras, consumed by ChatFragment after navigation.
+    /// </summary>
+    internal static Bundle? PendingShareExtras { get; set; }
+
+    private void HandleShareIntent(Intent? intent)
+    {
+        if (intent == null || !intent.GetBooleanExtra("shareAction", false))
+            return;
+
+        var chatId = intent.GetStringExtra("shareChatId");
+        var accountPubKey = intent.GetStringExtra("shareAccountPubKey");
+        if (string.IsNullOrEmpty(chatId)) return;
+
+        // Store share extras for ChatFragment to pick up
+        PendingShareExtras = intent.Extras;
+
+        // If we need to switch accounts, do it
+        if (!string.IsNullOrEmpty(accountPubKey) && _shellViewModel != null)
+        {
+            var currentAccount = AccountRegistryService.GetActiveAccount();
+            if (currentAccount != null &&
+                !string.Equals(currentAccount.PublicKeyHex, accountPubKey, StringComparison.OrdinalIgnoreCase))
+            {
+                // Switch account — this triggers full re-initialization
+                _ = _shellViewModel.SwitchAccountAsync(accountPubKey);
+                // Navigation to chat will happen after login state settles
+                return;
+            }
+        }
+
+        // Already on the right account — navigate to the chat
+        NavigateToShareChat(chatId);
+    }
+
+    private void NavigateToShareChat(string chatId)
+    {
+        if (_shellViewModel?.MainViewModel == null) return;
+
+        var chatListVm = _shellViewModel.MainViewModel.ChatListViewModel;
+        var chatItem = chatListVm.Chats.FirstOrDefault(c => c.Id == chatId)
+                    ?? chatListVm.AgentChats.FirstOrDefault(c => c.Id == chatId);
+
+        if (chatItem != null)
+        {
+            chatListVm.SelectedChat = chatItem;
+            NavigateToChat();
+        }
     }
 
     protected override void OnPause()

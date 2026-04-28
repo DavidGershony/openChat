@@ -291,6 +291,29 @@ public class ChatFragment : Fragment
 
         // Initial load
         _adapter.UpdateItems(ViewModel.Messages.ToList());
+
+        // Handle shared content from share target
+        ApplyPendingShareContent(messageInput);
+    }
+
+    private void ApplyPendingShareContent(TextInputEditText messageInput)
+    {
+        var extras = MainActivity.PendingShareExtras;
+        if (extras == null || !extras.GetBoolean("shareAction", false))
+            return;
+
+        // Consume the extras so they don't re-apply on rotation
+        MainActivity.PendingShareExtras = null;
+
+        var shareText = extras.GetString("shareText");
+        if (!string.IsNullOrEmpty(shareText))
+        {
+            messageInput.Text = shareText;
+            messageInput.SetSelection(shareText.Length);
+            _logger.LogInformation("Share target: pre-filled message with shared text");
+        }
+
+        // TODO: handle shareUri / shareUris for media attachments in a follow-up
     }
 
     private void ShowAttachMenu(View anchor)
