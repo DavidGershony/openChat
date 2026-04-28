@@ -305,6 +305,12 @@ public class ChatFragment : Fragment
         // Consume the extras so they don't re-apply on rotation
         MainActivity.PendingShareExtras = null;
 
+        // Handle shared file/media URIs
+        var shareUri = extras.GetString("shareUri");
+        var shareUris = extras.GetStringArray("shareUris");
+        var shareMimeType = extras.GetString("shareMimeType") ?? "application/octet-stream";
+
+        // Handle shared text first (including URLs from browsers, captions with media)
         var shareText = extras.GetString("shareText");
         if (!string.IsNullOrEmpty(shareText))
         {
@@ -313,8 +319,95 @@ public class ChatFragment : Fragment
             _logger.LogInformation("Share target: pre-filled message with shared text");
         }
 
-        // TODO: handle shareUri / shareUris for media attachments in a follow-up
+        // Handle shared file/media URIs (may coexist with text, e.g. image + caption)
+        if (shareUris != null && shareUris.Length > 0)
+        {
+            _ = SendSharedFilesAsync(shareUris, shareMimeType);
+        }
+        else if (!string.IsNullOrEmpty(shareUri))
+        {
+            _ = SendSharedFileAsync(shareUri, shareMimeType);
+        }
     }
+
+    private async Task SendSharedFileAsync(string uriString, string fallbackMimeType)
+    {
+        try
+        {
+            var uri = global::Android.Net.Uri.Parse(uriString);
+            if (uri == null || Context == null) return;
+
+            var fileResult = ReadFileFromUri(uri, fallbackMimeType);
+            if (fileResult == null) return;
+
+            // Temporarily override FilePickerFunc to return our shared file
+            var originalPicker = ChatViewModel.FilePickerFunc;
+            ChatViewModel.FilePickerFunc = () => Task.FromResult<(byte[], string, string)?>(fileResult.Value);
+
+            _logger.LogInformation("Share target: sending file {Name} ({Mime}, {Size} bytes)",
+                fileResult.Value.FileName, fileResult.Value.MimeType, fileResult.Value.Data.Length);
+
+            await ViewModel.AttachFileCommand.Execute();
+
+            // Restore original picker
+            ChatViewModel.FilePickerFunc = originalPicker;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send shared file from URI {Uri}", uriString);
+        }
+    }
+
+    private async Task SendSharedFilesAsync(string[] uriStrings, string fallbackMimeType)
+    {
+        foreach (var uriString in uriStrings)
+        {
+            if (!string.IsNullOrEmpty(uriString))
+                await SendSharedFileAsync(uriString, fallbackMimeType);
+        }
+    }
+
+    private (byte[] Data, string FileName, string MimeType)? ReadFileFromUri(
+        global::Android.Net.Uri uri, string fallbackMimeType)
+    {
+        if (Context == null) return null;
+
+        try
+        {
+            var contentResolver = Context.ContentResolver!;
+            var mimeType = contentResolver.GetType(uri) ?? fallbackMimeType;
+            var fileName = GetFileName(uri) ?? $"shared_file{GetExtensionForMime(mimeType)}";
+
+            using var stream = contentResolver.OpenInputStream(uri);
+            if (stream == null) return null;
+
+            using var memStream = new MemoryStream();
+            stream.CopyTo(memStream);
+            var data = memStream.ToArray();
+
+            _logger.LogInformation("Read shared file: {Name}, {Size} bytes, {Mime}", fileName, data.Length, mimeType);
+            return (data, fileName, mimeType);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to read shared file from URI");
+            return null;
+        }
+    }
+
+    private static string GetExtensionForMime(string mimeType) => mimeType switch
+    {
+        "image/jpeg" or "image/jpg" => ".jpg",
+        "image/png" => ".png",
+        "image/gif" => ".gif",
+        "image/webp" => ".webp",
+        "audio/ogg" => ".ogg",
+        "audio/opus" => ".opus",
+        "audio/mpeg" => ".mp3",
+        "video/mp4" => ".mp4",
+        "application/pdf" => ".pdf",
+        _ => ".bin"
+    };
 
     private void ShowAttachMenu(View anchor)
     {
