@@ -350,6 +350,10 @@ public class MainViewModel : ViewModelBase
                             CurrentUser.PublicKeyHex = ExternalSigner.PublicKeyHex;
                             CurrentUser.Npub = Bech32.Encode("npub", Convert.FromHexString(ExternalSigner.PublicKeyHex));
                             _messageService.UpdateCurrentUserPubKey(ExternalSigner.PublicKeyHex);
+
+                            // Persist corrected pubkey so future loads/account switches use the right key
+                            try { await _storageService.SaveCurrentUserAsync(CurrentUser); }
+                            catch (Exception ex) { _logger.LogWarning(ex, "Failed to persist corrected pubkey"); }
                         }
                     }
                     else
