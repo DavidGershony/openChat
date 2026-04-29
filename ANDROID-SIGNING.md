@@ -8,11 +8,11 @@ The Android APK is signed with a release keystore during CI builds. The keystore
 
 ## Keystore Details
 
-- **File:** `src/OpenChat.Android/openchat-release.keystore` (gitignored)
-- **Alias:** `openchat`
+- **File:** `src/Scramble.Android/scramble-release.keystore` (gitignored)
+- **Alias:** `scramble`
 - **Algorithm:** RSA 2048-bit
 - **Validity:** 10,000 days (~27 years)
-- **Store/Key password:** `openchat-release` (change for production)
+- **Store/Key password:** `scramble-release` (change for production)
 
 ## GitHub Secrets Setup
 
@@ -23,7 +23,7 @@ Go to your repo **Settings > Secrets and variables > Actions > New repository se
 Base64-encoded keystore file. Generate with:
 
 ```bash
-base64 -w 0 src/OpenChat.Android/openchat-release.keystore
+base64 -w 0 src/Scramble.Android/scramble-release.keystore
 ```
 
 Paste the full output as the secret value.
@@ -31,19 +31,19 @@ Paste the full output as the secret value.
 ### 2. `ANDROID_KEY_ALIAS`
 
 ```
-openchat
+scramble
 ```
 
 ### 3. `ANDROID_KEY_PASSWORD`
 
 ```
-openchat-release
+scramble-release
 ```
 
 ### 4. `ANDROID_KEYSTORE_PASSWORD`
 
 ```
-openchat-release
+scramble-release
 ```
 
 ## How It Works
@@ -59,13 +59,13 @@ The publish workflow (`.github/workflows/publish.yml`):
 To build a signed APK locally:
 
 ```bash
-dotnet publish src/OpenChat.Android/OpenChat.Android.csproj \
+dotnet publish src/Scramble.Android/Scramble.Android.csproj \
   --configuration Release \
   --framework net9.0-android \
-  -p:AndroidSigningKeyStore=openchat-release.keystore \
-  -p:AndroidSigningKeyAlias=openchat \
-  -p:AndroidSigningKeyPass=openchat-release \
-  -p:AndroidSigningStorePass=openchat-release \
+  -p:AndroidSigningKeyStore=scramble-release.keystore \
+  -p:AndroidSigningKeyAlias=scramble \
+  -p:AndroidSigningKeyPass=scramble-release \
+  -p:AndroidSigningStorePass=scramble-release \
   --output ./publish/android
 ```
 
@@ -75,11 +75,11 @@ If you need a new keystore (breaks updates for existing users):
 
 ```bash
 keytool -genkeypair -v \
-  -keystore src/OpenChat.Android/openchat-release.keystore \
-  -alias openchat \
+  -keystore src/Scramble.Android/scramble-release.keystore \
+  -alias scramble \
   -keyalg RSA -keysize 2048 -validity 10000 \
   -storepass <password> -keypass <password> \
-  -dname "CN=OpenChat, OU=Development, O=OpenChat, L=Unknown, ST=Unknown, C=US"
+  -dname "CN=Scramble, OU=Development, O=Scramble, L=Unknown, ST=Unknown, C=US"
 ```
 
 Then update all 4 GitHub secrets with the new values.

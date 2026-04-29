@@ -1,4 +1,4 @@
-# OpenChat
+# Scramble
 
 A [Marmot Protocol](https://github.com/marmot-protocol) client for desktop and Android. End-to-end encrypted group messaging over [Nostr](https://nostr.com/), powered by [MLS (RFC 9420)](https://messaginglayersecurity.rocks/).
 
@@ -13,9 +13,9 @@ A [Marmot Protocol](https://github.com/marmot-protocol) client for desktop and A
 
 [Marmot](https://github.com/marmot-protocol) is a protocol for encrypted group messaging on Nostr. It uses MLS (Messaging Layer Security, RFC 9420) to give you forward secrecy and post-compromise security in group chats &mdash; the same kind of encryption Signal uses, but decentralized over Nostr relays.
 
-OpenChat is a Marmot client. It implements the [Marmot Improvement Proposals (MIPs)](https://github.com/marmot-protocol/mdk):
+Scramble is a Marmot client. It implements the [Marmot Improvement Proposals (MIPs)](https://github.com/marmot-protocol/mdk):
 
-| MIP | What it defines | OpenChat status |
+| MIP | What it defines | Scramble status |
 |---|---|---|
 | **MIP-00** | KeyPackage publishing (kind 443) | Implemented |
 | **MIP-01** | Group metadata & NostrGroupData extension (0xF2EE) | Implemented |
@@ -23,7 +23,7 @@ OpenChat is a Marmot client. It implements the [Marmot Improvement Proposals (MI
 | **MIP-03** | Group messages (kind 445) with ChaCha20-Poly1305 | Implemented |
 | **MIP-04** | Encrypted media attachments via Blossom | Implemented |
 
-Any Marmot-compatible client can join the same groups and exchange messages with OpenChat.
+Any Marmot-compatible client can join the same groups and exchange messages with Scramble.
 
 ## What does it do?
 
@@ -45,7 +45,7 @@ Encrypted group chat over Nostr. Your messages are encrypted before they leave y
 ```bash
 git clone https://github.com/DavidGershony/openChat.git
 cd openChat
-dotnet run --project src/OpenChat.Desktop
+dotnet run --project src/Scramble.Desktop
 ```
 
 Log in with an nsec, generate a fresh key, or scan a QR code with Amber.
@@ -75,7 +75,7 @@ Log in with an nsec, generate a fresh key, or scan a QR code with Amber.
 
 ## Nostr & Marmot protocol support
 
-OpenChat maps MLS operations to Nostr event kinds. Your client publishes a KeyPackage so others can invite you. Invites arrive as NIP-59 gift-wrapped Welcome events. Once you join a group, messages are MLS-encrypted and published with the group's NostrGroupId in the `h` tag.
+Scramble maps MLS operations to Nostr event kinds. Your client publishes a KeyPackage so others can invite you. Invites arrive as NIP-59 gift-wrapped Welcome events. Once you join a group, messages are MLS-encrypted and published with the group's NostrGroupId in the `h` tag.
 
 | Nostr Event Kind | Usage |
 |---|---|
@@ -122,15 +122,15 @@ OpenChat maps MLS operations to Nostr event kinds. Your client publishes a KeyPa
 
 ```
 src/
-  OpenChat.Core/          Nostr protocol, MLS integration, Marmot MIP implementations
-  OpenChat.Presentation/  ViewModels (ReactiveUI + Fody)
-  OpenChat.UI/            Avalonia views, themes, and platform services
-  OpenChat.Desktop/       Desktop entry point
-  OpenChat.Android/       Android entry point
-  OpenChat.Native/        Rust native library (Marmot MDK FFI)
+  Scramble.Core/          Nostr protocol, MLS integration, Marmot MIP implementations
+  Scramble.Presentation/  ViewModels (ReactiveUI + Fody)
+  Scramble.UI/            Avalonia views, themes, and platform services
+  Scramble.Desktop/       Desktop entry point
+  Scramble.Android/       Android entry point
+  Scramble.Native/        Rust native library (Marmot MDK FFI)
 tests/
-  OpenChat.Core.Tests/    Unit, integration, real-relay, and MIP compliance tests
-  OpenChat.UI.Tests/      ViewModel tests
+  Scramble.Core.Tests/    Unit, integration, real-relay, and MIP compliance tests
+  Scramble.UI.Tests/      ViewModel tests
 ```
 
 ## Running tests
@@ -151,9 +151,9 @@ The integration tests run a full Marmot flow through a real Nostr relay: create 
 The pure C# MLS backend ([marmot-cs](https://github.com/DavidGershony/marmot-cs)) works out of the box. The Rust backend ([Marmot MDK](https://github.com/marmot-protocol/mdk)) is optional:
 
 ```bash
-cd src/OpenChat.Native
+cd src/Scramble.Native
 cargo build --release
-cp target/release/openchat_native.dll ../OpenChat.Desktop/  # Windows
+cp target/release/scramble_native.dll ../Scramble.Desktop/  # Windows
 ```
 
 Run with `--mdk rust` to use the Rust backend, or `--mdk managed` (default) for C#.

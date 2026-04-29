@@ -1,0 +1,361 @@
+using System.Reactive;
+using System.Reactive.Disposables;
+using System.Reactive.Linq;
+using Microsoft.Extensions.Logging;
+using ReactiveUI;
+using ReactiveUI.Fody.Helpers;
+using Scramble.Core.Logging;
+using Scramble.Core.Models;
+using Scramble.Core.Services;
+using Scramble.Presentation.Services;
+
+namespace Scramble.Presentation.ViewModels;
+
+public class LoginViewModel : ViewModelBase
+{
+    private readonly ILogger<LoginViewModel> _logger;
+    private readonly INostrService _nostrService;
+    private readonly IQrCodeGenerator _qrCodeGenerator;
+
+    /// <summary>
+    /// The external signer instance, available for wiring into NostrService after login.
+    /// </summary>
+    public IExternalSigner? ExternalSigner { get; }
+
+    [Reactive] public string PrivateKeyInput { get; set; } = string.Empty;
+    [Reactive] public string BunkerUrl { get; set; } = string.Empty;
+    [Reactive] public string? ErrorMessage { get; set; }
+    [Reactive] public bool IsLoading { get; set; }
+    [Reactive] public User? LoggedInUser { get; set; }
+
+    /// <summary>
+    /// True when the login screen was opened via "Add Account" (shows a Cancel button).
+    /// Set by ShellViewModel.
+    /// </summary>
+    [Reactive] public bool IsAddAccountMode { get; set; }
+
+    // Generated key display
+    [Reactive] public string? GeneratedNsec { get; set; }
+    [Reactive] public string? GeneratedNpub { get; set; }
+    [Reactive] public bool ShowGeneratedKeys { get; set; }
+
+    // External signer
+    [Reactive] public bool ShowExternalSigner { get; set; }
+    [Reactive] public bool IsExternalSignerConnecting { get; set; }
+    [Reactive] public string ExternalSignerStatus { get; set; } = string.Empty;
+    [Reactive] public string? NostrConnectUri { get; set; }
+    /// <summary>QR code as PNG bytes (platform-neutral). Views convert to their image type.</summary>
+    [Reactive] public byte[]? NostrConnectQrPngBytes { get; set; }
+    [Reactive] public string SignerRelayInput { get; set; } = "wss://nos.lol";
+
+    // Login method selection
+    [Reactive] public LoginMethod SelectedLoginMethod { get; set; } = LoginMethod.PrivateKey;
+
+    public ReactiveCommand<Unit, Unit> GenerateNewKeyCommand { get; }
+    public ReactiveCommand<Unit, Unit> ImportKeyCommand { get; }
+    public ReactiveCommand<Unit, Unit> UseGeneratedKeyCommand { get; }
+    public ReactiveCommand<Unit, Unit> ConnectExternalSignerCommand { get; }
+    public ReactiveCommand<Unit, Unit> CopyNsecCommand { get; }
+    public ReactiveCommand<Unit, Unit> CopyNpubCommand { get; }
+    public ReactiveCommand<LoginMethod, Unit> SelectLoginMethodCommand { get; }
+    public ReactiveCommand<Unit, Unit> RefreshSignerRelayCommand { get; }
+
+    public LoginViewModel(INostrService nostrService, IQrCodeGenerator qrCodeGenerator, IExternalSigner? externalSigner = null)
+    {
+        _logger = LoggingConfiguration.CreateLogger<LoginViewModel>();
+        _logger.LogDebug("LoginViewModel initializing");
+
+        _nostrService = nostrService;
+        _qrCodeGenerator = qrCodeGenerator;
+        ExternalSigner = externalSigner ?? new ExternalSignerService();
+
+        GenerateNewKeyCommand = ReactiveCommand.Create(GenerateNewKey);
+
+        var canImport = this.WhenAnyValue(
+            x => x.PrivateKeyInput,
+            x => x.IsLoading,
+            (key, loading) => !string.IsNullOrWhiteSpace(key) && !loading);
+
+        ImportKeyCommand = ReactiveCommand.CreateFromTask(ImportKeyAsync, canImport);
+
+        var canUseGenerated = this.WhenAnyValue(
+            x => x.GeneratedNsec,
+            x => x.IsLoading,
+            (nsec, loading) => !string.IsNullOrEmpty(nsec) && !loading);
+
+        UseGeneratedKeyCommand = ReactiveCommand.CreateFromTask(UseGeneratedKeyAsync, canUseGenerated);
+
+        var canConnectSigner = this.WhenAnyValue(
+            x => x.BunkerUrl,
+            x => x.IsLoading,
+            x => x.IsExternalSignerConnecting,
+            (url, loading, connecting) => !string.IsNullOrWhiteSpace(url) && !loading && !connecting);
+
+        ConnectExternalSignerCommand = ReactiveCommand.CreateFromTask(ConnectExternalSignerAsync, canConnectSigner);
+
+        CopyNsecCommand = ReactiveCommand.Create(() =>
+        {
+            // TODO: Copy to clipboard using platform-specific implementation
+        });
+
+        CopyNpubCommand = ReactiveCommand.Create(() =>
+        {
+            // TODO: Copy to clipboard using platform-specific implementation
+        });
+
+        SelectLoginMethodCommand = ReactiveCommand.CreateFromTask<LoginMethod>(SelectLoginMethodAsync);
+
+        RefreshSignerRelayCommand = ReactiveCommand.CreateFromTask(async () =>
+        {
+            NostrConnectUri = null;
+            NostrConnectQrPngBytes = null;
+            await GenerateNostrConnectAsync();
+        });
+
+        // Subscribe to external signer status and auto-login on connect
+        if (ExternalSigner != null)
+        {
+            ExternalSigner.Status
+                .ObserveOn(RxApp.MainThreadScheduler)
+                .Subscribe(async status =>
+                {
+                    ExternalSignerStatus = status.State switch
+                    {
+                        ExternalSignerState.Connecting => "Connecting to relay...",
+                        ExternalSignerState.WaitingForApproval => "Scan the QR code with your signer app...",
+                        ExternalSignerState.Connected => "Connected!",
+                        ExternalSignerState.Error => $"Error: {status.Error}",
+                        _ => ""
+                    };
+
+                    IsExternalSignerConnecting = status.State == ExternalSignerState.Connecting ||
+                                                 status.State == ExternalSignerState.WaitingForApproval;
+
+                    // Auto-login when signer connects via nostrconnect
+                    if (status.State == ExternalSignerState.Connected && status.PublicKeyHex != null)
+                    {
+                        await HandleSignerConnectedAsync(status.PublicKeyHex);
+                    }
+                });
+        }
+    }
+
+    private async Task SelectLoginMethodAsync(LoginMethod method)
+    {
+        SelectedLoginMethod = method;
+        ShowExternalSigner = method == LoginMethod.ExternalSigner;
+        ShowGeneratedKeys = false;
+        ErrorMessage = null;
+
+        // Auto-generate nostrconnect URI when Extension tab is selected
+        if (method == LoginMethod.ExternalSigner && NostrConnectUri == null && ExternalSigner != null)
+        {
+            await GenerateNostrConnectAsync();
+        }
+    }
+
+    private async Task GenerateNostrConnectAsync()
+    {
+        try
+        {
+            var signerRelay = string.IsNullOrWhiteSpace(SignerRelayInput) ? "wss://relay.damus.io" : SignerRelayInput.Trim();
+            var relays = new[] { signerRelay, "wss://relay.nsec.app" }.Distinct().ToList();
+            var uri = await ExternalSigner!.GenerateAndListenForConnectionAsync(relays);
+            NostrConnectUri = uri;
+            NostrConnectQrPngBytes = _qrCodeGenerator.GeneratePng(uri);
+            _logger.LogInformation("Generated nostrconnect QR code (URI redacted — contains secret)");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to generate nostrconnect URI");
+            ErrorMessage = $"Failed to connect to relay: {ex.Message}";
+        }
+    }
+
+    private void GenerateNewKey()
+    {
+        _logger.LogInformation("User requested to generate new key");
+
+        try
+        {
+            var (_, _, nsec, npub) = _nostrService.GenerateKeyPair();
+            GeneratedNsec = nsec;
+            GeneratedNpub = npub;
+            ShowGeneratedKeys = true;
+            ErrorMessage = null;
+            _logger.LogInformation("Successfully generated new key. Npub: {Npub}", npub);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to generate new key");
+            ErrorMessage = $"Failed to generate key: {ex.Message}";
+        }
+    }
+
+    private async Task ImportKeyAsync()
+    {
+        if (string.IsNullOrWhiteSpace(PrivateKeyInput))
+        {
+            _logger.LogWarning("ImportKeyAsync called with empty input");
+            return;
+        }
+
+        _logger.LogInformation("User attempting to import private key");
+        _logger.LogDebug("Key input length: {Length}, starts with nsec: {IsNsec}",
+            PrivateKeyInput.Length,
+            PrivateKeyInput.Trim().StartsWith("nsec"));
+
+        IsLoading = true;
+        ErrorMessage = null;
+
+        try
+        {
+            _logger.LogDebug("Calling NostrService.ImportPrivateKey");
+            var (privateKeyHex, publicKeyHex, nsec, npub) = _nostrService.ImportPrivateKey(PrivateKeyInput.Trim());
+            _logger.LogInformation("Successfully parsed private key. Derived npub: {Npub}", npub);
+
+            var user = new User
+            {
+                Id = Guid.NewGuid().ToString(),
+                PrivateKeyHex = privateKeyHex,
+                PublicKeyHex = publicKeyHex,
+                Nsec = nsec,
+                Npub = npub,
+                CreatedAt = DateTime.UtcNow,
+                IsCurrentUser = true
+            };
+
+            LoggedInUser = user;
+            _logger.LogInformation("User successfully logged in with npub: {Npub}", npub);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to import private key");
+            ErrorMessage = $"Invalid private key: {ex.Message}";
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private async Task UseGeneratedKeyAsync()
+    {
+        if (string.IsNullOrEmpty(GeneratedNsec))
+        {
+            _logger.LogWarning("UseGeneratedKeyAsync called but no generated nsec available");
+            return;
+        }
+
+        _logger.LogInformation("User continuing with generated key");
+        _logger.LogDebug("Setting PrivateKeyInput to generated nsec and calling ImportKeyAsync");
+        PrivateKeyInput = GeneratedNsec;
+        await ImportKeyAsync();
+    }
+
+    private async Task HandleSignerConnectedAsync(string publicKeyHex)
+    {
+        // Guard: skip if already logged in (prevents duplicate login from signer reconnect)
+        if (LoggedInUser != null) return;
+
+        try
+        {
+            var npub = ExternalSigner!.Npub;
+            var user = new User
+            {
+                Id = Guid.NewGuid().ToString(),
+                PublicKeyHex = publicKeyHex,
+                Npub = npub ?? string.Empty,
+                CreatedAt = DateTime.UtcNow,
+                IsCurrentUser = true,
+                PrivateKeyHex = null,
+                Nsec = null,
+                // Persist signer session details for auto-reconnect on app restart
+                SignerRelayUrl = string.Join(";", ExternalSigner.RelayUrls),
+                SignerRemotePubKey = ExternalSigner.RemotePubKey,
+                SignerSecret = ExternalSigner.Secret,
+                SignerLocalPrivateKeyHex = ExternalSigner.LocalPrivateKeyHex,
+                SignerLocalPublicKeyHex = ExternalSigner.LocalPublicKeyHex
+            };
+
+            LoggedInUser = user;
+            _logger.LogInformation("Auto-logged in via external signer. Npub: {Npub}", npub);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to complete login after signer connected");
+            ErrorMessage = $"Failed to complete login: {ex.Message}";
+        }
+    }
+
+    private async Task ConnectExternalSignerAsync()
+    {
+        if (string.IsNullOrWhiteSpace(BunkerUrl) || ExternalSigner == null) return;
+
+        IsLoading = true;
+        IsExternalSignerConnecting = true;
+        ErrorMessage = null;
+
+        try
+        {
+            var success = await ExternalSigner.ConnectWithStringAsync(BunkerUrl.Trim());
+
+            if (success && ExternalSigner.PublicKeyHex != null)
+            {
+                await HandleSignerConnectedAsync(ExternalSigner.PublicKeyHex);
+            }
+            else
+            {
+                ErrorMessage = "Failed to connect to external signer. Please check the URL and try again.";
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Failed to connect: {ex.Message}";
+        }
+        finally
+        {
+            IsLoading = false;
+            IsExternalSignerConnecting = false;
+        }
+    }
+
+    /// <summary>
+    /// Resets UI state for re-display after logout or account switch.
+    /// Disconnects any active external signer session so the old account
+    /// doesn't auto-login when the login screen appears.
+    /// </summary>
+    public void Reset()
+    {
+        LoggedInUser = null;
+        PrivateKeyInput = string.Empty;
+        BunkerUrl = string.Empty;
+        ErrorMessage = null;
+        IsLoading = false;
+        GeneratedNsec = null;
+        GeneratedNpub = null;
+        ShowGeneratedKeys = false;
+        ShowExternalSigner = false;
+        IsExternalSignerConnecting = false;
+        ExternalSignerStatus = string.Empty;
+        NostrConnectUri = null;
+        NostrConnectQrPngBytes = null;
+        SelectedLoginMethod = LoginMethod.PrivateKey;
+        IsAddAccountMode = false;
+
+        // Disconnect the external signer to prevent the old Amber session
+        // from auto-logging in when the login screen is re-displayed.
+        // The new account will establish its own signer connection.
+        if (ExternalSigner != null)
+        {
+            _ = ExternalSigner.DisconnectAsync();
+        }
+    }
+}
+
+public enum LoginMethod
+{
+    PrivateKey,
+    GenerateNew,
+    ExternalSigner
+}

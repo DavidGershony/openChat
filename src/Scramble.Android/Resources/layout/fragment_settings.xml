@@ -1,0 +1,708 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/settings_toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        app:title="Settings"
+        app:navigationIcon="?attr/homeAsUpIndicator" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <!-- Theme Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardCornerRadius="12dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Theme"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Customize the app appearance"
+                        android:textSize="13sp"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:layout_marginTop="4dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/theme_selector_button"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Nostr Purple (Default)"
+                        android:layout_marginTop="12dp"
+                        style="@style/Widget.Material3.Button.OutlinedButton" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Profile Card (hidden when using external signer) -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/profile_card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardCornerRadius="12dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Profile"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:hint="Display Name">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/display_name_input"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:hint="Username">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/username_input"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:hint="About">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/about_input"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="textMultiLine"
+                            android:maxLines="3" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/save_profile_button"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Save Profile"
+                        android:layout_marginTop="16dp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Relay Management Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                app:cardCornerRadius="12dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Relay Management"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/reconnect_relays_button"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Reconnect All"
+                        android:layout_marginTop="8dp"
+                        style="@style/Widget.Material3.Button.OutlinedButton" />
+
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/relay_recycler"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:nestedScrollingEnabled="false" />
+
+                    <!-- Add relay -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="8dp">
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:hint="wss://relay.example.com">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/new_relay_input"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:inputType="textUri"
+                                android:maxLines="1"
+                                android:fontFamily="monospace"
+                                android:textSize="13sp" />
+                        </com.google.android.material.textfield.TextInputLayout>
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/add_relay_button"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Add"
+                            android:layout_marginStart="8dp" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Relay Publishing Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                app:cardCornerRadius="12dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="NIP-65 Relay List"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Publish your relay list so others can discover how to reach you"
+                        android:textSize="13sp"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:layout_marginTop="4dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/publish_relay_list_button"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Publish Relay List"
+                        android:layout_marginTop="12dp"
+                        style="@style/Widget.Material3.Button.OutlinedButton" />
+
+                    <TextView
+                        android:id="@+id/relay_list_status"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="13sp"
+                        android:layout_marginTop="8dp"
+                        android:visibility="gone" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Key Package Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                app:cardCornerRadius="12dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="MLS Key Package"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Publish a key package so others can invite you to groups"
+                        android:textSize="13sp"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:layout_marginTop="4dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/publish_keypackage_button"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Publish Key Package"
+                        android:layout_marginTop="12dp"
+                        style="@style/Widget.Material3.Button.OutlinedButton" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/audit_keypackage_button"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Audit Key Packages"
+                        android:layout_marginTop="4dp"
+                        style="@style/Widget.Material3.Button.TextButton" />
+
+                    <ProgressBar
+                        android:id="@+id/keypackage_progress"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:visibility="gone"
+                        android:layout_marginTop="8dp" />
+
+                    <TextView
+                        android:id="@+id/keypackage_status"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="13sp"
+                        android:layout_marginTop="8dp"
+                        android:visibility="gone" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Privacy Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                app:cardCornerRadius="12dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Privacy"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="12dp">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Enable media loading (MIP-04)"
+                            android:textSize="14sp" />
+
+                        <com.google.android.material.materialswitch.MaterialSwitch
+                            android:id="@+id/mip04_toggle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Risk: Medium — Enabling media loading exposes your IP to hosting servers and increases attack surface. Only enable if you trust your group members."
+                        android:textSize="11sp"
+                        android:textColor="@color/status_warning"
+                        android:layout_marginTop="4dp" />
+
+                    <TextView
+                        android:id="@+id/mip04_dependency_warning"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="12sp"
+                        android:textColor="@color/status_error"
+                        android:fontFamily="monospace"
+                        android:layout_marginTop="4dp"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Blossom media server"
+                        android:textSize="14sp"
+                        android:layout_marginTop="16dp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Server for uploading encrypted voice messages and media"
+                        android:textSize="12sp"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:layout_marginTop="2dp" />
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:hint="https://blossom.nostr.build">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/blossom_server_input"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="textUri"
+                            android:fontFamily="monospace"
+                            android:textSize="13sp" />
+                    </com.google.android.material.textfield.TextInputLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Notifications Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                app:cardCornerRadius="12dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Notifications"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <RadioGroup
+                        android:id="@+id/notification_mode_group"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp">
+
+                        <RadioButton
+                            android:id="@+id/notification_mode_background"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Background service (keep relay connections alive)"
+                            android:checked="true" />
+
+                        <RadioButton
+                            android:id="@+id/notification_mode_push"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="UnifiedPush (via ntfy)" />
+                    </RadioGroup>
+
+                    <!-- Background mode description -->
+                    <TextView
+                        android:id="@+id/notification_bg_description"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="The app will run a foreground service to keep relay connections open. Uses more battery but works without a notification server."
+                        android:textSize="12sp"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:layout_marginTop="8dp" />
+
+                    <!-- Push mode settings (hidden by default) -->
+                    <LinearLayout
+                        android:id="@+id/push_settings_panel"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Register with a notification server to receive push notifications. Lower battery usage."
+                            android:textSize="12sp"
+                            android:textColor="?attr/colorOnSurfaceVariant"
+                            android:layout_marginTop="8dp" />
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:hint="Server npub">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/notification_server_npub_input"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:inputType="text"
+                                android:fontFamily="monospace"
+                                android:textSize="13sp" />
+                        </com.google.android.material.textfield.TextInputLayout>
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:hint="Server relay (e.g. wss://relay.example.com)">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/notification_server_relay_input"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:inputType="textUri"
+                                android:fontFamily="monospace"
+                                android:textSize="13sp" />
+                        </com.google.android.material.textfield.TextInputLayout>
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:hint="Push URL (e.g. https://ntfy.sh/your-topic)">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/notification_push_url_input"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:inputType="textUri"
+                                android:fontFamily="monospace"
+                                android:textSize="13sp" />
+                        </com.google.android.material.textfield.TextInputLayout>
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:layout_marginTop="8dp">
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/generate_push_topic_button"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Generate topic"
+                                style="@style/Widget.Material3.Button.TonalButton" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/subscribe_ntfy_button"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Open in ntfy"
+                                android:layout_marginStart="8dp"
+                                style="@style/Widget.Material3.Button.TonalButton" />
+                        </LinearLayout>
+
+                        <FrameLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp">
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/register_notifications_button"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:text="Register" />
+
+                            <LinearLayout
+                                android:id="@+id/register_notifications_progress"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:orientation="horizontal"
+                                android:gravity="center"
+                                android:padding="12dp"
+                                android:visibility="gone">
+
+                                <ProgressBar
+                                    android:layout_width="24dp"
+                                    android:layout_height="24dp"
+                                    style="?android:attr/progressBarStyleSmall" />
+
+                                <TextView
+                                    android:id="@+id/register_notifications_progress_text"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginStart="8dp"
+                                    android:text="Registering..."
+                                    android:textSize="14sp" />
+                            </LinearLayout>
+                        </FrameLayout>
+
+                        <!-- Verification code (visible after registration) -->
+                        <LinearLayout
+                            android:id="@+id/notification_verify_layout"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:layout_marginTop="12dp"
+                            android:visibility="gone">
+
+                            <com.google.android.material.textfield.TextInputLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:hint="6-digit code">
+
+                                <com.google.android.material.textfield.TextInputEditText
+                                    android:id="@+id/notification_verify_code_input"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:inputType="number"
+                                    android:fontFamily="monospace"
+                                    android:textSize="16sp"
+                                    android:maxLength="6" />
+                            </com.google.android.material.textfield.TextInputLayout>
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/verify_notifications_button"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Verify"
+                                android:layout_marginStart="8dp"
+                                style="@style/Widget.Material3.Button.OutlinedButton" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/notification_registration_status"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="13sp"
+                        android:layout_marginTop="8dp"
+                        android:visibility="gone" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Developer Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                app:cardCornerRadius="12dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Developer"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/view_logs_button"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="View Logs"
+                        android:layout_marginTop="12dp"
+                        style="@style/Widget.Material3.Button.OutlinedButton" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/export_logs_button"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Export Logs"
+                        android:layout_marginTop="8dp"
+                        style="@style/Widget.Material3.Button.OutlinedButton" />
+
+                    <TextView
+                        android:id="@+id/library_versions_text"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:textSize="12sp"
+                        android:textColor="?android:attr/textColorSecondary" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- About Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                app:cardCornerRadius="12dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="About Scramble"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Scramble is an open-source chat application built with Nostr and the Marmot Protocol (MLS) for end-to-end encrypted messaging."
+                        android:textSize="13sp"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:layout_marginTop="8dp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Version 0.1.0"
+                        android:textSize="12sp"
+                        android:textColor="@color/text_muted"
+                        android:layout_marginTop="8dp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Logout Button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/logout_button"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="Log Out"
+                android:textColor="?attr/colorOnPrimary"
+                android:layout_marginTop="16dp"
+                android:layout_marginBottom="16dp"
+                app:backgroundTint="@color/status_error" />
+
+        </LinearLayout>
+    </ScrollView>
+
+</LinearLayout>

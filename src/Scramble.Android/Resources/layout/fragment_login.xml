@@ -1,0 +1,295 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background_dark"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:padding="32dp">
+
+        <!-- Logo -->
+        <ImageView
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:layout_marginTop="48dp"
+            android:src="@drawable/ic_chat"
+            android:contentDescription="Scramble logo" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Scramble"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            android:textColor="?attr/colorOnSurface"
+            android:layout_marginTop="16dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Secure messaging with Nostr + MLS"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:layout_marginTop="4dp" />
+
+        <!-- Tab Buttons -->
+        <com.google.android.material.tabs.TabLayout
+            android:id="@+id/login_tabs"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="32dp"
+            app:tabMode="fixed"
+            app:tabGravity="fill">
+
+            <com.google.android.material.tabs.TabItem
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Import Key" />
+
+            <com.google.android.material.tabs.TabItem
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="New Key" />
+
+            <com.google.android.material.tabs.TabItem
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Extension" />
+        </com.google.android.material.tabs.TabLayout>
+
+        <!-- Error Message -->
+        <TextView
+            android:id="@+id/error_message"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/status_error"
+            android:visibility="gone"
+            android:padding="12dp"
+            android:layout_marginTop="16dp" />
+
+        <!-- Import Key Section -->
+        <LinearLayout
+            android:id="@+id/import_key_section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="16dp">
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="nsec1... or hex private key"
+                app:endIconMode="password_toggle">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/private_key_input"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="textPassword" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/import_key_button"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Import Key"
+                android:layout_marginTop="16dp" />
+        </LinearLayout>
+
+        <!-- Generate New Key Section -->
+        <LinearLayout
+            android:id="@+id/generate_key_section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone"
+            android:layout_marginTop="16dp">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/generate_key_button"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Generate New Identity"
+                style="@style/Widget.Material3.Button.OutlinedButton" />
+
+            <!-- Generated Keys Display -->
+            <LinearLayout
+                android:id="@+id/generated_keys_layout"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone"
+                android:padding="16dp"
+                android:layout_marginTop="16dp"
+                android:background="@color/surface_secondary">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Public Key (npub)"
+                    android:textColor="@color/text_muted"
+                    android:textSize="12sp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:id="@+id/generated_npub"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:fontFamily="monospace"
+                        android:textSize="11sp"
+                        android:textIsSelectable="true"
+                        android:layout_marginTop="4dp" />
+
+                    <ImageButton
+                        android:id="@+id/copy_npub_button"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:src="@android:drawable/ic_menu_edit"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="Copy npub"
+                        android:scaleType="centerInside" />
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Private Key (nsec) - KEEP SECRET!"
+                    android:textColor="@color/text_muted"
+                    android:textSize="12sp"
+                    android:layout_marginTop="12dp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:id="@+id/generated_nsec"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:fontFamily="monospace"
+                        android:textSize="11sp"
+                        android:layout_marginTop="4dp" />
+
+                    <ImageButton
+                        android:id="@+id/copy_nsec_button"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:src="@android:drawable/ic_menu_edit"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="Copy nsec"
+                        android:scaleType="centerInside" />
+                </LinearLayout>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/use_generated_key_button"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Continue with this identity"
+                    android:layout_marginTop="16dp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- External Signer Section -->
+        <LinearLayout
+            android:id="@+id/external_signer_section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone"
+            android:layout_marginTop="16dp">
+
+            <!-- QR Code -->
+            <ImageView
+                android:id="@+id/nostr_connect_qr"
+                android:layout_width="200dp"
+                android:layout_height="200dp"
+                android:layout_gravity="center"
+                android:contentDescription="NostrConnect QR code"
+                android:visibility="gone" />
+
+            <!-- nostrconnect URI (tap to open in Amber) -->
+            <TextView
+                android:id="@+id/nostr_connect_uri"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="14sp"
+                android:textColor="?attr/colorPrimary"
+                android:layout_marginTop="8dp"
+                android:padding="12dp"
+                android:gravity="center"
+                android:clickable="true"
+                android:focusable="true"
+                android:background="?attr/selectableItemBackground"
+                android:visibility="gone" />
+
+            <!-- Bunker URL input -->
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:hint="Bunker URL (bunker://...)">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/bunker_url_input"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="text"
+                    android:maxLines="1"
+                    android:fontFamily="monospace"
+                    android:textSize="12sp" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <!-- Connect button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/connect_signer_button"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Connect"
+                android:layout_marginTop="12dp" />
+
+            <!-- Status -->
+            <TextView
+                android:id="@+id/signer_status_text"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="13sp"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:layout_marginTop="8dp"
+                android:visibility="gone" />
+
+            <!-- Progress -->
+            <ProgressBar
+                android:id="@+id/signer_progress"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:layout_marginTop="8dp"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <!-- Cancel button (visible only when adding a new account) -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/cancel_add_account_button"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Cancel — Return to previous account"
+            android:layout_marginTop="24dp"
+            android:visibility="gone"
+            style="@style/Widget.Material3.Button.OutlinedButton" />
+
+    </LinearLayout>
+</ScrollView>

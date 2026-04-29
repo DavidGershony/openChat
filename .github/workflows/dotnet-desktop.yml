@@ -28,13 +28,13 @@ jobs:
     - name: Cache Rust build
       uses: Swatinem/rust-cache@v2
       with:
-        workspaces: src/OpenChat.Native
+        workspaces: src/Scramble.Native
 
     - name: Build Rust native DLL
-      run: cargo build --release --manifest-path src/OpenChat.Native/Cargo.toml
+      run: cargo build --release --manifest-path src/Scramble.Native/Cargo.toml
 
     - name: Copy DLL to Desktop project
-      run: cp src/OpenChat.Native/target/release/openchat_native.dll src/OpenChat.Desktop/
+      run: cp src/Scramble.Native/target/release/scramble_native.dll src/Scramble.Desktop/
 
     - name: Install .NET Core
       uses: actions/setup-dotnet@v4
@@ -45,17 +45,17 @@ jobs:
       run: dotnet workload install android
 
     - name: Restore dependencies
-      run: dotnet restore OpenChat.Desktop.slnf
+      run: dotnet restore Scramble.Desktop.slnf
 
     - name: Build
-      run: dotnet build OpenChat.Desktop.slnf --no-restore --configuration ${{ matrix.configuration }}
+      run: dotnet build Scramble.Desktop.slnf --no-restore --configuration ${{ matrix.configuration }}
 
     - name: Execute unit tests
-      run: dotnet test OpenChat.Desktop.slnf --no-build --configuration ${{ matrix.configuration }} --filter "Category!=Relay"
+      run: dotnet test Scramble.Desktop.slnf --no-build --configuration ${{ matrix.configuration }} --filter "Category!=Relay"
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
         name: build-${{ matrix.configuration }}
         path: |
-          src/OpenChat.Desktop/bin/${{ matrix.configuration }}/
+          src/Scramble.Desktop/bin/${{ matrix.configuration }}/

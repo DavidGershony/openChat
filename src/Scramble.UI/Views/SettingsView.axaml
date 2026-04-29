@@ -1,0 +1,386 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Scramble.Presentation.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="700"
+             x:Class="Scramble.UI.Views.SettingsView"
+             x:DataType="vm:SettingsViewModel">
+
+    <Grid RowDefinitions="Auto,*">
+        <!-- Fixed Header -->
+        <Border Grid.Row="0" Padding="24,16" Background="{DynamicResource BackgroundDarkBrush}">
+            <Grid ColumnDefinitions="Auto,*">
+                <Button Grid.Column="0" Classes="icon" Margin="0,0,12,0"
+                        Command="{Binding $parent[Window].DataContext.MainViewModel.ShowChatsCommand}"
+                        ToolTip.Tip="Back to chats">
+                    <PathIcon Data="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"
+                              Width="24" Height="24" />
+                </Button>
+                <TextBlock Grid.Column="1" Text="Settings" Classes="header" FontSize="24" FontWeight="Bold" VerticalAlignment="Center" />
+            </Grid>
+        </Border>
+
+    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="24" Margin="24">
+
+            <!-- Theme Section -->
+            <Border Classes="card">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="Theme" FontWeight="SemiBold" FontSize="16" />
+                    <TextBlock Text="Customize the app appearance" Classes="secondary" />
+                    <ComboBox SelectedIndex="{Binding SelectedThemeIndex}"
+                              HorizontalAlignment="Stretch">
+                        <ComboBoxItem Content="Nostr" />
+                        <ComboBoxItem Content="Golden Axe" />
+                        <ComboBoxItem Content="Cyber Teal" />
+                        <ComboBoxItem Content="AMOLED Black" />
+                        <ComboBoxItem Content="AMOLED Purple" />
+                    </ComboBox>
+                </StackPanel>
+            </Border>
+
+            <!-- Profile Section (hidden when using external signer) -->
+            <Border Classes="card" IsVisible="{Binding CanEditProfile}">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Profile" FontWeight="SemiBold" FontSize="16" />
+
+                    <!-- Avatar -->
+                    <StackPanel Orientation="Horizontal" Spacing="16">
+                        <Border Width="80" Height="80" CornerRadius="40"
+                                Background="{DynamicResource NostrPurpleBrush}">
+                            <TextBlock Text="U" FontSize="32" FontWeight="SemiBold" Foreground="White"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel VerticalAlignment="Center" Spacing="4">
+                            <Button Classes="secondary" Content="Change Avatar" />
+                            <TextBlock Text="PNG or JPG, max 2MB" Classes="muted" FontSize="12" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <Grid ColumnDefinitions="*,16,*" RowDefinitions="Auto,12,Auto">
+                        <StackPanel Grid.Column="0" Grid.Row="0" Spacing="4">
+                            <TextBlock Text="Display Name" Classes="muted" FontSize="12" />
+                            <TextBox Text="{Binding DisplayName}" Watermark="Your display name" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="2" Grid.Row="0" Spacing="4">
+                            <TextBlock Text="Username" Classes="muted" FontSize="12" />
+                            <TextBox Text="{Binding Username}" Watermark="@username" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="0" Grid.Row="2" Grid.ColumnSpan="3" Spacing="4">
+                            <TextBlock Text="About" Classes="muted" FontSize="12" />
+                            <TextBox Text="{Binding About}" Watermark="Tell others about yourself..."
+                                     AcceptsReturn="True" TextWrapping="Wrap" Height="80" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Button Classes="primary" Content="Save Profile" Command="{Binding SaveProfileCommand}"
+                            HorizontalAlignment="Left" />
+
+                    <!-- Publish confirmation dialog -->
+                    <Border Background="{DynamicResource BackgroundLightBrush}" CornerRadius="8"
+                            Padding="16" Margin="0,8,0,0"
+                            IsVisible="{Binding ShowPublishConfirmation}">
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="Publish profile to relays?" FontWeight="SemiBold" />
+                            <TextBlock Text="This will update your profile details on every Nostr client that reads your metadata."
+                                       TextWrapping="Wrap" Classes="muted" FontSize="13" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Classes="primary" Content="Publish"
+                                        Command="{Binding ConfirmPublishProfileCommand}" />
+                                <Button Classes="secondary" Content="Skip"
+                                        Command="{Binding CancelPublishProfileCommand}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Publish status -->
+                    <TextBlock Text="{Binding PublishProfileStatus}"
+                               IsVisible="{Binding PublishProfileStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                               Classes="muted" FontSize="13" Margin="0,4,0,0" />
+                    <TextBlock Text="Publishing..."
+                               IsVisible="{Binding IsPublishingProfile}"
+                               Classes="muted" FontSize="13" />
+                </StackPanel>
+            </Border>
+
+            <!-- Relays Section -->
+            <Border Classes="card">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Relays" FontWeight="SemiBold" FontSize="16" />
+                    <TextBlock Text="Connect to Nostr relays to send and receive messages"
+                               Classes="secondary" FontSize="13" />
+
+                    <!-- Relay List -->
+                    <ItemsControl x:Name="RelaysItemsControl" ItemsSource="{Binding Relays}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:RelayViewModel">
+                                <Border Background="{DynamicResource SurfaceSecondaryBrush}"
+                                        CornerRadius="8" Padding="12" Margin="0,4">
+                                    <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                                        <!-- Status Indicator -->
+                                        <Panel Grid.Column="0" Width="10" Height="10" Margin="0,0,12,0">
+                                            <Ellipse Fill="{DynamicResource StatusOnlineBrush}" IsVisible="{Binding IsConnected}" />
+                                            <Ellipse Fill="{DynamicResource StatusErrorBrush}" IsVisible="{Binding !IsConnected}" />
+                                        </Panel>
+
+                                        <!-- Relay URL -->
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Url}" FontFamily="Consolas" FontSize="13" />
+                                            <TextBlock Text="{Binding Error}" Classes="muted" FontSize="11"
+                                                       IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                        </StackPanel>
+
+                                        <!-- Usage Toggle -->
+                                        <Button Grid.Column="2" Classes="icon" Margin="4,0"
+                                                Command="{Binding #RelaysItemsControl.DataContext.CycleRelayUsageCommand}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip.Tip="Toggle relay usage: Read &amp; Write / Read / Write">
+                                            <TextBlock Text="{Binding UsageLabel}" FontSize="11" Opacity="0.7" />
+                                        </Button>
+
+                                        <!-- Remove Button -->
+                                        <Button Grid.Column="3" Classes="icon"
+                                                Command="{Binding #RelaysItemsControl.DataContext.RemoveRelayCommand}"
+                                                CommandParameter="{Binding}">
+                                            <PathIcon Data="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+                                                      Width="16" Height="16" />
+                                        </Button>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- Add Relay -->
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBox Grid.Column="0" Text="{Binding NewRelayUrl}"
+                                 Watermark="wss://relay.example.com">
+                            <TextBox.KeyBindings>
+                                <KeyBinding Gesture="Enter" Command="{Binding AddRelayCommand}" />
+                            </TextBox.KeyBindings>
+                        </TextBox>
+                        <Button Grid.Column="1" Classes="primary" Content="Add"
+                                Command="{Binding AddRelayCommand}" Margin="8,0,0,0" />
+                    </Grid>
+
+                    <!-- Publish NIP-65 Relay List -->
+                    <Button Classes="secondary" Content="Publish Relay List (NIP-65)"
+                            Command="{Binding PublishRelayListCommand}"
+                            HorizontalAlignment="Left" />
+                    <TextBlock Text="Publishes your relay preferences so others can find you"
+                               Classes="muted" FontSize="11" />
+                </StackPanel>
+            </Border>
+
+            <!-- Marmot Protocol Section -->
+            <Border Classes="card">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Marmot Protocol" FontWeight="SemiBold" FontSize="16" />
+                    <TextBlock Text="MLS (Messaging Layer Security) provides end-to-end encryption for group chats. Publish a KeyPackage so others can invite you to groups."
+                               Classes="secondary" TextWrapping="Wrap" FontSize="13" />
+
+                    <!-- Publish Key Package -->
+                    <StackPanel Spacing="8">
+                        <Button Classes="primary" Content="Publish Key Package"
+                                Command="{Binding PublishKeyPackageCommand}"
+                                IsEnabled="{Binding !IsPublishingKeyPackage}"
+                                HorizontalAlignment="Left" />
+
+                        <!-- Status Message -->
+                        <Border IsVisible="{Binding KeyPackageStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                Background="{DynamicResource SurfaceSecondaryBrush}"
+                                CornerRadius="8" Padding="12">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <PathIcon IsVisible="{Binding KeyPackageSuccess}"
+                                          Data="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"
+                                          Width="18" Height="18" Foreground="{DynamicResource StatusOnlineBrush}" />
+                                <PathIcon IsVisible="{Binding !KeyPackageSuccess}"
+                                          Data="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"
+                                          Width="18" Height="18" Foreground="{DynamicResource StatusWarningBrush}" />
+                                <TextBlock Text="{Binding KeyPackageStatus}"
+                                           FontSize="13" TextWrapping="Wrap" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Loading Indicator -->
+                        <StackPanel Orientation="Horizontal" Spacing="8"
+                                    IsVisible="{Binding IsPublishingKeyPackage}">
+                            <TextBlock Text="Publishing..." Classes="muted" FontSize="13" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Audit Key Packages -->
+                    <StackPanel Spacing="8">
+                        <Button Classes="secondary" Content="Audit Key Packages"
+                                Command="{Binding AuditKeyPackagesCommand}"
+                                IsEnabled="{Binding !IsAuditingKeyPackages}"
+                                HorizontalAlignment="Left" />
+
+                        <Border IsVisible="{Binding AuditStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                Background="{DynamicResource SurfaceSecondaryBrush}"
+                                CornerRadius="8" Padding="12">
+                            <TextBlock Text="{Binding AuditStatus}"
+                                       FontSize="13" TextWrapping="Wrap" />
+                        </Border>
+
+                        <StackPanel Orientation="Horizontal" Spacing="8"
+                                    IsVisible="{Binding IsAuditingKeyPackages}">
+                            <TextBlock Text="Auditing..." Classes="muted" FontSize="13" />
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Privacy Section -->
+            <Border Classes="card">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Privacy" FontWeight="SemiBold" FontSize="16" />
+
+                    <!-- MIP-04 Media Loading Toggle -->
+                    <StackPanel Spacing="8">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0" Spacing="4">
+                                <TextBlock Text="Enable media loading (MIP-04)" FontSize="14" />
+                                <TextBlock Text="Load and decrypt images shared in group chats"
+                                           Classes="muted" FontSize="12" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding IsMip04Enabled}"
+                                          VerticalAlignment="Center" />
+                        </Grid>
+
+                        <Border Background="{DynamicResource WarningBgBrush}" CornerRadius="8" Padding="12">
+                            <StackPanel Spacing="4">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <PathIcon Data="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"
+                                              Width="16" Height="16" Foreground="{DynamicResource StatusWarningBrush}" />
+                                    <TextBlock Text="Risk: Medium" FontWeight="SemiBold" FontSize="13"
+                                               Foreground="{DynamicResource StatusWarningBrush}" />
+                                </StackPanel>
+                                <TextBlock Text="Enabling media loading allows the app to download files from URLs in messages. This exposes your IP address to the hosting server and increases attack surface. Only enable if you trust your group members."
+                                           TextWrapping="Wrap" FontSize="12" Classes="muted" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Dependency warning -->
+                    <Border IsVisible="{Binding Mip04DependencyWarning, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                            Background="{DynamicResource ErrorBgBrush}" CornerRadius="8" Padding="12" Margin="0,4,0,0">
+                        <StackPanel Spacing="4">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <PathIcon Data="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"
+                                          Width="16" Height="16" Foreground="{DynamicResource StatusErrorBrush}" />
+                                <TextBlock Text="Missing dependency" FontWeight="SemiBold" FontSize="13"
+                                           Foreground="{DynamicResource StatusErrorBrush}" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding Mip04DependencyWarning}"
+                                       TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource StatusErrorBrush}"
+                                       FontFamily="Consolas,monospace" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Blossom Server -->
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Blossom media server" FontSize="14" />
+                        <TextBlock Text="Server for uploading encrypted voice messages and media"
+                                   Classes="muted" FontSize="12" />
+                        <TextBox Text="{Binding BlossomServerUrl}"
+                                 Watermark="https://blossom.nostr.build"
+                                 FontFamily="Consolas,monospace" FontSize="13" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Developer Section -->
+            <Border Classes="card">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Developer" FontWeight="SemiBold" FontSize="16" />
+
+                    <!-- View Logs -->
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Application Logs" Classes="secondary" FontSize="13" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Classes="secondary" Content="View Logs"
+                                    Command="{Binding ViewLogsCommand}" />
+                            <Button Classes="secondary" Content="Open Log Folder"
+                                    Command="{Binding OpenLogFolderCommand}" />
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- About Section -->
+            <Border Classes="card">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="About Scramble" FontWeight="SemiBold" FontSize="16" />
+                    <TextBlock Text="Scramble is an open-source chat application built with Nostr and the Marmot Protocol (MLS) for end-to-end encrypted messaging."
+                               Classes="secondary" TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" Spacing="16">
+                        <TextBlock Text="Version 0.1.0" Classes="muted" />
+                        <TextBlock Text="Built with Avalonia" Classes="muted" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Logout -->
+            <Button Content="Log Out" HorizontalAlignment="Stretch" Height="44"
+                    Background="{DynamicResource DangerButtonBrush}" Foreground="White" FontWeight="SemiBold"
+                    HorizontalContentAlignment="Center"
+                    Command="{Binding $parent[Window].DataContext.MainViewModel.LogoutCommand}" />
+        </StackPanel>
+    </ScrollViewer>
+
+        <!-- Log Viewer Dialog Overlay -->
+    <Border Grid.RowSpan="2" IsVisible="{Binding ShowLogViewer}"
+            Background="#E0000000"
+            HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+        <Border Classes="card"
+                Background="{DynamicResource BackgroundCardBrush}"
+                CornerRadius="12"
+                Padding="20"
+                Margin="24"
+                VerticalAlignment="Stretch"
+                HorizontalAlignment="Stretch">
+            <Grid RowDefinitions="Auto,*,Auto">
+                <!-- Header -->
+                <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,16">
+                    <TextBlock Grid.Column="0" Text="Application Logs"
+                               FontSize="20" FontWeight="Bold"
+                               VerticalAlignment="Center" />
+                    <Button Grid.Column="1" Classes="secondary" Content="Refresh"
+                            Command="{Binding RefreshLogsCommand}"
+                            Margin="0,0,8,0" />
+                    <Button Grid.Column="2" Classes="icon"
+                            Command="{Binding CloseLogViewerCommand}">
+                        <PathIcon Data="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+                                  Width="20" Height="20" />
+                    </Button>
+                </Grid>
+
+                <!-- Log Content -->
+                <Border Grid.Row="1" Background="{DynamicResource SurfaceSecondaryBrush}"
+                        CornerRadius="8" Padding="12">
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                  VerticalScrollBarVisibility="Auto">
+                        <TextBlock Text="{Binding LogContent}"
+                                   FontFamily="Consolas"
+                                   FontSize="11"
+                                   TextWrapping="NoWrap" />
+                    </ScrollViewer>
+                </Border>
+
+                <!-- Footer -->
+                <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="12"
+                            HorizontalAlignment="Right" Margin="0,16,0,0">
+                    <Button Classes="secondary" Content="Open Log Folder"
+                            Command="{Binding OpenLogFolderCommand}" />
+                    <Button Classes="primary" Content="Close"
+                            Command="{Binding CloseLogViewerCommand}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Border>
+    </Grid>
+</UserControl>
