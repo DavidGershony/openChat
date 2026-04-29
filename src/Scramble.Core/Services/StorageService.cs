@@ -623,7 +623,7 @@ public class StorageService : IStorageService
             {
                 var role = chat.AdminPublicKeys.Contains(publicKey.ToLowerInvariant()) ? "admin" : "member";
                 var insertParticipant = connection.CreateCommand();
-                insertParticipant.CommandText = "INSERT INTO ChatParticipants (ChatId, PublicKeyHex, Role) VALUES (@ChatId, @PublicKeyHex, @Role)";
+                insertParticipant.CommandText = "INSERT OR IGNORE INTO ChatParticipants (ChatId, PublicKeyHex, Role) VALUES (@ChatId, @PublicKeyHex, @Role)";
                 insertParticipant.Parameters.AddWithValue("@ChatId", chat.Id);
                 insertParticipant.Parameters.AddWithValue("@PublicKeyHex", publicKey.ToLowerInvariant());
                 insertParticipant.Parameters.AddWithValue("@Role", role);
