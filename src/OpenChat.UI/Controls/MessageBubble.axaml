@@ -261,15 +261,14 @@
                 </Border>
 
                 <!-- Text Content + inline timestamp -->
-                <WrapPanel IsVisible="{Binding IsTextMessage}">
-                    <TextBlock Text="{Binding Content}"
+                <StackPanel IsVisible="{Binding IsTextMessage}" Spacing="2">
+                    <SelectableTextBlock Text="{Binding Content}"
                                Foreground="{DynamicResource BubbleReceivedTextBrush}"
                                TextWrapping="Wrap" FontSize="14" />
                     <TextBlock Text="{Binding Timestamp, StringFormat={}{0:HH:mm}}"
                                Foreground="{DynamicResource TextMutedBrush}"
-                               FontSize="11" VerticalAlignment="Bottom"
-                               Margin="8,0,0,0" />
-                </WrapPanel>
+                               FontSize="11" HorizontalAlignment="Right" />
+                </StackPanel>
 
                 <!-- Timestamp for media messages (not inline) -->
                 <TextBlock Text="{Binding Timestamp, StringFormat={}{0:HH:mm}}"
@@ -531,15 +530,14 @@
                 </Border>
 
                 <!-- Text Content + inline timestamp -->
-                <WrapPanel IsVisible="{Binding IsTextMessage}">
-                    <TextBlock Text="{Binding Content}"
+                <StackPanel IsVisible="{Binding IsTextMessage}" Spacing="2">
+                    <SelectableTextBlock Text="{Binding Content}"
                                Foreground="{DynamicResource BubbleSentTextBrush}"
                                TextWrapping="Wrap" FontSize="14" />
                     <TextBlock Text="{Binding Timestamp, StringFormat={}{0:HH:mm}}"
                                Foreground="{DynamicResource NostrPurpleAccentBrush}"
-                               FontSize="11" VerticalAlignment="Bottom" Opacity="0.8"
-                               Margin="8,0,0,0" />
-                </WrapPanel>
+                               FontSize="11" HorizontalAlignment="Right" Opacity="0.8" />
+                </StackPanel>
 
                 <!-- Timestamp for media messages (not inline) -->
                 <TextBlock Text="{Binding Timestamp, StringFormat={}{0:HH:mm}}"
