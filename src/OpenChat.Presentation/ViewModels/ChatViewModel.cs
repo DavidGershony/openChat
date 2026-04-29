@@ -108,6 +108,8 @@ public class ChatViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> ToggleRecordingCommand { get; }
     public ReactiveCommand<Unit, Unit> CancelRecordingCommand { get; }
     public ReactiveCommand<Unit, Unit> AttachFileCommand { get; }
+    public ReactiveCommand<Unit, Unit> CopyContactNpubCommand { get; }
+    public ReactiveCommand<string, Unit> CopyNpubCommand { get; }
     public ReactiveCommand<GroupMemberViewModel, Unit> ToggleAdminCommand { get; }
     public ReactiveCommand<Unit, Unit> SaveGroupNameCommand { get; }
 
@@ -249,6 +251,20 @@ public class ChatViewModel : ViewModelBase
             {
                 _logger.LogError(ex, "Failed to copy group link");
             }
+        });
+
+        CopyContactNpubCommand = ReactiveCommand.CreateFromTask(async () =>
+        {
+            var npub = MetadataNpub;
+            if (string.IsNullOrEmpty(npub)) npub = ContactPublicKey;
+            if (string.IsNullOrEmpty(npub)) return;
+            await _clipboard.SetTextAsync(npub);
+        });
+
+        CopyNpubCommand = ReactiveCommand.CreateFromTask<string>(async (npub) =>
+        {
+            if (string.IsNullOrEmpty(npub)) return;
+            await _clipboard.SetTextAsync(npub);
         });
 
         var canRecord = this.WhenAnyValue(

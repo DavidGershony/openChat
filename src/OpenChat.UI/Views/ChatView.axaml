@@ -339,10 +339,19 @@
 
                             <!-- Public Key - Always show -->
                             <StackPanel Spacing="6">
-                                <TextBlock Text="Public Key" Classes="muted" FontSize="12" FontWeight="SemiBold" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="Public Key" Classes="muted" FontSize="12" FontWeight="SemiBold"
+                                               VerticalAlignment="Center" />
+                                    <Button Classes="secondary" Padding="6,2" FontSize="10"
+                                            VerticalAlignment="Center"
+                                            Command="{Binding CopyContactNpubCommand}"
+                                            ToolTip.Tip="Copy npub to clipboard">
+                                        <TextBlock Text="Copy" />
+                                    </Button>
+                                </StackPanel>
                                 <Border Background="{DynamicResource SurfaceSecondaryBrush}"
                                         CornerRadius="6" Padding="10">
-                                    <TextBlock Text="{Binding MetadataNpub}"
+                                    <SelectableTextBlock Text="{Binding MetadataNpub}"
                                                FontSize="11" FontFamily="Consolas, Courier New"
                                                TextWrapping="Wrap" Classes="secondary"
                                                IsVisible="{Binding MetadataNpub, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
@@ -351,7 +360,7 @@
                                 <Border Background="{DynamicResource SurfaceSecondaryBrush}"
                                         CornerRadius="6" Padding="10"
                                         IsVisible="{Binding MetadataNpub, Converter={x:Static StringConverters.IsNullOrEmpty}}">
-                                    <TextBlock Text="{Binding ContactPublicKey}"
+                                    <SelectableTextBlock Text="{Binding ContactPublicKey}"
                                                FontSize="11" FontFamily="Consolas, Courier New"
                                                TextWrapping="Wrap" Classes="secondary" />
                                 </Border>
@@ -440,9 +449,20 @@
                                                                VerticalAlignment="Center"
                                                                IsVisible="{Binding IsCurrentUser}" />
                                                 </StackPanel>
-                                                <TextBlock Text="{Binding Npub}" Classes="muted" FontSize="10"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           IsVisible="{Binding Npub, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                                <StackPanel Orientation="Horizontal" Spacing="4"
+                                                            IsVisible="{Binding Npub, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                                    <TextBlock Text="{Binding Npub}" Classes="muted" FontSize="10"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               VerticalAlignment="Center"
+                                                               MaxWidth="200" />
+                                                    <Button Classes="secondary" Padding="3,1" FontSize="9"
+                                                            VerticalAlignment="Center"
+                                                            Command="{Binding $parent[ItemsControl].DataContext.CopyNpubCommand}"
+                                                            CommandParameter="{Binding Npub}"
+                                                            ToolTip.Tip="Copy npub">
+                                                        <TextBlock Text="Copy" />
+                                                    </Button>
+                                                </StackPanel>
                                             </StackPanel>
                                             <!-- Admin toggle (visible to admins, not on self) -->
                                             <Button Grid.Column="2" Classes="secondary"
