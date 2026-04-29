@@ -409,6 +409,17 @@ public class ChatFragment : Fragment
         _ => ".bin"
     };
 
+    private void CopyToClipboard(string label, string? text)
+    {
+        if (string.IsNullOrEmpty(text) || Activity == null) return;
+        var clipboard = (ClipboardManager?)Activity.GetSystemService(global::Android.Content.Context.ClipboardService);
+        if (clipboard != null)
+        {
+            clipboard.PrimaryClip = ClipData.NewPlainText(label, text);
+            Toast.MakeText(Activity, "Copied!", ToastLength.Short)?.Show();
+        }
+    }
+
     private void ShowAttachMenu(View anchor)
     {
         var popup = new PopupMenu(RequireContext(), anchor);
@@ -528,6 +539,8 @@ public class ChatFragment : Fragment
         var username = dialogView.FindViewById<TextView>(Resource.Id.contact_username)!;
         var about = dialogView.FindViewById<TextView>(Resource.Id.contact_about)!;
         var npub = dialogView.FindViewById<TextView>(Resource.Id.contact_npub)!;
+        var copyNpubButton = dialogView.FindViewById<ImageButton>(Resource.Id.contact_copy_npub_button)!;
+        copyNpubButton.Click += (s, e) => CopyToClipboard("npub", npub.Text);
         var nip05Label = dialogView.FindViewById<TextView>(Resource.Id.contact_nip05_label)!;
         var nip05 = dialogView.FindViewById<TextView>(Resource.Id.contact_nip05)!;
         var lud16Label = dialogView.FindViewById<TextView>(Resource.Id.contact_lud16_label)!;
@@ -620,6 +633,7 @@ public class ChatFragment : Fragment
 
         // Set up member list
         var memberAdapter = new Adapters.GroupMemberAdapter();
+        memberAdapter.CopyNpubClick += (s, npubText) => CopyToClipboard("npub", npubText);
         membersRecycler.SetLayoutManager(new LinearLayoutManager(Context));
         membersRecycler.SetAdapter(memberAdapter);
 

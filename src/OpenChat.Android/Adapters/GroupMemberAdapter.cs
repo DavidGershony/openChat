@@ -9,6 +9,8 @@ public class GroupMemberAdapter : RecyclerView.Adapter
 {
     private List<GroupMemberViewModel> _items = new();
 
+    public event EventHandler<string>? CopyNpubClick;
+
     public override int ItemCount => _items.Count;
 
     public void UpdateItems(List<GroupMemberViewModel> items)
@@ -28,7 +30,13 @@ public class GroupMemberAdapter : RecyclerView.Adapter
     {
         if (holder is MemberViewHolder memberHolder)
         {
-            memberHolder.Bind(_items[position]);
+            var member = _items[position];
+            memberHolder.Bind(member);
+            memberHolder.CopyButton.Click += (s, e) =>
+            {
+                var npubText = member.Npub ?? member.PublicKeyHex;
+                CopyNpubClick?.Invoke(this, npubText);
+            };
         }
     }
 
@@ -40,6 +48,7 @@ public class GroupMemberAdapter : RecyclerView.Adapter
         private readonly TextView _adminBadge;
         private readonly TextView _youBadge;
         private readonly TextView _npub;
+        public readonly ImageButton CopyButton;
 
         public MemberViewHolder(View itemView) : base(itemView)
         {
@@ -49,6 +58,7 @@ public class GroupMemberAdapter : RecyclerView.Adapter
             _adminBadge = itemView.FindViewById<TextView>(Resource.Id.member_admin_badge)!;
             _youBadge = itemView.FindViewById<TextView>(Resource.Id.member_you_badge)!;
             _npub = itemView.FindViewById<TextView>(Resource.Id.member_npub)!;
+            CopyButton = itemView.FindViewById<ImageButton>(Resource.Id.member_copy_npub)!;
         }
 
         public void Bind(GroupMemberViewModel member)

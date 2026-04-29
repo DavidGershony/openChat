@@ -84,4 +84,14 @@
             android:ellipsize="end"
             android:maxLines="1" />
     </LinearLayout>
+
+    <!-- Copy npub button -->
+    <ImageButton
+        android:id="@+id/member_copy_npub"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:src="@android:drawable/ic_menu_edit"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Copy npub"
+        android:scaleType="centerInside" />
 </LinearLayout>
