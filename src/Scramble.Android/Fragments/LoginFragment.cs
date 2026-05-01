@@ -178,6 +178,7 @@ public class LoginFragment : Fragment
                 generateKeyButton.Enabled = !loading;
                 useGeneratedKeyButton.Enabled = !loading;
                 connectButton.Enabled = !loading;
+                connectButton.Text = loading ? "Connecting..." : "Connect";
             })
             .DisposeWith(_disposables);
 
@@ -209,13 +210,14 @@ public class LoginFragment : Fragment
             })
             .DisposeWith(_disposables);
 
+        // IsExternalSignerConnecting tracks the QR-listener waiting for approval.
+        // It only drives the spinner — the Connect button stays enabled so the user
+        // can fall back to pasting a bunker URL instead of waiting for a scan.
         ViewModel.WhenAnyValue(x => x.IsExternalSignerConnecting)
             .ObserveOn(RxApp.MainThreadScheduler)
             .Subscribe(connecting =>
             {
                 signerProgress.Visibility = connecting ? ViewStates.Visible : ViewStates.Gone;
-                connectButton.Enabled = !connecting;
-                connectButton.Text = connecting ? "Connecting..." : "Connect";
             })
             .DisposeWith(_disposables);
 

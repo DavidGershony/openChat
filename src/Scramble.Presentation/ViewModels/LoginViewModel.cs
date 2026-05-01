@@ -85,11 +85,15 @@ public class LoginViewModel : ViewModelBase
 
         UseGeneratedKeyCommand = ReactiveCommand.CreateFromTask(UseGeneratedKeyAsync, canUseGenerated);
 
+        // IsExternalSignerConnecting is intentionally NOT part of CanExecute. It's set
+        // true while the nostrconnect QR listener is waiting for approval — but that's
+        // a passive flow the user may want to abandon by pasting a bunker URL instead.
+        // Concurrent runs are still prevented by IsLoading and ReactiveCommand's own
+        // IsExecuting gate.
         var canConnectSigner = this.WhenAnyValue(
             x => x.BunkerUrl,
             x => x.IsLoading,
-            x => x.IsExternalSignerConnecting,
-            (url, loading, connecting) => !string.IsNullOrWhiteSpace(url) && !loading && !connecting);
+            (url, loading) => !string.IsNullOrWhiteSpace(url) && !loading);
 
         ConnectExternalSignerCommand = ReactiveCommand.CreateFromTask(ConnectExternalSignerAsync, canConnectSigner);
 
