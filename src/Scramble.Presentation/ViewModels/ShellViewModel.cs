@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Reactive;
 using System.Reactive.Concurrency;
 using System.Reactive.Linq;
@@ -151,12 +152,25 @@ public class ShellViewModel : ViewModelBase
 
             // No saved user or default profile — show login screen
             ShowLoginView();
+            OfferKnownAccountsIfAny();
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Auto-login failed, showing login screen");
             ShowLoginView();
+            OfferKnownAccountsIfAny();
         }
+    }
+
+    /// <summary>
+    /// On app startup with no active account, but with previously-used accounts in the
+    /// registry, surface the switcher so the user can pick one without re-entering
+    /// credentials. Otherwise the login screen would appear with no path back to them.
+    /// </summary>
+    private void OfferKnownAccountsIfAny()
+    {
+        if (KnownAccounts.Count > 0)
+            ShowAccountSwitcher = true;
     }
 
     private async void OnLoginCompleted(User user)
@@ -319,11 +333,14 @@ public class ShellViewModel : ViewModelBase
 
     /// <summary>
     /// Full logout: tears down session, clears active marker (account stays in registry).
-    /// Shows login screen or account switcher if other accounts exist.
+    /// Shows login screen, plus the account switcher overlay if other accounts exist
+    /// so the user can switch without re-entering credentials.
     /// </summary>
     private async void OnLogoutRequested()
     {
         _logger.LogInformation("Logout requested");
+
+        var loggedOutPubKey = ActiveAccountEntry?.PublicKeyHex;
 
         // Clear current user from DB before teardown
         try
@@ -344,6 +361,13 @@ public class ShellViewModel : ViewModelBase
 
         RefreshKnownAccounts();
         ShowLoginView();
+
+        // If other known accounts exist, surface the switcher so the user can
+        // hop into one of them without re-entering credentials.
+        var hasOtherAccounts = KnownAccounts.Any(a =>
+            !string.Equals(a.PublicKeyHex, loggedOutPubKey, StringComparison.OrdinalIgnoreCase));
+        if (hasOtherAccounts)
+            ShowAccountSwitcher = true;
     }
 
     /// <summary>

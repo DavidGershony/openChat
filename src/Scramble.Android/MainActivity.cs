@@ -6,6 +6,7 @@ using Android.Views;
 using AndroidX.AppCompat.App;
 using Fragment = AndroidX.Fragment.App.Fragment;
 using Google.Android.Material.BottomNavigation;
+using Google.Android.Material.Dialog;
 using Scramble.Android.Fragments;
 using Scramble.Android.Services;
 using Scramble.Core.Configuration;
@@ -101,6 +102,14 @@ public class MainActivity : AppCompatActivity, IActivatableView
             })
             .DisposeWith(_disposables);
 
+        // Show the account switcher dialog when the ShellViewModel requests it
+        // (e.g. after logout when other known accounts exist).
+        _shellViewModel.WhenAnyValue(x => x.ShowAccountSwitcher)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Where(show => show)
+            .Subscribe(_ => ShowAccountSwitcherDialog())
+            .DisposeWith(_disposables);
+
         // Show correct initial fragment based on current state
         // (handles Activity.Recreate() after theme change when already logged in)
         if (_shellViewModel.IsLoggedIn && _shellViewModel.MainViewModel != null)
@@ -117,6 +126,46 @@ public class MainActivity : AppCompatActivity, IActivatableView
         SupportFragmentManager.BeginTransaction()
             .Replace(Resource.Id.fragment_container, fragment, tag)
             .Commit();
+    }
+
+    /// <summary>
+    /// Shown after logout (or any other path that flips ShellViewModel.ShowAccountSwitcher
+    /// while no fragment-owned switcher is on screen). Lists known accounts and lets the
+    /// user switch into one without re-entering credentials.
+    /// </summary>
+    private void ShowAccountSwitcherDialog()
+    {
+        if (_shellViewModel == null) return;
+
+        var accounts = AccountRegistryService.GetAccounts();
+        var activePubKey = _shellViewModel.ActiveAccountEntry?.PublicKeyHex;
+        var items = new List<string>();
+
+        foreach (var account in accounts)
+        {
+            var name = !string.IsNullOrEmpty(account.DisplayName)
+                ? account.DisplayName
+                : account.Npub?[..Math.Min(16, account.Npub.Length)] + "...";
+            var isActive = string.Equals(account.PublicKeyHex, activePubKey, StringComparison.OrdinalIgnoreCase);
+            items.Add(isActive ? $"{name} (active)" : name);
+        }
+        items.Add("Add Account");
+
+        var dialog = new MaterialAlertDialogBuilder(this)
+            .SetTitle("Accounts")!
+            .SetItems(items.ToArray(), (s, e) =>
+            {
+                if (e.Which < accounts.Count)
+                    _ = _shellViewModel.SwitchAccountAsync(accounts[e.Which].PublicKeyHex);
+                else
+                    _ = _shellViewModel.AddAccountAsync();
+            })!
+            .Create()!;
+
+        // Reset the property whenever the dialog goes away (item picked, back button, tap outside)
+        // so a future flip from false→true re-opens it.
+        dialog.DismissEvent += (s, e) => _shellViewModel.ShowAccountSwitcher = false;
+        dialog.Show();
     }
 
     public void NavigateToChat()
