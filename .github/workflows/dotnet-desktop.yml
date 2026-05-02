@@ -21,6 +21,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
+        submodules: recursive
 
     - name: Setup Rust
       uses: dtolnay/rust-toolchain@stable
@@ -41,17 +42,17 @@ jobs:
       with:
         dotnet-version: 9.0.x
 
-    - name: Install Android workload
-      run: dotnet workload install android
-
+    # Desktop CI does not build the Android target. Pass DesktopOnly=true so
+    # Scramble.Core compiles only for net9.0 — its net9.0-android target needs
+    # the MDK submodules to ship Android-compatible binaries, which they don't.
     - name: Restore dependencies
-      run: dotnet restore Scramble.Desktop.slnf
+      run: dotnet restore Scramble.Desktop.slnf -p:DesktopOnly=true
 
     - name: Build
-      run: dotnet build Scramble.Desktop.slnf --no-restore --configuration ${{ matrix.configuration }}
+      run: dotnet build Scramble.Desktop.slnf --no-restore --configuration ${{ matrix.configuration }} -p:DesktopOnly=true
 
     - name: Execute unit tests
-      run: dotnet test Scramble.Desktop.slnf --no-build --configuration ${{ matrix.configuration }} --filter "Category!=Relay"
+      run: dotnet test Scramble.Desktop.slnf --no-build --configuration ${{ matrix.configuration }} --filter "Category!=Relay" -p:DesktopOnly=true
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
