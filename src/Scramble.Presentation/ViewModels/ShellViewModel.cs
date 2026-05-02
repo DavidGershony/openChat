@@ -41,6 +41,12 @@ public class ShellViewModel : ViewModelBase
     // Multi-account state
     private string? _previousActiveAccountPubKey;
 
+    // Set to the logged-out account on logout, then cleared on the next session
+    // activation. While set, the switcher hides this entry — picking your own
+    // freshly-logged-out account in the post-logout overlay is rarely intentional
+    // and was previously broken (we used to wipe the user row from the DB).
+    private string? _recentlyLoggedOutPubKey;
+
     [Reactive] public bool IsLoggedIn { get; set; }
     [Reactive] public MainViewModel? MainViewModel { get; set; }
 
@@ -264,6 +270,9 @@ public class ShellViewModel : ViewModelBase
             user.Npub?[..Math.Min(12, user.Npub.Length)], ProfileConfiguration.ProfileName);
 
         ActiveAccountEntry = AccountRegistryService.GetActiveAccount();
+        // Once any session is active, the post-logout filter no longer applies —
+        // every account in the registry is a valid switch target again.
+        _recentlyLoggedOutPubKey = null;
         RefreshKnownAccounts();
 
         // Initialize in the background (relay connections, MLS, etc.)
@@ -335,6 +344,11 @@ public class ShellViewModel : ViewModelBase
     /// Full logout: tears down session, clears active marker (account stays in registry).
     /// Shows login screen, plus the account switcher overlay if other accounts exist
     /// so the user can switch without re-entering credentials.
+    ///
+    /// Note: we deliberately do NOT clear IsCurrentUser on the per-profile DB row.
+    /// Keys/data stay so the user can switch back into this account later. (Earlier
+    /// versions cleared it, which made SwitchAccountAsync think the profile was
+    /// corrupt and remove the account from the registry — silent data loss.)
     /// </summary>
     private async void OnLogoutRequested()
     {
@@ -342,31 +356,21 @@ public class ShellViewModel : ViewModelBase
 
         var loggedOutPubKey = ActiveAccountEntry?.PublicKeyHex;
 
-        // Clear current user from DB before teardown
-        try
-        {
-            if (_storageService != null)
-                await _storageService.ClearCurrentUserAsync();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to clear current user from DB");
-        }
-
         await TeardownSessionAsync();
 
         // Clear active account but keep in registry for easy re-login
         AccountRegistryService.ClearActiveAccount();
         ProfileConfiguration.SetProfile(null);
 
+        // Hide the just-logged-out entry from the switcher until the user
+        // re-activates any session. In-memory only — gone after restart.
+        _recentlyLoggedOutPubKey = loggedOutPubKey;
         RefreshKnownAccounts();
         ShowLoginView();
 
         // If other known accounts exist, surface the switcher so the user can
         // hop into one of them without re-entering credentials.
-        var hasOtherAccounts = KnownAccounts.Any(a =>
-            !string.Equals(a.PublicKeyHex, loggedOutPubKey, StringComparison.OrdinalIgnoreCase));
-        if (hasOtherAccounts)
+        if (KnownAccounts.Any())
             ShowAccountSwitcher = true;
     }
 
@@ -511,7 +515,12 @@ public class ShellViewModel : ViewModelBase
         var accounts = AccountRegistryService.GetAccounts();
         KnownAccounts.Clear();
         foreach (var account in accounts)
+        {
+            if (_recentlyLoggedOutPubKey != null &&
+                string.Equals(account.PublicKeyHex, _recentlyLoggedOutPubKey, StringComparison.OrdinalIgnoreCase))
+                continue;
             KnownAccounts.Add(account);
+        }
     }
 
     private void ShowLoginView()
