@@ -18,6 +18,7 @@ using ReactiveUI;
 using System.Linq;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
+using System.Threading.Tasks;
 
 namespace Scramble.Android;
 
@@ -92,6 +93,12 @@ public class MainActivity : AppCompatActivity, IActivatableView
 
                     // Auto-start relay foreground service if background mode is enabled
                     StartRelayServiceIfEnabled(_shellViewModel.MainViewModel);
+
+                    // If a share intent is pending (e.g. from a cross-account share that
+                    // forced a SwitchAccountAsync), navigate to the target chat as soon as
+                    // the chat list finishes loading. Without this the user lands on the
+                    // chat list and the URL/file is silently dropped.
+                    TryStartPendingShareNavigation();
                 }
                 else
                 {
@@ -103,11 +110,21 @@ public class MainActivity : AppCompatActivity, IActivatableView
             .DisposeWith(_disposables);
 
         // Show the account switcher dialog when the ShellViewModel requests it
-        // (e.g. after logout when other known accounts exist).
+        // (e.g. after logout when other known accounts exist). Suppressed while a
+        // share intent is pending — the share flow already targets a specific
+        // account, so popping the picker would just be in the way.
         _shellViewModel.WhenAnyValue(x => x.ShowAccountSwitcher)
             .ObserveOn(RxApp.MainThreadScheduler)
             .Where(show => show)
-            .Subscribe(_ => ShowAccountSwitcherDialog())
+            .Subscribe(_ =>
+            {
+                if (PendingShareExtras != null && PendingShareExtras.GetBoolean("shareAction", false))
+                {
+                    _shellViewModel.ShowAccountSwitcher = false;
+                    return;
+                }
+                ShowAccountSwitcherDialog();
+            })
             .DisposeWith(_disposables);
 
         // Show correct initial fragment based on current state
@@ -223,6 +240,11 @@ public class MainActivity : AppCompatActivity, IActivatableView
     /// </summary>
     internal static Bundle? PendingShareExtras { get; set; }
 
+    // Guards against duplicate share-navigation watchers running concurrently
+    // (e.g. one started from cold-start HandleShareIntent + one from the
+    // IsLoggedIn=true observer firing once auto-login completes).
+    private static int _shareWatcherActive;
+
     private void HandleShareIntent(Intent? intent)
     {
         if (intent == null || !intent.GetBooleanExtra("shareAction", false))
@@ -235,37 +257,97 @@ public class MainActivity : AppCompatActivity, IActivatableView
         // Store share extras for ChatFragment to pick up
         PendingShareExtras = intent.Extras;
 
-        // If we need to switch accounts, do it
+        // If the share targets a different account — or no account is active at all
+        // (cold start after logout) — kick off SwitchAccountAsync. Navigation to the
+        // share chat is then picked up by the IsLoggedIn=true observer once the new
+        // session is fully active.
         if (!string.IsNullOrEmpty(accountPubKey) && _shellViewModel != null)
         {
             var currentAccount = AccountRegistryService.GetActiveAccount();
-            if (currentAccount != null &&
-                !string.Equals(currentAccount.PublicKeyHex, accountPubKey, StringComparison.OrdinalIgnoreCase))
+            var needsSwitch = currentAccount == null ||
+                !string.Equals(currentAccount.PublicKeyHex, accountPubKey, StringComparison.OrdinalIgnoreCase);
+            if (needsSwitch)
             {
-                // Switch account — this triggers full re-initialization
                 _ = _shellViewModel.SwitchAccountAsync(accountPubKey);
-                // Navigation to chat will happen after login state settles
                 return;
             }
         }
 
-        // Already on the right account — navigate to the chat
-        NavigateToShareChat(chatId);
+        // Already on the right account — try to navigate immediately. If the chat
+        // list isn't populated yet (e.g. cold start before InitializeAfterLoginAsync
+        // has finished), fall back to the polling watcher.
+        if (!TryNavigateToShareChat(chatId))
+            TryStartPendingShareNavigation();
     }
 
-    private void NavigateToShareChat(string chatId)
+    /// <summary>
+    /// Attempts to find <paramref name="chatId"/> in the current chat list and open it.
+    /// Returns false if the chat list isn't available yet or doesn't contain the chat.
+    /// </summary>
+    private bool TryNavigateToShareChat(string chatId)
     {
-        if (_shellViewModel?.MainViewModel == null) return;
+        if (_shellViewModel?.MainViewModel == null) return false;
 
         var chatListVm = _shellViewModel.MainViewModel.ChatListViewModel;
         var chatItem = chatListVm.Chats.FirstOrDefault(c => c.Id == chatId)
                     ?? chatListVm.AgentChats.FirstOrDefault(c => c.Id == chatId);
 
-        if (chatItem != null)
+        if (chatItem == null) return false;
+
+        chatListVm.SelectedChat = chatItem;
+        NavigateToChat();
+        return true;
+    }
+
+    /// <summary>
+    /// Polls the chat list for the pending share's target chat and navigates to it
+    /// once it appears. Bridges the gap between IsLoggedIn=true (when the
+    /// ChatListFragment is mounted) and the chat list actually being populated by
+    /// LoadChatsAsync. Times out after ~15 seconds. Safe to call multiple times —
+    /// re-checks PendingShareExtras on each tick so a consumed/replaced share is
+    /// handled correctly.
+    /// </summary>
+    private void TryStartPendingShareNavigation()
+    {
+        var extras = PendingShareExtras;
+        if (extras == null || !extras.GetBoolean("shareAction", false)) return;
+        var chatId = extras.GetString("shareChatId");
+        if (string.IsNullOrEmpty(chatId)) return;
+
+        // Don't start a second watcher for the same pending share.
+        if (System.Threading.Interlocked.CompareExchange(ref _shareWatcherActive, 1, 0) != 0)
+            return;
+
+        _ = Task.Run(async () =>
         {
-            chatListVm.SelectedChat = chatItem;
-            NavigateToChat();
-        }
+            try
+            {
+                var deadline = DateTime.UtcNow.AddSeconds(15);
+                while (DateTime.UtcNow < deadline)
+                {
+                    // Bail if a newer share replaced ours or it was consumed
+                    var current = PendingShareExtras;
+                    if (current == null || current.GetString("shareChatId") != chatId)
+                        return;
+
+                    if (_shellViewModel?.MainViewModel != null)
+                    {
+                        var chatListVm = _shellViewModel.MainViewModel.ChatListViewModel;
+                        if (chatListVm.Chats.Any(c => c.Id == chatId) ||
+                            chatListVm.AgentChats.Any(c => c.Id == chatId))
+                        {
+                            RunOnUiThread(() => TryNavigateToShareChat(chatId));
+                            return;
+                        }
+                    }
+                    await Task.Delay(200);
+                }
+            }
+            finally
+            {
+                System.Threading.Interlocked.Exchange(ref _shareWatcherActive, 0);
+            }
+        });
     }
 
     protected override void OnPause()

@@ -302,6 +302,15 @@ public class ChatFragment : Fragment
         if (extras == null || !extras.GetBoolean("shareAction", false))
             return;
 
+        // Only consume the share when this fragment is showing the chat the share
+        // was targeted at — otherwise a user who manually opens a different chat
+        // before MainActivity's watcher fires would steal the URL/file.
+        var targetChatId = extras.GetString("shareChatId");
+        var currentChatId = ViewModel.ChatId;
+        if (!string.IsNullOrEmpty(targetChatId) &&
+            !string.Equals(targetChatId, currentChatId, StringComparison.Ordinal))
+            return;
+
         // Consume the extras so they don't re-apply on rotation
         MainActivity.PendingShareExtras = null;
 
