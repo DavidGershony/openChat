@@ -1495,7 +1495,7 @@ public class MessageService : IMessageService, IDisposable
         return chat;
     }
 
-    private async Task AutoPublishKeyPackageIfNeededAsync()
+    public async Task AutoPublishKeyPackageIfNeededAsync()
     {
         try
         {
@@ -1536,6 +1536,45 @@ public class MessageService : IMessageService, IDisposable
             await _storageService.DismissWelcomeEventAsync(invite.NostrEventId);
 
         await _storageService.DeletePendingInviteAsync(inviteId);
+    }
+
+    /// <summary>
+    /// Restores NIP-17 (kind 14 DM) bot chats by fetching gift-wrap history from relays
+    /// and routing each unwrapped event through the normal incoming-message path.
+    /// HandleBotMessageEventAsync handles dedup and chat creation, so this is idempotent.
+    /// Self-echoes (rumors authored by the current user) are skipped — their sender chat
+    /// can't be derived from the rumor without parsing the inner p tag, and the user's
+    /// own outgoing-only chats are rare in practice.
+    /// </summary>
+    public async Task RescanNip17ChatsAsync()
+    {
+        if (_currentUser == null || string.IsNullOrEmpty(_currentUser.PublicKeyHex))
+        {
+            _logger.LogWarning("Cannot rescan NIP-17 chats: no current user");
+            return;
+        }
+
+        _logger.LogInformation("Rescanning NIP-17 DM history for {PubKey}...",
+            _currentUser.PublicKeyHex[..Math.Min(16, _currentUser.PublicKeyHex.Length)]);
+
+        var dmEvents = await _nostrService.FetchNip17DmHistoryAsync(_currentUser.PublicKeyHex, _currentUser.PrivateKeyHex);
+
+        var processed = 0;
+        foreach (var nostrEvent in dmEvents)
+        {
+            try
+            {
+                await HandleBotMessageEventAsync(nostrEvent);
+                processed++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing NIP-17 DM event {EventId} during rescan", nostrEvent.EventId);
+            }
+        }
+
+        _logger.LogInformation("NIP-17 rescan complete: {Total} kind 14 event(s) routed through bot handler",
+            processed);
     }
 
     public async Task RescanInvitesAsync()

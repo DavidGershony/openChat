@@ -207,6 +207,21 @@ public interface IMessageService
     Task<KeyPackageAuditResult> AuditKeyPackagesAsync();
 
     /// <summary>
+    /// Generates and publishes a fresh KeyPackage if the local DB has no unused ones.
+    /// No-op when the user already has at least one available KeyPackage. Safe to call
+    /// from post-login init or after consuming an invite — failures are logged, not thrown.
+    /// </summary>
+    Task AutoPublishKeyPackageIfNeededAsync();
+
+    /// <summary>
+    /// Fetches NIP-17 (kind 14) DM history from relays and routes each unwrapped event
+    /// through the normal incoming-message path so bot/agent chats are auto-created and
+    /// missed messages persisted. Idempotent — dedup by NostrEventId. Used on login to
+    /// restore the Agents (DVM) tab without requiring the user to re-add devices manually.
+    /// </summary>
+    Task RescanNip17ChatsAsync();
+
+    /// <summary>
     /// Load older messages from relays for the given chat, going back from the fetchBoundary.
     /// Uses a 2-day sliding window with retry. Returns decrypted messages and the new boundary.
     /// </summary>

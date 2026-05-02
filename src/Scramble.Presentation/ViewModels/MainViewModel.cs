@@ -635,11 +635,35 @@ public class MainViewModel : ViewModelBase
                     {
                         var myKeyPackages = await _nostrService.FetchKeyPackagesAsync(CurrentUser.PublicKeyHex);
                         if (!myKeyPackages.Any())
-                            ChatListViewModel.StatusMessage = "No KeyPackage published — others cannot invite you. Publish one in Settings.";
+                        {
+                            // No KeyPackage on relays — auto-publish one so others can invite this user
+                            // immediately (covers freshly-created identities and recovered keys with no
+                            // prior publish). Idempotent: if a local unused KP already exists, no-op.
+                            _logger.LogInformation("No KeyPackage found on relays — auto-publishing one");
+                            await _messageService.AutoPublishKeyPackageIfNeededAsync();
+                        }
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning(ex, "Failed to check KeyPackage status");
+                        _logger.LogWarning(ex, "Failed to check or auto-publish KeyPackage");
+                    }
+                }));
+
+                // Restore NIP-17 bot/agent chats from relay history. The live kind 1059
+                // subscription should also pick these up, but explicit fetch ensures we
+                // don't miss anything on a fresh device or after a profile reset, and
+                // chats land in the Agents (DVM) tab without the user re-adding devices.
+                backgroundTasks.Add(Task.Run(async () =>
+                {
+                    try
+                    {
+                        await _messageService.RescanNip17ChatsAsync();
+                        // Refresh the chat list so newly-created bot chats appear in the UI
+                        await ChatListViewModel.LoadChatsAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to rescan NIP-17 chats");
                     }
                 }));
 

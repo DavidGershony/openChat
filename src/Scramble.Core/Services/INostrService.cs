@@ -159,6 +159,14 @@ public interface INostrService
     Task<IEnumerable<NostrEventReceived>> FetchWelcomeEventsAsync(string publicKeyHex, string? privateKeyHex = null);
 
     /// <summary>
+    /// Directly fetch NIP-17 DM history (kind 14 inside kind 1059 gift wraps) for a user.
+    /// Opens fresh connections per relay, unwraps, and returns the inner kind 14 rumors.
+    /// Used on login to restore bot/agent chats whose state may not be in the local DB
+    /// (e.g. fresh device, account switch). Caller deduplicates by NostrEventId via storage.
+    /// </summary>
+    Task<IEnumerable<NostrEventReceived>> FetchNip17DmHistoryAsync(string publicKeyHex, string? privateKeyHex = null);
+
+    /// <summary>
     /// Subscribe to group messages (kind 445) for specific groups.
     /// </summary>
     Task SubscribeToGroupMessagesAsync(IEnumerable<string> groupIds, DateTimeOffset? since = null);

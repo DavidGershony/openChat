@@ -1997,7 +1997,7 @@ public class NostrService : INostrService, IDisposable
         {
             try
             {
-                var events = await FetchWelcomeEventsFromRelayAsync(relayUrl, publicKeyHex);
+                var events = await FetchGiftWrapsFromRelayAsync(relayUrl, publicKeyHex, wantedInnerKind: 444, limit: 50);
                 _logger.LogInformation("Found {Count} Welcome event(s) from {Relay}", events.Count, relayUrl);
                 allEvents.AddRange(events);
             }
@@ -2016,28 +2016,33 @@ public class NostrService : INostrService, IDisposable
         return unique;
     }
 
-    private async Task<List<NostrEventReceived>> FetchWelcomeEventsFromRelayAsync(string relayUrl, string publicKeyHex)
+    /// <summary>
+    /// Generic per-relay fetch for kind 1059 gift wraps addressed to <paramref name="publicKeyHex"/>.
+    /// Unwraps each and emits the inner rumor only if its kind matches <paramref name="wantedInnerKind"/>.
+    /// Used by both the Welcome fetch (inner kind 444) and the NIP-17 DM history fetch (inner kind 14).
+    /// </summary>
+    private async Task<List<NostrEventReceived>> FetchGiftWrapsFromRelayAsync(
+        string relayUrl, string publicKeyHex, int wantedInnerKind, int limit)
     {
         var events = new List<NostrEventReceived>();
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         using var ws = new ClientWebSocket();
 
-        _logger.LogDebug("Connecting to relay {Relay} for Welcome fetch", relayUrl);
+        _logger.LogDebug("Connecting to relay {Relay} for gift-wrap fetch (inner kind {Kind})", relayUrl, wantedInnerKind);
         await ws.ConnectAsync(new Uri(relayUrl), cts.Token);
 
-        var subId = $"wf_{Guid.NewGuid():N}"[..16];
+        var subId = $"gw_{Guid.NewGuid():N}"[..16];
 
-        // Fetch NIP-59 Gift Wraps (kind 1059) addressed to us
         var filter = new Dictionary<string, object>
         {
             { "kinds", new[] { 1059 } },
             { "#p", new[] { publicKeyHex } },
-            { "limit", 50 }
+            { "limit", limit }
         };
         var reqMessage = JsonSerializer.Serialize(new object[] { "REQ", subId, filter });
 
-        _logger.LogDebug("Sending Welcome fetch REQ (kind 1059): {Message}", reqMessage);
+        _logger.LogDebug("Sending gift-wrap fetch REQ (kind 1059): {Message}", reqMessage);
         var reqBytes = Encoding.UTF8.GetBytes(reqMessage);
         await ws.SendAsync(new ArraySegment<byte>(reqBytes), WebSocketMessageType.Text, true, cts.Token);
 
@@ -2068,11 +2073,11 @@ public class NostrService : INostrService, IDisposable
                     if (nostrEvent != null && nostrEvent.Kind == 1059 &&
                         (!string.IsNullOrEmpty(_subscribedUserPrivKey) || _externalSigner?.IsConnected == true))
                     {
-                        // Unwrap gift wrap to get the inner rumor
                         var rumor = await UnwrapGiftWrapAsync(nostrEvent);
-                        if (rumor != null && rumor.Kind == 444)
+                        if (rumor != null && rumor.Kind == wantedInnerKind)
                         {
-                            _logger.LogDebug("Unwrapped Welcome event {EventId} from {Sender}",
+                            _logger.LogDebug("Unwrapped gift-wrap (inner kind {Kind}) {EventId} from {Sender}",
+                                wantedInnerKind,
                                 rumor.EventId[..Math.Min(16, rumor.EventId.Length)],
                                 rumor.PublicKey[..Math.Min(16, rumor.PublicKey.Length)]);
                             events.Add(rumor);
@@ -2081,17 +2086,16 @@ public class NostrService : INostrService, IDisposable
                 }
                 else if (messageType == "EOSE")
                 {
-                    _logger.LogDebug("Received EOSE for Welcome fetch subscription {SubId}", subId);
+                    _logger.LogDebug("Received EOSE for gift-wrap fetch subscription {SubId}", subId);
                     break;
                 }
             }
             catch (JsonException ex)
             {
-                _logger.LogWarning(ex, "Failed to parse relay message during Welcome fetch");
+                _logger.LogWarning(ex, "Failed to parse relay message during gift-wrap fetch");
             }
         }
 
-        // Close subscription
         try
         {
             var closeMessage = JsonSerializer.Serialize(new object[] { "CLOSE", subId });
@@ -2108,6 +2112,41 @@ public class NostrService : INostrService, IDisposable
         }
 
         return events;
+    }
+
+    public async Task<IEnumerable<NostrEventReceived>> FetchNip17DmHistoryAsync(string publicKeyHex, string? privateKeyHex = null)
+    {
+        _logger.LogInformation("Fetching NIP-17 DM history for {PubKey}",
+            publicKeyHex[..Math.Min(16, publicKeyHex.Length)] + "...");
+
+        var previousPrivKey = _subscribedUserPrivKey;
+        if (!string.IsNullOrEmpty(privateKeyHex) && string.IsNullOrEmpty(_subscribedUserPrivKey))
+            _subscribedUserPrivKey = privateKeyHex;
+
+        var allEvents = new List<NostrEventReceived>();
+        var relaysToTry = _connectedRelays.Count > 0
+            ? _connectedRelays.Keys.ToList()
+            : NostrConstants.DefaultRelays.ToList();
+
+        foreach (var relayUrl in relaysToTry)
+        {
+            try
+            {
+                var events = await FetchGiftWrapsFromRelayAsync(relayUrl, publicKeyHex, wantedInnerKind: 14, limit: 200);
+                _logger.LogInformation("Found {Count} NIP-17 DM event(s) from {Relay}", events.Count, relayUrl);
+                allEvents.AddRange(events);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to fetch NIP-17 DMs from relay {Relay}", relayUrl);
+            }
+        }
+
+        _subscribedUserPrivKey = previousPrivKey;
+
+        var unique = allEvents.GroupBy(e => e.EventId).Select(g => g.First()).ToList();
+        _logger.LogInformation("Total unique NIP-17 DM events found: {Count}", unique.Count);
+        return unique;
     }
 
     public async Task<IEnumerable<NostrEventReceived>> FetchGroupHistoryAsync(
