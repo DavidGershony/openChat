@@ -124,7 +124,19 @@ jobs:
       - name: Find and rename APK
         id: apk
         run: |
-          APK=$(find ./publish/android -name '*Signed.apk' -o -name '*.apk' | head -1)
+          # Always pick the signed APK explicitly. dotnet publish produces both
+          # `<id>.apk` (unsigned) and `<id>-Signed.apk`, and find without sorting
+          # returns them in filesystem order — picking the unsigned one ships an
+          # uninstallable APK (this happened in v0.6.49). Fail loudly if signing
+          # didn't produce a signed artifact instead of silently shipping the wrong file.
+          APK=$(find ./publish/android -name '*-Signed.apk' | head -1)
+          if [ -z "$APK" ]; then
+            echo "ERROR: No signed APK (*-Signed.apk) found. Signing step may have failed." >&2
+            echo "Contents of ./publish/android:" >&2
+            ls -la ./publish/android >&2
+            exit 1
+          fi
+          echo "Using signed APK: $APK"
           mv "$APK" ./publish/android/Scramble.apk
           echo "APK_PATH=./publish/android/Scramble.apk" >> "$GITHUB_OUTPUT"
 
