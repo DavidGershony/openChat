@@ -602,6 +602,98 @@ public class MessageService : IMessageService, IDisposable
         return chat;
     }
 
+    /// <summary>
+    /// Finds the best bot chat for an incoming kind 14 message, or creates one when no match exists.
+    ///
+    /// DVMs frequently sign their responses with a different key than the one the user registered,
+    /// which would otherwise create a second orphan chat containing only the reply.  We use two
+    /// ordered fallback strategies before resorting to creating a new chat:
+    ///
+    ///   1. Exact key match  — the normal path; existing chat already contains senderPublicKey.
+    ///   2. Relay + recency  — the response arrived on a relay that is configured on an existing bot
+    ///      chat, AND the last message in that chat was sent by the current user (awaiting a reply)
+    ///      within the past hour.  Very accurate when relay URLs match.
+    ///   3. Time-only        — no relay URL clue; the most recently messaged bot chat where the
+    ///      user sent the last message, within a 30-minute window.  Covers DVMs that send from
+    ///      a different relay than configured.
+    ///
+    /// When a fallback match is found the response key is added to that chat's participants so
+    /// all subsequent messages from the same key route correctly via the exact-match path.
+    /// </summary>
+    private async Task<Chat> FindChatForIncomingBotMessageAsync(
+        string senderPublicKey, string responseRelayUrl, DateTime messageTimestamp)
+    {
+        if (_currentUser == null)
+            throw new InvalidOperationException("User not logged in");
+
+        var allChats = (await _storageService.GetAllChatsAsync()).ToList();
+        var botChats = allChats.Where(c => c.Type == ChatType.Bot).ToList();
+
+        // 1. Exact key match — fastest and most reliable path.
+        var exactMatch = botChats.FirstOrDefault(c =>
+            c.ParticipantPublicKeys.Contains(senderPublicKey));
+        if (exactMatch != null)
+            return exactMatch;
+
+        // 2. Relay + recency match: response came from a relay we recognise for a specific bot chat
+        //    that is currently waiting for a reply (last message was from the current user).
+        if (!string.IsNullOrEmpty(responseRelayUrl))
+        {
+            var relayNorm = responseRelayUrl.TrimEnd('/');
+            var relayMatch = botChats
+                .Where(c =>
+                    c.LastMessage?.IsFromCurrentUser == true &&
+                    (messageTimestamp - c.LastActivityAt).TotalHours <= 1 &&
+                    c.RelayUrls.Any(r =>
+                        string.Equals(r.TrimEnd('/'), relayNorm, StringComparison.OrdinalIgnoreCase)))
+                .OrderByDescending(c => c.LastActivityAt)
+                .FirstOrDefault();
+
+            if (relayMatch != null)
+            {
+                _logger.LogInformation(
+                    "FindChatForIncomingBot: relay match — routing response from {Sender} to existing chat {Chat}",
+                    senderPublicKey[..Math.Min(16, senderPublicKey.Length)],
+                    relayMatch.Id[..Math.Min(8, relayMatch.Id.Length)]);
+
+                if (!relayMatch.ParticipantPublicKeys.Contains(senderPublicKey))
+                {
+                    relayMatch.ParticipantPublicKeys.Add(senderPublicKey);
+                    await _storageService.SaveChatAsync(relayMatch);
+                }
+                return relayMatch;
+            }
+        }
+
+        // 3. Time-only fallback: pick the most recently messaged bot chat that is awaiting a reply,
+        //    within a 30-minute window.  Less precise than the relay match, but handles DVMs that
+        //    respond from a relay the user did not explicitly configure.
+        var timeMatch = botChats
+            .Where(c =>
+                c.LastMessage?.IsFromCurrentUser == true &&
+                (messageTimestamp - c.LastActivityAt).TotalMinutes <= 30)
+            .OrderByDescending(c => c.LastActivityAt)
+            .FirstOrDefault();
+
+        if (timeMatch != null)
+        {
+            _logger.LogInformation(
+                "FindChatForIncomingBot: time fallback — routing response from {Sender} to existing chat {Chat}",
+                senderPublicKey[..Math.Min(16, senderPublicKey.Length)],
+                timeMatch.Id[..Math.Min(8, timeMatch.Id.Length)]);
+
+            if (!timeMatch.ParticipantPublicKeys.Contains(senderPublicKey))
+            {
+                timeMatch.ParticipantPublicKeys.Add(senderPublicKey);
+                await _storageService.SaveChatAsync(timeMatch);
+            }
+            return timeMatch;
+        }
+
+        // 4. No suitable existing chat found — create a new one (original behaviour).
+        return await GetOrCreateBotChatAsync(senderPublicKey);
+    }
+
     public async Task<Chat> GetOrCreateBotChatAsync(string botPublicKey, List<string>? relayUrls = null)
     {
         if (_currentUser == null)
@@ -986,17 +1078,22 @@ public class MessageService : IMessageService, IDisposable
             return;
         }
 
-        // Find or create the bot chat keyed on the other party (recipient if we
-        // sent it, sender if they sent it).
-        var chat = await GetOrCreateBotChatAsync(otherPartyPubKey);
-
-        // For self-sent rescued messages: SendMessageAsync stored the local copy
-        // with NostrEventId = the kind-1059 wrap id, but the rescan unwraps and
-        // gives us the kind-14 rumor id — so the event-id dedup above misses the
-        // collision. Fall back to (sender, timestamp, content) within a short
-        // window to avoid duplicating every outgoing message on every rescan.
+        // Find or create the bot chat.
+        //  - Self-sent messages (NIP-59 self-wrap): the chat is keyed on the recipient
+        //    extracted from the p tag above.
+        //  - Incoming messages: DVMs sometimes respond with a different key than the
+        //    one the user registered, so we fall back to relay-URL and recency
+        //    heuristics before creating a new chat.
+        Chat chat;
         if (isSelfSent)
         {
+            chat = await GetOrCreateBotChatAsync(otherPartyPubKey);
+
+            // For self-sent rescued messages: SendMessageAsync stored the local copy
+            // with NostrEventId = the kind-1059 wrap id, but the rescan unwraps and
+            // gives us the kind-14 rumor id — so the event-id dedup above misses the
+            // collision. Fall back to (sender, timestamp, content) within a short
+            // window to avoid duplicating every outgoing message on every rescan.
             var existing = await _storageService.GetMessagesForChatAsync(chat.Id, limit: 200, offset: 0);
             var dup = existing.FirstOrDefault(m =>
                 string.Equals(m.SenderPublicKey, senderPubKey, StringComparison.OrdinalIgnoreCase) &&
@@ -1008,6 +1105,10 @@ public class MessageService : IMessageService, IDisposable
                     dup.Id[..Math.Min(8, dup.Id.Length)]);
                 return;
             }
+        }
+        else
+        {
+            chat = await FindChatForIncomingBotMessageAsync(senderPubKey, nostrEvent.RelayUrl, nostrEvent.CreatedAt);
         }
 
         // Content is already decrypted during gift-wrap unwrapping
