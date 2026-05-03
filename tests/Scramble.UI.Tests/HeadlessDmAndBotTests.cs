@@ -3,6 +3,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Moq;
 using Scramble.Core.Models;
+using Scramble.Core.Services;
 using Scramble.Presentation.ViewModels;
 using Xunit;
 
@@ -145,6 +146,99 @@ public class HeadlessDmAndBotTests : HeadlessTestBase
         Assert.False(chatListVm.ShowAddBotDialog);
         Assert.Single(chatListVm.Chats);
         Assert.True(chatListVm.Chats[0].IsBot);
+    }
+
+    [AvaloniaTheory]
+    [InlineData("rust")]
+    [InlineData("managed")]
+    public async Task BotResponse_FromDifferentKey_RoutesToExistingChatViaRelayMatch(string backend)
+    {
+        if (ShouldSkip(backend)) return;
+        var ctx = await CreateRealContext(backend);
+        await ctx.MessageService.InitializeAsync();
+
+        // User registers a bot chat with key A using a specific relay
+        var registeredKey = "aa".PadLeft(64, 'a');
+        var botRelayUrl = "wss://dvm.relay.test";
+        ctx.MockNostr.Setup(n => n.PublishGiftWrapAsync(
+                It.IsAny<int>(), It.IsAny<string>(), It.IsAny<List<List<string>>>(),
+                It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<string>?>()))
+            .ReturnsAsync("fakewrap_" + Guid.NewGuid().ToString("N"));
+        var botChat = await ctx.MessageService.GetOrCreateBotChatAsync(registeredKey, new List<string> { botRelayUrl });
+
+        // Simulate user sending a message so LastMessage.IsFromCurrentUser = true
+        await ctx.MessageService.SendMessageAsync(botChat.Id, "Hello DVM!");
+        await Task.Delay(100);
+
+        // DVM responds with a DIFFERENT key from the same relay
+        var responseKey = "bb".PadLeft(64, 'b');
+        ctx.EventsSubject.OnNext(new NostrEventReceived
+        {
+            Kind = 14,
+            EventId = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N"),
+            PublicKey = responseKey,
+            Content = "DVM reply here",
+            CreatedAt = DateTime.UtcNow,
+            Tags = new List<List<string>> { new() { "p", ctx.User.PublicKeyHex } },
+            RelayUrl = botRelayUrl
+        });
+        await Task.Delay(500);
+
+        // The response must have been placed in the ORIGINAL bot chat, not a new one
+        var allChats = (await ctx.Storage.GetAllChatsAsync()).Where(c => c.Type == ChatType.Bot).ToList();
+        Assert.Single(allChats);
+        Assert.Equal(botChat.Id, allChats[0].Id);
+
+        var messages = (await ctx.Storage.GetMessagesForChatAsync(botChat.Id)).ToList();
+        Assert.Contains(messages, m => m.Content == "DVM reply here");
+
+        // The response key must now be registered in the chat so future messages go to the same place
+        Assert.Contains(responseKey, allChats[0].ParticipantPublicKeys);
+    }
+
+    [AvaloniaTheory]
+    [InlineData("rust")]
+    [InlineData("managed")]
+    public async Task BotResponse_FromDifferentKey_RoutesToExistingChatViaTimeFallback(string backend)
+    {
+        if (ShouldSkip(backend)) return;
+        var ctx = await CreateRealContext(backend);
+        await ctx.MessageService.InitializeAsync();
+
+        // User registers a bot chat with NO relay configured (time-only fallback path)
+        var registeredKey = "cc".PadLeft(64, 'c');
+        ctx.MockNostr.Setup(n => n.PublishGiftWrapAsync(
+                It.IsAny<int>(), It.IsAny<string>(), It.IsAny<List<List<string>>>(),
+                It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<string>?>()))
+            .ReturnsAsync("fakewrap_" + Guid.NewGuid().ToString("N"));
+        var botChat = await ctx.MessageService.GetOrCreateBotChatAsync(registeredKey);
+
+        // Simulate user sending a message
+        await ctx.MessageService.SendMessageAsync(botChat.Id, "Hello DVM no relay!");
+        await Task.Delay(100);
+
+        // DVM responds with a different key from a relay we don't recognise
+        var responseKey = "dd".PadLeft(64, 'd');
+        ctx.EventsSubject.OnNext(new NostrEventReceived
+        {
+            Kind = 14,
+            EventId = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N"),
+            PublicKey = responseKey,
+            Content = "Time-fallback reply",
+            CreatedAt = DateTime.UtcNow,
+            Tags = new List<List<string>> { new() { "p", ctx.User.PublicKeyHex } },
+            RelayUrl = "wss://some.other.relay"
+        });
+        await Task.Delay(500);
+
+        var allChats = (await ctx.Storage.GetAllChatsAsync()).Where(c => c.Type == ChatType.Bot).ToList();
+        Assert.Single(allChats);
+        Assert.Equal(botChat.Id, allChats[0].Id);
+
+        var messages = (await ctx.Storage.GetMessagesForChatAsync(botChat.Id)).ToList();
+        Assert.Contains(messages, m => m.Content == "Time-fallback reply");
+
+        Assert.Contains(responseKey, allChats[0].ParticipantPublicKeys);
     }
 
     // --- Join Group by ID ---
