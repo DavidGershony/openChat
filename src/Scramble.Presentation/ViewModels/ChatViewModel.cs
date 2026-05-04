@@ -466,6 +466,13 @@ public class ChatViewModel : ViewModelBase
             var user = await _storageService.GetUserByPublicKeyAsync(publicKeyHex);
             _logger.LogDebug("LoadCachedProfile: user={Found}, avatarUrl={Avatar}, displayName={Name}",
                 user != null, user?.AvatarUrl?[..Math.Min(30, user?.AvatarUrl?.Length ?? 0)], user?.DisplayName);
+
+            // Stale-write guard: by the time the DB read returns, the user may have
+            // navigated to a different chat. Don't overwrite the panel with profile
+            // data for someone we're no longer looking at.
+            if (!string.Equals(ContactPublicKey, publicKeyHex, StringComparison.Ordinal))
+                return;
+
             if (user != null && !string.IsNullOrEmpty(user.AvatarUrl))
             {
                 MetadataPicture = user.AvatarUrl;
@@ -513,23 +520,39 @@ public class ChatViewModel : ViewModelBase
         if (string.IsNullOrEmpty(ContactPublicKey) || IsLoadingMetadata)
             return;
 
-        _logger.LogInformation("Loading contact metadata for: {PubKey}", ContactPublicKey[..Math.Min(16, ContactPublicKey.Length)] + "...");
+        // Capture the contact we're loading for. The relay fetch can take seconds —
+        // if the user switches chats during the await, we must NOT stomp the new
+        // chat's metadata panel with this old contact's data.
+        var requestedContactPubKey = ContactPublicKey;
+
+        _logger.LogInformation("Loading contact metadata for: {PubKey}", requestedContactPubKey[..Math.Min(16, requestedContactPubKey.Length)] + "...");
         IsLoadingMetadata = true;
 
         try
         {
             // Convert npub to hex if needed
-            var pubKeyHex = ContactPublicKey.StartsWith("npub")
-                ? _nostrService.NpubToHex(ContactPublicKey)
-                : ContactPublicKey;
+            var pubKeyHex = requestedContactPubKey.StartsWith("npub")
+                ? _nostrService.NpubToHex(requestedContactPubKey)
+                : requestedContactPubKey;
 
             if (string.IsNullOrEmpty(pubKeyHex))
             {
-                _logger.LogWarning("Invalid public key format: {PubKey}", ContactPublicKey);
+                _logger.LogWarning("Invalid public key format: {PubKey}", requestedContactPubKey);
                 return;
             }
 
             var metadata = await _messageService.FetchAndCacheProfileAsync(pubKeyHex);
+
+            // Stale-write guard: bail if the user navigated to a different chat
+            // (or cleared the chat) while we were awaiting the fetch.
+            if (!string.Equals(ContactPublicKey, requestedContactPubKey, StringComparison.Ordinal))
+            {
+                _logger.LogDebug("Discarding metadata for {Old} — contact changed to {New} during fetch",
+                    requestedContactPubKey[..Math.Min(16, requestedContactPubKey.Length)],
+                    ContactPublicKey?[..Math.Min(16, ContactPublicKey?.Length ?? 0)] ?? "null");
+                return;
+            }
+
             ContactMetadata = metadata;
 
             // Update computed properties for UI binding
