@@ -135,10 +135,34 @@ public class LoginViewModel : ViewModelBase
                     IsExternalSignerConnecting = status.State == ExternalSignerState.Connecting ||
                                                  status.State == ExternalSignerState.WaitingForApproval;
 
-                    // Auto-login when signer connects via nostrconnect
-                    if (status.State == ExternalSignerState.Connected && status.PublicKeyHex != null)
+                    // Auto-login when signer connects via nostrconnect.
+                    // status.PublicKeyHex CAN be null here — the reconnect path in
+                    // ExternalSignerService emits Connected with whatever PublicKeyHex
+                    // happens to be set on the service, which may be null if reconnect
+                    // fires before the initial connect handshake populated it. Try the
+                    // signer's PublicKeyHex property as a fallback, then GetPublicKeyAsync()
+                    // as a last resort, before giving up — otherwise the user sees
+                    // "Connected!" but nothing happens (this was the Amber-on-Android bug).
+                    if (status.State == ExternalSignerState.Connected)
                     {
-                        await HandleSignerConnectedAsync(status.PublicKeyHex);
+                        var pubKey = status.PublicKeyHex ?? ExternalSigner!.PublicKeyHex;
+                        if (string.IsNullOrEmpty(pubKey))
+                        {
+                            try
+                            {
+                                pubKey = await ExternalSigner!.GetPublicKeyAsync();
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex, "Connected fired but signer has no PublicKeyHex and GetPublicKeyAsync failed");
+                                ErrorMessage = $"Signer connected but did not return a public key: {ex.Message}";
+                            }
+                        }
+
+                        if (!string.IsNullOrEmpty(pubKey))
+                        {
+                            await HandleSignerConnectedAsync(pubKey);
+                        }
                     }
                 });
         }

@@ -71,28 +71,48 @@ public class LoginViewModelSignerLoginTests
     }
 
     [Fact]
-    public async Task SignerStatus_Connected_WithNullPubKey_DoesNotSetLoggedInUser()
+    public async Task SignerStatus_Connected_WithNullPubKey_FallsBackToSignerProperty()
     {
-        // Arrange: signer reports Connected but PublicKeyHex is null. This shouldn't
-        // happen for nostrconnect (HandleIncomingConnect always sets PublicKeyHex),
-        // but the reconnect path (ExternalSignerService.cs ~line 423-429) emits
-        // Connected with whatever PublicKeyHex is currently set — which can be null
-        // if reconnect fires before the initial connect handshake.
-        var signer = new MockExternalSignerBuilder().Build(); // no signing pubkey
+        // The Amber-on-Android bug: the reconnect path in ExternalSignerService
+        // emits Connected with whatever PublicKeyHex happens to be set, which
+        // can be null in the status payload. LoginViewModel must fall back to
+        // the signer's own PublicKeyHex property before giving up — otherwise
+        // the user sees "Connected!" forever.
+        var signerPubKey = new string('f', 64);
+        var signer = new MockExternalSignerBuilder()
+            .WithSigningPubKey(signerPubKey)
+            .WithBunkerSession(remotePubKey: signerPubKey, secret: "s")
+            .Build();
         var vm = CreateLoginViewModel(signer.Object);
 
-        // Act
+        // Act: Status payload has null PublicKeyHex — but the signer property is set
         signer.EmitStatus(ExternalSignerState.Connected, publicKeyHex: null);
 
         await Task.Delay(200);
 
-        // Assert: status text still updates (visible to user as "Connected!")
         Assert.Equal("Connected!", vm.ExternalSignerStatus);
+        Assert.NotNull(vm.LoggedInUser);
+        Assert.Equal(signerPubKey, vm.LoggedInUser!.PublicKeyHex);
+    }
 
-        // Assert: LoggedInUser stays null — guard at LoginViewModel.cs:135 should skip
-        // HandleSignerConnectedAsync when PublicKeyHex is null. This pairs with the
-        // bug symptom: "Connected" appears, login never proceeds.
-        Assert.Null(vm.LoggedInUser);
+    [Fact]
+    public async Task SignerStatus_Connected_WithNullPubKey_AndNoSignerProperty_FallsBackToGetPublicKey()
+    {
+        // Even if the signer's PublicKeyHex property is also null, fall back to
+        // GetPublicKeyAsync() before giving up.
+        var signerPubKey = new string('a', 64);
+        var signer = new MockExternalSignerBuilder().Build(); // no signing pubkey set
+        signer.Mock.Setup(s => s.GetPublicKeyAsync()).ReturnsAsync(signerPubKey);
+
+        var vm = CreateLoginViewModel(signer.Object);
+
+        signer.EmitStatus(ExternalSignerState.Connected, publicKeyHex: null);
+        await Task.Delay(200);
+
+        Assert.Equal("Connected!", vm.ExternalSignerStatus);
+        Assert.NotNull(vm.LoggedInUser);
+        Assert.Equal(signerPubKey, vm.LoggedInUser!.PublicKeyHex);
+        signer.Mock.Verify(s => s.GetPublicKeyAsync(), Times.AtLeastOnce);
     }
 
     [Fact]
