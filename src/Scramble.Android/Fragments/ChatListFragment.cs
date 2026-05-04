@@ -58,6 +58,15 @@ public class ChatListFragment : Fragment
         chatTabs.AddTab(agentsTab);
         chatTabs.AddTab(archivedTab);
 
+        // After back-stack pop (e.g. returning from a chat), the fragment view is
+        // recreated and TabLayout defaults to the first tab — but the ViewModel
+        // still has the previously-selected section flag. Restore the matching
+        // tab so the visible selection lines up with the list contents.
+        if (ViewModel.ShowArchivedSection)
+            chatTabs.SelectTab(archivedTab);
+        else if (ViewModel.ShowAgentsSection)
+            chatTabs.SelectTab(agentsTab);
+
         ViewModel.WhenAnyValue(x => x.ArchivedChatsCount)
             .ObserveOn(RxApp.MainThreadScheduler)
             .Subscribe(count => archivedTab.SetText($"Archived ({count})"))
