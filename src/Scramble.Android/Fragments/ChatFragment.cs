@@ -57,6 +57,30 @@ public class ChatFragment : Fragment
 
         // Set the file picker function on the ViewModel
         ChatViewModel.FilePickerFunc = PickFileAsync;
+
+        // Hardware/gesture back: collapse keyboard if up, otherwise pop to chat list
+        // immediately. Without this, the system back button can take multiple presses
+        // to actually leave the chat (IME state, focus, multiple stack entries).
+        var callback = new ChatFragmentBackPressedCallback(this);
+        RequireActivity().OnBackPressedDispatcher.AddCallback(this, callback);
+    }
+
+    private sealed class ChatFragmentBackPressedCallback : AndroidX.Activity.OnBackPressedCallback
+    {
+        private readonly ChatFragment _fragment;
+        public ChatFragmentBackPressedCallback(ChatFragment fragment) : base(true)
+        {
+            _fragment = fragment;
+        }
+
+        public override void HandleOnBackPressed()
+        {
+            // One press = leave the chat, regardless of IME state or any other
+            // back-stack entries that may have piled up. Popping the fragment
+            // naturally drops focus from the message input, so Android will
+            // hide the keyboard on its own.
+            _fragment.ParentFragmentManager.PopBackStack();
+        }
     }
 
     public override View? OnCreateView(LayoutInflater inflater, ViewGroup? container, Bundle? savedInstanceState)

@@ -324,7 +324,12 @@ public class ExternalSignerService : IExternalSigner, IDisposable
         GenerateLocalKeyPair();
         _secret = GenerateRandomSecret();
         var perms = "nip04_encrypt,nip04_decrypt,nip44_encrypt,nip44_decrypt,sign_event:443,sign_event:444,sign_event:445,sign_event:1059";
-        var relayParams = string.Join("", relayUrls.Select(r => $"&relay={Uri.EscapeDataString(r)}"));
+        // Relay URLs are not percent-encoded: Amber's bunker:// URIs use raw
+        // wss://… in the relay query value, and Amber's nostrconnect parser
+        // appears to fail validation when relays come back as wss%3A%2F%2F….
+        // RFC 3986 allows ':' and '/' in query values un-encoded, so this is
+        // still a valid URI. perms stays escaped (commas need encoding).
+        var relayParams = string.Join("", relayUrls.Select(r => $"&relay={r}"));
         var uri = $"nostrconnect://{_localPublicKeyHex}?{relayParams.TrimStart('&')}&secret={_secret}&name=Scramble&perms={Uri.EscapeDataString(perms)}";
         _logger.LogInformation("Generated nostrconnect URI for {Count} relays, local pubkey {PubKey}", relayUrls.Count(), _localPublicKeyHex?[..16]);
         return uri;
