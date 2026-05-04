@@ -292,6 +292,33 @@ public class ExternalSignerService : IExternalSigner, IDisposable
         return response;
     }
 
+    public async Task<string?> ResolveSigningPubKeyAsync()
+    {
+        try
+        {
+            var pubKey = await GetPublicKeyAsync();
+            if (!string.IsNullOrEmpty(pubKey) && pubKey.Length == 64)
+            {
+                if (!string.Equals(pubKey, PublicKeyHex, StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogInformation(
+                        "NIP-46 signing pubkey resolved — differs from transport pubkey (signing={Signing}, transport={Transport})",
+                        pubKey[..Math.Min(16, pubKey.Length)] + "...",
+                        PublicKeyHex?[..Math.Min(16, PublicKeyHex.Length)] + "...");
+                }
+                PublicKeyHex = pubKey;
+                return pubKey;
+            }
+            _logger.LogWarning("get_public_key returned an invalid value: '{Value}'", pubKey);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to resolve signing pubkey via get_public_key");
+            return null;
+        }
+    }
+
     public async Task<string> SignEventAsync(UnsignedNostrEvent unsignedEvent)
     {
         var eventJson = JsonSerializer.Serialize(new

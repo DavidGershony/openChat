@@ -69,6 +69,15 @@ public interface IExternalSigner
     Task<string> GetPublicKeyAsync();
 
     /// <summary>
+    /// Calls get_public_key on the signer and updates <see cref="PublicKeyHex"/>
+    /// to the returned value. Use this after the initial NIP-46 handshake to
+    /// resolve the user's actual signing pubkey — Amber (and some other signers)
+    /// use a separate transport pubkey for the kind-24133 envelope, which is not
+    /// the user's identity. Returns the resolved signing pubkey, or null on failure.
+    /// </summary>
+    Task<string?> ResolveSigningPubKeyAsync();
+
+    /// <summary>
     /// Sign an event using the external signer.
     /// </summary>
     Task<string> SignEventAsync(UnsignedNostrEvent unsignedEvent);

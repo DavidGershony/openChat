@@ -144,6 +144,40 @@ public class LoginViewModelSignerLoginTests
     }
 
     [Fact]
+    public async Task SignerStatus_Connected_TransportPubKeyDiffersFromSigningPubKey_UsesSigningKey()
+    {
+        // Reproducer for the wrong-npub bug: Amber sends NIP-46 messages from
+        // a transport pubkey that's different from the user's actual signing
+        // pubkey. HandleIncomingConnect captures the transport pubkey (the
+        // event.pubkey of kind 24133) and emits it via Status — but that's NOT
+        // the user's identity. The fix calls get_public_key to resolve the
+        // actual signing key, and User.PublicKeyHex / User.Npub must reflect
+        // that, not the transport key.
+        var transportPubKey = new string('1', 64);
+        var actualSigningPubKey = new string('2', 64);
+        var signer = new MockExternalSignerBuilder()
+            .WithSigningPubKey(transportPubKey)             // service property holds transport key
+            .WithGetPublicKeyResponse(actualSigningPubKey)  // get_public_key returns the real one
+            .WithBunkerSession(remotePubKey: transportPubKey, secret: "s")
+            .Build();
+        var vm = CreateLoginViewModel(signer.Object);
+
+        // Status fires with the transport pubkey (what HandleIncomingConnect emits)
+        signer.EmitStatus(ExternalSignerState.Connected, transportPubKey);
+        await Task.Delay(200);
+
+        Assert.NotNull(vm.LoggedInUser);
+        // User identity must be the actual signing pubkey, not the transport key
+        Assert.Equal(actualSigningPubKey, vm.LoggedInUser!.PublicKeyHex);
+        // Npub must be derived from the same pubkey (the wrong-npub bug was
+        // the User.Npub coming from one source and PublicKeyHex from another).
+        var expectedNpub = Scramble.Core.Crypto.Bech32.Encode(
+            "npub", Convert.FromHexString(actualSigningPubKey));
+        Assert.Equal(expectedNpub, vm.LoggedInUser.Npub);
+        signer.Mock.Verify(s => s.ResolveSigningPubKeyAsync(), Times.AtLeastOnce);
+    }
+
+    [Fact]
     public async Task SignerStatus_StateProgression_UpdatesUiSignals()
     {
         // Arrange

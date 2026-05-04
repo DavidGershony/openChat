@@ -33,6 +33,7 @@ public sealed class MockExternalSignerBuilder
     private List<string> _relays = new() { "wss://relay.test" };
     private bool _isConnected = true;
     private string? _signEventResponse;
+    private string? _getPublicKeyResponse;
 
     /// <summary>The signer's claimed identity (the user's pubkey, in hex).</summary>
     public MockExternalSignerBuilder WithSigningPubKey(string pubKeyHex)
@@ -77,6 +78,18 @@ public sealed class MockExternalSignerBuilder
         return this;
     }
 
+    /// <summary>
+    /// Stub GetPublicKeyAsync (NIP-46 get_public_key) to return a specific hex
+    /// pubkey. LoginViewModel calls this on connect to resolve the actual signing
+    /// key (Amber's transport pubkey can differ from its signing pubkey).
+    /// Defaults to whatever WithSigningPubKey was set to.
+    /// </summary>
+    public MockExternalSignerBuilder WithGetPublicKeyResponse(string pubKeyHex)
+    {
+        _getPublicKeyResponse = pubKeyHex;
+        return this;
+    }
+
     public MockExternalSigner Build()
     {
         var signer = new MockExternalSigner(
@@ -84,6 +97,18 @@ public sealed class MockExternalSignerBuilder
         if (_signEventResponse != null)
             signer.Mock.Setup(s => s.SignEventAsync(It.IsAny<UnsignedNostrEvent>()))
                 .ReturnsAsync(_signEventResponse);
+
+        // Default GetPublicKeyAsync to the configured signing pubkey so tests
+        // that don't care about the transport-vs-signing-key distinction don't
+        // need to wire it up explicitly. ResolveSigningPubKeyAsync mirrors it
+        // (same return value) — production code routes through Resolve, but
+        // tests can verify either was called.
+        var pubKeyToReturn = _getPublicKeyResponse ?? _publicKeyHex;
+        if (pubKeyToReturn != null)
+        {
+            signer.Mock.Setup(s => s.GetPublicKeyAsync()).ReturnsAsync(pubKeyToReturn);
+            signer.Mock.Setup(s => s.ResolveSigningPubKeyAsync()).ReturnsAsync(pubKeyToReturn);
+        }
         return signer;
     }
 }

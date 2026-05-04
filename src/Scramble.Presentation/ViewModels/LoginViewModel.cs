@@ -4,6 +4,7 @@ using System.Reactive.Linq;
 using Microsoft.Extensions.Logging;
 using ReactiveUI;
 using ReactiveUI.Fody.Helpers;
+using Scramble.Core.Crypto;
 using Scramble.Core.Logging;
 using Scramble.Core.Models;
 using Scramble.Core.Services;
@@ -288,18 +289,33 @@ public class LoginViewModel : ViewModelBase
 
         try
         {
-            var npub = ExternalSigner!.Npub;
+            // Amber (and other NIP-46 signers) often uses a different pubkey for
+            // the kind-24133 transport envelope vs the user's actual signing pubkey.
+            // The publicKeyHex passed in came from the envelope (HandleIncomingConnect
+            // sets it to senderPubKey) — it's the *transport* key. The source of
+            // truth for user identity is whatever get_public_key returns.
+            // ResolveSigningPubKeyAsync calls get_public_key AND updates the service's
+            // own PublicKeyHex so downstream consumers stay in sync.
+            var resolved = await ExternalSigner!.ResolveSigningPubKeyAsync();
+            if (!string.IsNullOrEmpty(resolved))
+                publicKeyHex = resolved;
+
+            // Derive npub directly from publicKeyHex so User.PublicKeyHex and
+            // User.Npub stay in lockstep. Never read ExternalSigner.Npub here —
+            // it's a derived property and can be stale or based on the transport key.
+            var npub = Bech32.Encode("npub", Convert.FromHexString(publicKeyHex));
+
             var user = new User
             {
                 Id = Guid.NewGuid().ToString(),
                 PublicKeyHex = publicKeyHex,
-                Npub = npub ?? string.Empty,
+                Npub = npub,
                 CreatedAt = DateTime.UtcNow,
                 IsCurrentUser = true,
                 PrivateKeyHex = null,
                 Nsec = null,
                 // Persist signer session details for auto-reconnect on app restart
-                SignerRelayUrl = string.Join(";", ExternalSigner.RelayUrls),
+                SignerRelayUrl = string.Join(";", ExternalSigner!.RelayUrls),
                 SignerRemotePubKey = ExternalSigner.RemotePubKey,
                 SignerSecret = ExternalSigner.Secret,
                 SignerLocalPrivateKeyHex = ExternalSigner.LocalPrivateKeyHex,
