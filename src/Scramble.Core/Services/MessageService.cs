@@ -964,12 +964,31 @@ public class MessageService : IMessageService, IDisposable
         if (_currentUser == null) return;
 
         var senderPubKey = nostrEvent.PublicKey;
+        var isSelfSent = string.Equals(senderPubKey, _currentUser.PublicKeyHex, StringComparison.OrdinalIgnoreCase);
 
-        // Skip self-echoes
-        if (senderPubKey == _currentUser.PublicKeyHex)
+        // For self-sent messages (NIP-59 wraps a copy of every outgoing DM to the
+        // sender too, so it can be picked up on other devices), the bot chat is
+        // with the RECIPIENT, not with us. Pull the recipient from the first p tag.
+        string otherPartyPubKey;
+        if (isSelfSent)
         {
-            _logger.LogDebug("HandleBotMessage: skipping self-echo");
-            return;
+            var pTag = nostrEvent.Tags.FirstOrDefault(t =>
+                t.Count >= 2 && string.Equals(t[0], "p", StringComparison.Ordinal));
+            if (pTag == null)
+            {
+                _logger.LogDebug("HandleBotMessage: self-sent kind 14 has no p tag — skipping");
+                return;
+            }
+            otherPartyPubKey = pTag[1];
+            if (string.IsNullOrEmpty(otherPartyPubKey) || otherPartyPubKey.Length != 64)
+            {
+                _logger.LogDebug("HandleBotMessage: self-sent kind 14 p tag malformed — skipping");
+                return;
+            }
+        }
+        else
+        {
+            otherPartyPubKey = senderPubKey;
         }
 
         // Deduplicate by event ID
@@ -981,8 +1000,29 @@ public class MessageService : IMessageService, IDisposable
             return;
         }
 
-        // Find or create bot chat for this sender
-        var chat = await GetOrCreateBotChatAsync(senderPubKey);
+        // Find or create the bot chat keyed on the other party (recipient if we
+        // sent it, sender if they sent it).
+        var chat = await GetOrCreateBotChatAsync(otherPartyPubKey);
+
+        // For self-sent rescued messages: SendMessageAsync stored the local copy
+        // with NostrEventId = the kind-1059 wrap id, but the rescan unwraps and
+        // gives us the kind-14 rumor id — so the event-id dedup above misses the
+        // collision. Fall back to (sender, timestamp, content) within a short
+        // window to avoid duplicating every outgoing message on every rescan.
+        if (isSelfSent)
+        {
+            var existing = await _storageService.GetMessagesForChatAsync(chat.Id, limit: 200, offset: 0);
+            var dup = existing.FirstOrDefault(m =>
+                string.Equals(m.SenderPublicKey, senderPubKey, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(m.Content, nostrEvent.Content, StringComparison.Ordinal) &&
+                Math.Abs((m.Timestamp - nostrEvent.CreatedAt).TotalSeconds) < 60);
+            if (dup != null)
+            {
+                _logger.LogDebug("HandleBotMessage: skipping self-echo — local copy already exists ({MsgId})",
+                    dup.Id[..Math.Min(8, dup.Id.Length)]);
+                return;
+            }
+        }
 
         // Content is already decrypted during gift-wrap unwrapping
         var content = nostrEvent.Content;
@@ -998,11 +1038,15 @@ public class MessageService : IMessageService, IDisposable
             Timestamp = nostrEvent.CreatedAt,
             ReceivedAt = DateTime.UtcNow,
             Status = MessageStatus.Delivered,
-            IsFromCurrentUser = false
+            IsFromCurrentUser = isSelfSent
         };
 
-        message.Sender = await _storageService.GetUserByPublicKeyAsync(senderPubKey);
-        if (message.Sender == null)
+        // Resolve the SENDER for display. For self-sent messages this is the
+        // current user, which we already have.
+        message.Sender = isSelfSent
+            ? _currentUser
+            : await _storageService.GetUserByPublicKeyAsync(senderPubKey);
+        if (message.Sender == null && !isSelfSent)
         {
             _ = FetchUnknownSenderAsync(message);
         }
@@ -1012,11 +1056,15 @@ public class MessageService : IMessageService, IDisposable
 
         chat.LastActivityAt = DateTime.UtcNow;
         chat.LastMessage = message;
-        chat.UnreadCount++;
+        // Only bump unread for incoming messages — our own outgoing/echoed messages
+        // shouldn't show as unread on the device that pulled them from history.
+        if (!isSelfSent)
+            chat.UnreadCount++;
         await _storageService.SaveChatAsync(chat);
         _chatUpdates.OnNext(chat);
 
-        _logger.LogInformation("HandleBotMessage: saved message {MsgId} in bot chat {ChatId}",
+        _logger.LogInformation("HandleBotMessage: saved {Direction} message {MsgId} in bot chat {ChatId}",
+            isSelfSent ? "self-sent" : "incoming",
             message.Id[..Math.Min(8, message.Id.Length)], chat.Id[..Math.Min(8, chat.Id.Length)]);
     }
 

@@ -359,6 +359,9 @@ public class ExternalSignerService : IExternalSigner, IDisposable
         var relayParams = string.Join("", relayUrls.Select(r => $"&relay={r}"));
         var uri = $"nostrconnect://{_localPublicKeyHex}?{relayParams.TrimStart('&')}&secret={_secret}&name=Scramble&perms={Uri.EscapeDataString(perms)}";
         _logger.LogInformation("Generated nostrconnect URI for {Count} relays, local pubkey {PubKey}", relayUrls.Count(), _localPublicKeyHex?[..16]);
+        // Debug-only log of the full URI so we can diagnose connection issues
+        // from the log file. Contains the secret — never persist beyond local logs.
+        _logger.LogDebug("nostrconnect URI: {Uri}", uri);
         return uri;
     }
 

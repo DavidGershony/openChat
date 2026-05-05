@@ -146,12 +146,20 @@ public class LoginViewModel : ViewModelBase
                     // "Connected!" but nothing happens (this was the Amber-on-Android bug).
                     if (status.State == ExternalSignerState.Connected)
                     {
+                        _logger.LogInformation(
+                            "Connected event received. status.PublicKeyHex={StatusKey}, signer.PublicKeyHex={SignerKey}",
+                            string.IsNullOrEmpty(status.PublicKeyHex) ? "<null>" : status.PublicKeyHex[..Math.Min(16, status.PublicKeyHex.Length)] + "...",
+                            string.IsNullOrEmpty(ExternalSigner!.PublicKeyHex) ? "<null>" : ExternalSigner.PublicKeyHex[..Math.Min(16, ExternalSigner.PublicKeyHex.Length)] + "...");
+
                         var pubKey = status.PublicKeyHex ?? ExternalSigner!.PublicKeyHex;
                         if (string.IsNullOrEmpty(pubKey))
                         {
                             try
                             {
+                                _logger.LogWarning("Connected event has no PublicKeyHex — calling get_public_key as last resort");
                                 pubKey = await ExternalSigner!.GetPublicKeyAsync();
+                                _logger.LogInformation("get_public_key returned {PubKey}",
+                                    string.IsNullOrEmpty(pubKey) ? "<empty>" : pubKey[..Math.Min(16, pubKey.Length)] + "...");
                             }
                             catch (Exception ex)
                             {
