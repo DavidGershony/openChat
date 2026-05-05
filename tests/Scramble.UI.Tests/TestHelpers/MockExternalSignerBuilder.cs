@@ -34,6 +34,8 @@ public sealed class MockExternalSignerBuilder
     private bool _isConnected = true;
     private string? _signEventResponse;
     private string? _getPublicKeyResponse;
+    private bool? _restoreSucceeds;
+    private string? _restoredPublicKeyHex;
 
     /// <summary>The signer's claimed identity (the user's pubkey, in hex).</summary>
     public MockExternalSignerBuilder WithSigningPubKey(string pubKeyHex)
@@ -90,6 +92,19 @@ public sealed class MockExternalSignerBuilder
         return this;
     }
 
+    /// <summary>
+    /// Stub RestoreSessionAsync to return a specific result. When succeeds is true,
+    /// the signer's PublicKeyHex is set to <paramref name="resolvedPubKeyHex"/> as if
+    /// the restore handshake produced that key. Use to simulate session-restore
+    /// scenarios where the signer reports a different pubkey than the stored user.
+    /// </summary>
+    public MockExternalSignerBuilder WithRestoreSession(bool succeeds, string? resolvedPubKeyHex = null)
+    {
+        _restoreSucceeds = succeeds;
+        _restoredPublicKeyHex = resolvedPubKeyHex;
+        return this;
+    }
+
     public MockExternalSigner Build()
     {
         var signer = new MockExternalSigner(
@@ -108,6 +123,30 @@ public sealed class MockExternalSignerBuilder
         {
             signer.Mock.Setup(s => s.GetPublicKeyAsync()).ReturnsAsync(pubKeyToReturn);
             signer.Mock.Setup(s => s.ResolveSigningPubKeyAsync()).ReturnsAsync(pubKeyToReturn);
+        }
+
+        if (_restoreSucceeds.HasValue)
+        {
+            var succeeds = _restoreSucceeds.Value;
+            var restoredKey = _restoredPublicKeyHex ?? _publicKeyHex;
+            signer.Mock.Setup(s => s.RestoreSessionAsync(
+                It.IsAny<IEnumerable<string>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string?>()))
+                .Callback(() =>
+                {
+                    if (succeeds && restoredKey != null)
+                    {
+                        // Mirror ExternalSignerService.RestoreSessionAsync: a successful
+                        // restore updates the signer's PublicKeyHex to whatever the
+                        // signer reports back via get_public_key.
+                        signer.Mock.SetupGet(s => s.PublicKeyHex).Returns(restoredKey);
+                        signer.Mock.SetupGet(s => s.IsConnected).Returns(true);
+                    }
+                })
+                .ReturnsAsync(succeeds);
         }
         return signer;
     }

@@ -339,21 +339,24 @@ public class MainViewModel : ViewModelBase
                     {
                         _logger.LogInformation("Signer session restored successfully");
 
-                        // The signer's actual signing pubkey may differ from the NIP-46 remote pubkey.
-                        // Update CurrentUser if the signer reported a different key.
+                        // The signer may report a PublicKeyHex that differs from the stored
+                        // CurrentUser.PublicKeyHex (stale signer state, mis-routed reply on
+                        // a shared relay, foreign signer answering). Earlier this was treated
+                        // as authoritative and the User row was rewritten in place — that
+                        // overwrote the active profile's current_user with whatever identity
+                        // the signer happened to report, including foreign accounts'. The
+                        // resulting corruption was observable as "wrong npub for this profile".
+                        // Identity is set authoritatively at login (HandleSignerConnectedAsync
+                        // resolves the signing pubkey via get_public_key before saving the
+                        // User). Don't second-guess it here — log the mismatch as a diagnostic
+                        // signal and leave the saved row untouched. Use the reconcile tool to
+                        // fix any data already corrupted by the previous behaviour.
                         if (ExternalSigner!.PublicKeyHex != null &&
-                            ExternalSigner.PublicKeyHex != CurrentUser.PublicKeyHex)
+                            !string.Equals(ExternalSigner.PublicKeyHex, CurrentUser.PublicKeyHex, StringComparison.OrdinalIgnoreCase))
                         {
-                            _logger.LogWarning("Signer signing pubkey ({SignerKey}) differs from stored user pubkey ({UserKey}) — updating user",
+                            _logger.LogWarning("Signer reported pubkey ({SignerKey}) does not match stored user pubkey ({UserKey}) — keeping stored identity. If this persists, profile data may be split across DBs from older builds; run the reconcile tool.",
                                 ExternalSigner.PublicKeyHex[..Math.Min(16, ExternalSigner.PublicKeyHex.Length)] + "...",
                                 CurrentUser.PublicKeyHex[..Math.Min(16, CurrentUser.PublicKeyHex.Length)] + "...");
-                            CurrentUser.PublicKeyHex = ExternalSigner.PublicKeyHex;
-                            CurrentUser.Npub = Bech32.Encode("npub", Convert.FromHexString(ExternalSigner.PublicKeyHex));
-                            _messageService.UpdateCurrentUserPubKey(ExternalSigner.PublicKeyHex);
-
-                            // Persist corrected pubkey so future loads/account switches use the right key
-                            try { await _storageService.SaveCurrentUserAsync(CurrentUser); }
-                            catch (Exception ex) { _logger.LogWarning(ex, "Failed to persist corrected pubkey"); }
                         }
                     }
                     else
