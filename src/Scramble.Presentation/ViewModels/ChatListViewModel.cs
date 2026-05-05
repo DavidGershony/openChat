@@ -1509,17 +1509,24 @@ public class ChatListViewModel : ViewModelBase
             // Delete from storage
             await _storageService.DeleteChatAsync(chatId);
 
-            // Remove from UI
+            // Remove from whichever in-memory collection it's in. Bot/Agent chats
+            // live in AgentChats, groups/DMs in Chats, archived in ArchivedChats —
+            // previously this only checked Chats, so deleting a bot chat left a
+            // stale row in AgentChats until the next full reload.
             var chatToRemove = Chats.FirstOrDefault(c => c.Id == chatId);
-            if (chatToRemove != null)
-            {
-                Chats.Remove(chatToRemove);
+            if (chatToRemove != null) Chats.Remove(chatToRemove);
 
-                // Clear selection if this was the selected chat
-                if (SelectedChat?.Id == chatId)
-                {
-                    SelectedChat = null;
-                }
+            var agentToRemove = AgentChats.FirstOrDefault(c => c.Id == chatId);
+            if (agentToRemove != null) AgentChats.Remove(agentToRemove);
+            AgentChatsCount = AgentChats.Count;
+
+            var archivedToRemove = ArchivedChats.FirstOrDefault(c => c.Id == chatId);
+            if (archivedToRemove != null) ArchivedChats.Remove(archivedToRemove);
+            ArchivedChatsCount = ArchivedChats.Count;
+
+            if (SelectedChat?.Id == chatId)
+            {
+                SelectedChat = null;
             }
 
             _logger.LogInformation("Chat deleted successfully: {ChatId}", chatId);

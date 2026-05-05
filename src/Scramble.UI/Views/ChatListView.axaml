@@ -447,6 +447,19 @@
                                     <MenuItem Header="Archive"
                                               Command="{Binding #AgentListBox.DataContext.ArchiveChatCommand}"
                                               CommandParameter="{Binding}" />
+                                    <MenuItem Header="Rename"
+                                              Command="{Binding #AgentListBox.DataContext.RenameChatCommand}"
+                                              CommandParameter="{Binding}" />
+                                    <MenuItem Command="{Binding #AgentListBox.DataContext.ToggleMuteCommand}"
+                                              CommandParameter="{Binding}">
+                                        <MenuItem.Header>
+                                            <Panel>
+                                                <TextBlock Text="Mute" IsVisible="{Binding !IsMuted}" />
+                                                <TextBlock Text="Unmute" IsVisible="{Binding IsMuted}" />
+                                            </Panel>
+                                        </MenuItem.Header>
+                                    </MenuItem>
+                                    <Separator />
                                     <MenuItem Header="Delete"
                                               Command="{Binding #AgentListBox.DataContext.DeleteChatCommand}"
                                               CommandParameter="{Binding}" />
