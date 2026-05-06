@@ -104,6 +104,7 @@ public class ExternalSignerIntegrationTests
         }
 
         public Task<string> GetPublicKeyAsync() => Task.FromResult(_publicKeyHex);
+        public Task<string?> ResolveSigningPubKeyAsync() => Task.FromResult<string?>(_publicKeyHex);
         public Task<bool> ConnectAsync(string bunkerUrl) => throw new NotImplementedException();
         public Task<bool> ConnectWithStringAsync(string connectionString) => throw new NotImplementedException();
         public Task DisconnectAsync() => Task.CompletedTask;
