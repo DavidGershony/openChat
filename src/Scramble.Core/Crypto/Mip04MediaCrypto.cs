@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using DotnetMls.Crypto;
 using Microsoft.Extensions.Logging;
 using Scramble.Core.Logging;
 using Org.BouncyCastle.Crypto.Parameters;
@@ -66,7 +67,7 @@ public static class Mip04MediaCrypto
 
         Buffer.BlockCopy(keyLabel, 0, context, offset, keyLabel.Length);
 
-        var key = HKDF.Expand(HashAlgorithmName.SHA256, exporterSecret, KeyLength, context);
+        var key = HkdfProvider.ExpandSha256(exporterSecret, context, KeyLength);
 
         _logger.LogDebug("DeriveMediaEncryptionKey: sha256={Sha256}, mime={Mime}, filename={Filename}, contextLen={Len}",
             sha256Hex[..Math.Min(16, sha256Hex.Length)], canonicalMime, filename, contextLength);
