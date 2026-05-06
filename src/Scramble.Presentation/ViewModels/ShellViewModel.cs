@@ -230,6 +230,41 @@ public class ShellViewModel : ViewModelBase
             _logger.LogWarning("ActivateSession called but session already active — ignoring duplicate (signer auto-login race)");
             return;
         }
+
+        // Belt-and-suspenders guard against profile-DB identity corruption: the
+        // active profile name must derive from the user about to be activated.
+        // If they disagree, the User row in this profile's DB belongs to a
+        // different account (the historical bug fixed in 07066ca). Refuse to
+        // activate and surface an error rather than load a foreign identity.
+        // See MainViewModelInitializeAfterLoginTests for the historical mechanism.
+        if (string.IsNullOrEmpty(user.PublicKeyHex))
+        {
+            _logger.LogError("Refusing to activate session: user has no PublicKeyHex");
+            ShowLoginView();
+            // ShowLoginView calls LoginViewModel.Reset() which clears ErrorMessage,
+            // so set it AFTER the reset so the user actually sees the failure.
+            LoginViewModel.ErrorMessage = "Account record is missing a public key — cannot activate.";
+            return;
+        }
+        var expectedProfile = ProfileConfiguration.DeriveProfileName(user.PublicKeyHex);
+        if (!string.Equals(expectedProfile, ProfileConfiguration.ProfileName, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogError(
+                "Refusing to activate session: profile mismatch. Profile={Profile} but saved user pubkey derives {Expected} ({UserKey}…). The profile DB contains a foreign user record — run the reconcile tool.",
+                ProfileConfiguration.ProfileName, expectedProfile,
+                user.PublicKeyHex[..Math.Min(16, user.PublicKeyHex.Length)]);
+            // Walk back the half-completed switch so the UI doesn't end up half-active.
+            ProfileConfiguration.SetProfile(null);
+            AccountRegistryService.ClearActiveAccount();
+            ShowLoginView();
+            // ShowLoginView resets the LoginViewModel — set ErrorMessage AFTER so the
+            // user actually sees what went wrong instead of a blank login screen.
+            LoginViewModel.ErrorMessage =
+                $"This profile's data is inconsistent (saved user does not match profile path). " +
+                $"Run the reconcile tool to repair, or remove and re-add the account.";
+            return;
+        }
+
         _sessionActivated = true;
 
         _storageService = storageService;

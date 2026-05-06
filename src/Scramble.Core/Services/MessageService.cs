@@ -73,20 +73,6 @@ public class MessageService : IMessageService, IDisposable
         }
     }
 
-    /// <summary>
-    /// Update the current user's public key identity. Called when the NIP-46 signer
-    /// reveals a signing pubkey that differs from the initial session remote pubkey.
-    /// </summary>
-    public void UpdateCurrentUserPubKey(string newPublicKeyHex)
-    {
-        if (_currentUser == null) return;
-        var oldKey = _currentUser.PublicKeyHex;
-        _currentUser.PublicKeyHex = newPublicKeyHex;
-        _logger.LogInformation("MessageService user pubkey updated: {Old} → {New}",
-            oldKey[..Math.Min(16, oldKey.Length)] + "...",
-            newPublicKeyHex[..Math.Min(16, newPublicKeyHex.Length)] + "...");
-    }
-
     public async Task<IEnumerable<Chat>> GetChatsAsync()
     {
         var chats = await _storageService.GetAllChatsAsync();

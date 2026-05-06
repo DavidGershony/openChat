@@ -29,12 +29,6 @@ public interface IMessageService
     IObservable<PendingInvite> NewInvites { get; }
 
     /// <summary>
-    /// Update the current user's public key identity. Called when the NIP-46 signer
-    /// reveals a signing pubkey that differs from the initial session remote pubkey.
-    /// </summary>
-    void UpdateCurrentUserPubKey(string newPublicKeyHex);
-
-    /// <summary>
     /// Fires each time a Welcome event is skipped because no key material was available.
     /// Subscribers can use this to update the skipped invite count in the UI.
     /// </summary>
