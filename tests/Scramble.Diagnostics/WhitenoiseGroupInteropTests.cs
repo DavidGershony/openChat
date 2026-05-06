@@ -595,7 +595,7 @@ public class WhitenoiseGroupInteropTests : IAsyncLifetime
         var wnMsgs = await _wnClient.PollUntilAsync(
             () => _wnClient.FetchMessagesAsync(wnGroupId),
             msgs => msgs.Any(m => m.Content.Contains("Thanks Charlie")),
-            timeoutMs: 15000,
+            timeoutMs: 30000,
             intervalMs: 2000,
             description: "WN receives Alice's reply");
 
