@@ -1,6 +1,7 @@
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using Scramble.Core.Configuration;
 using Scramble.Core.Services;
 using Scramble.Diagnostics.TestHelpers;
 using Xunit;
@@ -24,13 +25,14 @@ public class KeyPackagePublishDiagnosticTests
 
     private static readonly string[] TestRelays = new[]
     {
-        "wss://test.thedude.cloud",
-        "wss://relay.damus.io",
-        "wss://nos.lol",
-        "wss://relay.nostr.band"
+        "ws://localhost:7777"
     };
 
-    public KeyPackagePublishDiagnosticTests(ITestOutputHelper output) => _output = output;
+    public KeyPackagePublishDiagnosticTests(ITestOutputHelper output)
+    {
+        _output = output;
+        ProfileConfiguration.SetAllowLocalRelays(true);
+    }
 
     [Fact]
     public async Task PublishKeyPackage_Kind30443_AcceptedByRelays()
@@ -214,7 +216,7 @@ public class KeyPackagePublishDiagnosticTests
         // The pubkey used in FetchKeyPackagesAsync (from CurrentUser)
         var fetchPubkey = "8f7d5460983b7210e9c910a761f786ec208e8bc0f8f3213d61bf7244fcec19e0";
 
-        var relays = new[] { "wss://relay.angor.io", "wss://relay2.angor.io", "wss://test.thedude.cloud" };
+        var relays = new[] { "ws://localhost:7777" };
 
         foreach (var relay in relays)
         {
@@ -474,11 +476,7 @@ public class KeyPackagePublishDiagnosticTests
     {
         var relays = new[]
         {
-            "ws://localhost:7777",
-            "wss://relay.angor.io",
-            "wss://relay.thedude.cloud",
-            "wss://relay2.angor.io",
-            "wss://test.thedude.cloud"
+            "ws://localhost:7777"
         };
 
         var nostrService = new NostrService();

@@ -13,7 +13,7 @@ namespace Scramble.Diagnostics;
 
 /// <summary>
 /// Full end-to-end interop test: 2 real Scramble instances + 1 Whitenoise Docker,
-/// all connected to the same relay (wss://test.thedude.cloud).
+/// all connected to the same relay (ws://localhost:7777, the docker test relay).
 ///
 /// Uses the real MessageService flow (CreateGroupAsync → AddMemberAsync → RescanInvites → AcceptInvite → SendMessage).
 /// Every message direction is tested with full epoch logging.
@@ -25,7 +25,7 @@ namespace Scramble.Diagnostics;
 [Trait("Category", "FullE2E")]
 public class FullE2EGroupInteropTests : IAsyncLifetime
 {
-    private const string RelayUrl = "wss://test.thedude.cloud";
+    private const string RelayUrl = "ws://localhost:7777";
 
     private readonly ITestOutputHelper _output;
     private readonly List<string> _dbPaths = new();

@@ -16,7 +16,7 @@ namespace Scramble.Diagnostics;
 
 /// <summary>
 /// Investigation tests for Scramble ↔ marmot-ts web app interop.
-/// Uses wss://relay2.angor.io to test against the same relay the web app uses.
+/// Uses ws://localhost:7777 (docker test relay) for hermetic testing.
 ///
 /// These tests create real users, publish real events, and log every detail
 /// to diagnose format mismatches between Scramble and the web app.
@@ -25,7 +25,7 @@ namespace Scramble.Diagnostics;
 [Trait("Category", "WebInterop")]
 public class WebAppInteropInvestigationTests : IAsyncLifetime
 {
-    private const string RelayUrl = "wss://test.thedude.cloud";
+    private const string RelayUrl = "ws://localhost:7777";
 
     private readonly ITestOutputHelper _output;
     private readonly List<string> _dbPaths = new();
@@ -37,7 +37,11 @@ public class WebAppInteropInvestigationTests : IAsyncLifetime
         _output = output;
     }
 
-    public Task InitializeAsync() => Task.CompletedTask;
+    public Task InitializeAsync()
+    {
+        ProfileConfiguration.SetAllowLocalRelays(true);
+        return Task.CompletedTask;
+    }
 
     public async Task DisposeAsync()
     {

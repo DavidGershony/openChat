@@ -2,6 +2,7 @@ using System.Reactive;
 using System.Reactive.Linq;
 using Moq;
 using Scramble.Core;
+using Scramble.Core.Configuration;
 using Scramble.Core.Models;
 using Scramble.Core.Services;
 using Scramble.Diagnostics.TestHelpers;
@@ -24,7 +25,11 @@ public class KeyPackageE2EHeadlessTests : IDisposable
     private readonly List<string> _dbPaths = new();
     private readonly List<IDisposable> _disposables = new();
 
-    public KeyPackageE2EHeadlessTests(ITestOutputHelper output) => _output = output;
+    public KeyPackageE2EHeadlessTests(ITestOutputHelper output)
+    {
+        _output = output;
+        ProfileConfiguration.SetAllowLocalRelays(true);
+    }
 
     public void Dispose()
     {
@@ -69,7 +74,7 @@ public class KeyPackageE2EHeadlessTests : IDisposable
         await messageService.InitializeAsync();
 
         // === Step 1: Connect to real relays ===
-        var relays = new[] { "wss://relay.angor.io", "wss://nos.lol", "wss://test.thedude.cloud" };
+        var relays = new[] { "ws://localhost:7777" };
         _output.WriteLine("\n--- Connecting to relays ---");
         foreach (var relay in relays)
         {

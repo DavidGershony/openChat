@@ -19,14 +19,18 @@ namespace Scramble.Diagnostics;
 [Trait("Category", "WebInterop")]
 public class ExporterSecretDiagnosticTests : IAsyncLifetime
 {
-    private const string RelayUrl = "wss://test.thedude.cloud";
+    private const string RelayUrl = "ws://localhost:7777";
     private readonly ITestOutputHelper _output;
     private readonly List<string> _dbPaths = new();
     private readonly List<NostrService> _nostrServices = new();
     private readonly List<MessageService> _messageServices = new();
 
     public ExporterSecretDiagnosticTests(ITestOutputHelper output) => _output = output;
-    public Task InitializeAsync() => Task.CompletedTask;
+    public Task InitializeAsync()
+    {
+        ProfileConfiguration.SetAllowLocalRelays(true);
+        return Task.CompletedTask;
+    }
 
     public async Task DisposeAsync()
     {

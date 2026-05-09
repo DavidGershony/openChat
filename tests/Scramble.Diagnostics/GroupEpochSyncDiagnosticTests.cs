@@ -24,7 +24,7 @@ namespace Scramble.Diagnostics;
 [Trait("Category", "EpochSync")]
 public class GroupEpochSyncDiagnosticTests : IAsyncLifetime
 {
-    private const string RelayUrl = "wss://test.thedude.cloud";
+    private const string RelayUrl = "ws://localhost:7777";
 
     private readonly ITestOutputHelper _output;
     private readonly List<string> _dbPaths = new();
@@ -257,7 +257,7 @@ public class GroupEpochSyncDiagnosticTests : IAsyncLifetime
         // Ensure relays tag has at least one URL (Rust MDK validates this)
         var relaysTag = tags.FirstOrDefault(t => t.Count >= 1 && t[0] == "relays");
         if (relaysTag != null && relaysTag.Count <= 1)
-            relaysTag.Add("wss://test.thedude.cloud");
+            relaysTag.Add(RelayUrl);
         var tagsJson = JsonSerializer.Serialize(tags);
 
         // Generate valid 64-char hex strings for id and sig (Rust MDK validates format)
