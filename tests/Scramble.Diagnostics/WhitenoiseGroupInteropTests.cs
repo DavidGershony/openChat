@@ -145,6 +145,12 @@ public class WhitenoiseGroupInteropTests : IAsyncLifetime
         var charliePubkey = await _wnClient!.CreateIdentityAsync();
         _output.WriteLine($"Charlie (WN): pubkey={charliePubkey[..16]}...");
 
+        // Wire WN to the docker test relay (docker-DNS URL) so it publishes
+        // Charlie's KeyPackage there. Without this, KP fetch only succeeds via
+        // public NIP-65 discovery relays which rate-limit under parallel test load.
+        await _wnClient.AddRelayAsync(WnLocalRelayUrl);
+        await Task.Delay(2000);
+
         // Step 2: Connect Scramble users to relay
         _output.WriteLine($"\n--- Connecting to {RelayUrl} ---");
         await alice.NostrService.ConnectAsync(RelayUrl);
@@ -381,6 +387,10 @@ public class WhitenoiseGroupInteropTests : IAsyncLifetime
         var bob = await CreateScrambleUser("Bob");
         var charliePubkey = await _wnClient!.CreateIdentityAsync();
         _output.WriteLine($"Charlie (WN): {charliePubkey[..16]}...");
+
+        // Wire WN to the docker test relay so it publishes KeyPackages there.
+        await _wnClient.AddRelayAsync(WnLocalRelayUrl);
+        await Task.Delay(2000);
 
         // For a second WN user, we reuse the same daemon (it supports multiple accounts)
         // We need a second identity

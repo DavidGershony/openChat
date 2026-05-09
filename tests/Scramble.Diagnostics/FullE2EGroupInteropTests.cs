@@ -26,6 +26,9 @@ namespace Scramble.Diagnostics;
 public class FullE2EGroupInteropTests : IAsyncLifetime
 {
     private const string RelayUrl = "ws://localhost:7777";
+    // Same relay, but addressable from inside the WN docker container via compose DNS.
+    // WN must register this URL (not localhost:7777, which is unreachable from the container).
+    private const string WnLocalRelayUrl = "ws://nostr-relay:8080";
 
     private readonly ITestOutputHelper _output;
     private readonly List<string> _dbPaths = new();
@@ -439,8 +442,9 @@ public class FullE2EGroupInteropTests : IAsyncLifetime
         var wnPubkey = await _wnClient!.CreateIdentityAsync();
         _output.WriteLine($"Charlie (WN): {wnPubkey[..16]}...");
 
-        // Add test relay to WN so it publishes KPs and subscribes there
-        await _wnClient.AddRelayAsync(RelayUrl);
+        // Add test relay to WN so it publishes KPs and subscribes there.
+        // Must use the docker-DNS URL — localhost:7777 is unreachable from inside the WN container.
+        await _wnClient.AddRelayAsync(WnLocalRelayUrl);
         await Task.Delay(3000);
 
         // Step 1: Bob publishes KeyPackage
