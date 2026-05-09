@@ -496,11 +496,12 @@ public class ManagedMlsService : IMlsService
 
         // Step 1: Create rumor event JSON (kind 9, pubkey, content, tags)
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        var rumorId = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        var rumorTagsList = rumorTags ?? new List<List<string>>();
+        var rumorId = ComputeRumorEventId(_publicKeyHex!, now, kind: 9, rumorTagsList, plaintext);
         LastEncryptedRumorEventId = rumorId;
         var escapedContent = JsonSerializer.Serialize(plaintext);
-        var rumorTagsJson = rumorTags != null && rumorTags.Count > 0
-            ? JsonSerializer.Serialize(rumorTags)
+        var rumorTagsJson = rumorTagsList.Count > 0
+            ? JsonSerializer.Serialize(rumorTagsList)
             : "[]";
         var rumorJson = $"{{\"id\":\"{rumorId}\",\"pubkey\":\"{_publicKeyHex}\",\"created_at\":{now},\"kind\":9,\"tags\":{rumorTagsJson},\"content\":{escapedContent}}}";
 
@@ -545,10 +546,11 @@ public class ManagedMlsService : IMlsService
 
         // Build kind 7 rumor with "e" tag pointing to target message
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        var rumorId = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        var reactionTagsList = new List<List<string>> { new() { "e", targetRumorEventId } };
+        var rumorId = ComputeRumorEventId(_publicKeyHex!, now, kind: 7, reactionTagsList, content);
         LastEncryptedRumorEventId = rumorId;
         var escapedContent = JsonSerializer.Serialize(content);
-        var reactionTags = JsonSerializer.Serialize(new List<List<string>> { new() { "e", targetRumorEventId } });
+        var reactionTags = JsonSerializer.Serialize(reactionTagsList);
         var rumorJson = $"{{\"id\":\"{rumorId}\",\"pubkey\":\"{_publicKeyHex}\",\"created_at\":{now},\"kind\":7,\"tags\":{reactionTags},\"content\":{escapedContent}}}";
 
         // MLS-encrypt, MIP-03 encrypt, build kind 445 event (same as EncryptMessageAsync)
@@ -1355,6 +1357,26 @@ public class ManagedMlsService : IMlsService
 
         _logger.LogDebug("EncryptCommit: produced {Len} bytes event JSON", eventJson.Length);
         return Task.FromResult(eventJson);
+    }
+
+    /// <summary>
+    /// Computes a NIP-01 event id for an MLS rumor event (kind 9 message or
+    /// kind 7 reaction) before MLS-encrypting it.
+    ///
+    /// MDK 0.8.0 (PR #287) calls verify_id() on every rumor on both send and
+    /// receive: it recomputes <c>SHA256(JSON.serialize([0,pubkey,created_at,kind,tags,content]))</c>
+    /// and silently drops the message if the id field doesn't match. Earlier
+    /// MDK versions accepted any id; that's why we used to slot in a random
+    /// Guid here. Using the canonical NIP-01 id keeps us correct against
+    /// both old and new MDK and ensures that reaction/reply "e" tags
+    /// referencing this rumor stay valid across the wire.
+    /// </summary>
+    private static string ComputeRumorEventId(
+        string pubkeyHex, long createdAt, int kind, List<List<string>> tags, string content)
+    {
+        var serialized = NostrService.SerializeForEventId(pubkeyHex, createdAt, kind, tags, content);
+        var hash = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(serialized));
+        return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
     /// <summary>
