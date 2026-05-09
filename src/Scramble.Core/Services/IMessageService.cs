@@ -89,7 +89,15 @@ public interface IMessageService
     /// <summary>
     /// Create a new group chat.
     /// </summary>
-    Task<Chat> CreateGroupAsync(string name, IEnumerable<string> memberPublicKeys);
+    /// <param name="name">Group display name.</param>
+    /// <param name="memberPublicKeys">Initial members (excluding the creator).</param>
+    /// <param name="relayUrlsOverride">
+    /// Optional override for the relay URLs advertised in MLS group state and Welcomes.
+    /// When null, defaults to the currently connected relay URLs. Intended for tests
+    /// where the URL reachable by remote peers (e.g. another container) differs from
+    /// the URL the creator connects to (e.g. localhost vs docker-DNS hostname).
+    /// </param>
+    Task<Chat> CreateGroupAsync(string name, IEnumerable<string> memberPublicKeys, IEnumerable<string>? relayUrlsOverride = null);
 
     /// <summary>
     /// Create or get a direct message chat with a user.

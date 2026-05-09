@@ -509,7 +509,7 @@ public class MessageService : IMessageService, IDisposable
         return message;
     }
 
-    public async Task<Chat> CreateGroupAsync(string name, IEnumerable<string> memberPublicKeys)
+    public async Task<Chat> CreateGroupAsync(string name, IEnumerable<string> memberPublicKeys, IEnumerable<string>? relayUrlsOverride = null)
     {
         if (_currentUser == null)
             throw new InvalidOperationException("User not logged in");
@@ -517,8 +517,8 @@ public class MessageService : IMessageService, IDisposable
         _logger.LogInformation("CreateGroup: creating group '{Name}' with {MemberCount} initial members",
             name, memberPublicKeys.Count());
 
-        // Create MLS group with connected relay URLs
-        var relayUrls = _nostrService.ConnectedRelayUrls.ToArray();
+        // Create MLS group with connected relay URLs (or test override).
+        var relayUrls = relayUrlsOverride?.ToArray() ?? _nostrService.ConnectedRelayUrls.ToArray();
         if (relayUrls.Length == 0)
             throw new InvalidOperationException("Cannot create group: no relays connected");
         var groupInfo = await _mlsService.CreateGroupAsync(name, relayUrls);

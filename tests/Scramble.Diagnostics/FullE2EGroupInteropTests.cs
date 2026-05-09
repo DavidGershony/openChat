@@ -465,10 +465,15 @@ public class FullE2EGroupInteropTests : IAsyncLifetime
         _output.WriteLine($"  Found {wnKps.Count} WN KeyPackage(s)");
         Assert.NotEmpty(wnKps);
 
-        // Step 2: Alice creates group with Bob + WN Charlie
+        // Step 2: Alice creates group with Bob + WN Charlie.
+        // Pass relayUrlsOverride so the relay URL baked into the MLS group state and
+        // Welcomes is the docker-DNS URL reachable from inside the WN container; without
+        // this, WN gets group_relays=["ws://localhost:7777"] which it cannot reach and
+        // therefore never receives Alice's kind 445 messages.
         _output.WriteLine("\n[Step 2] Alice creates group");
         var chat = await alice.MessageService.CreateGroupAsync("E2E OC+WN Group",
-            new[] { bob.PubKeyHex, wnPubkey });
+            new[] { bob.PubKeyHex, wnPubkey },
+            relayUrlsOverride: new[] { WnLocalRelayUrl });
         _output.WriteLine($"  Group: {Convert.ToHexString(chat.MlsGroupId!).ToLowerInvariant()[..16]}...");
         _output.WriteLine($"  Participants: {chat.ParticipantPublicKeys.Count}");
 
