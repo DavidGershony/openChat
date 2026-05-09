@@ -132,9 +132,22 @@ public interface INostrService
     Task<(bool accepted, string? reason)> WaitForRelayOkAsync(string eventId, int timeoutMs = 5000);
 
     /// <summary>
-    /// Fetch KeyPackages for a user.
+    /// Fetch KeyPackages for a user. Equivalent to <see cref="FetchKeyPackagesAsync(string, int)"/>
+    /// with the default per-relay limit (5).
     /// </summary>
     Task<IEnumerable<KeyPackage>> FetchKeyPackagesAsync(string publicKeyHex);
+
+    /// <summary>
+    /// Fetch KeyPackages for a user with an explicit per-relay limit.
+    /// </summary>
+    /// <param name="publicKeyHex">The user's hex-encoded x-only Nostr public key.</param>
+    /// <param name="limit">
+    /// Maximum events to request from each relay. The audit flow passes a high value (e.g. 100)
+    /// to surface stale slots from before the rotation fix and from multi-device deployments;
+    /// inviter flows use the default <see cref="FetchKeyPackagesAsync(string)"/> overload because
+    /// they only need any one usable KeyPackage.
+    /// </param>
+    Task<IEnumerable<KeyPackage>> FetchKeyPackagesAsync(string publicKeyHex, int limit);
 
     /// <summary>
     /// Fetch user metadata (kind 0) for a public key.

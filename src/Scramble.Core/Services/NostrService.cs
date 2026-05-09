@@ -1768,9 +1768,13 @@ public class NostrService : INostrService, IDisposable
         return (accepted, reason);
     }
 
-    public async Task<IEnumerable<KeyPackage>> FetchKeyPackagesAsync(string publicKeyHex)
+    public Task<IEnumerable<KeyPackage>> FetchKeyPackagesAsync(string publicKeyHex)
+        => FetchKeyPackagesAsync(publicKeyHex, limit: 5);
+
+    public async Task<IEnumerable<KeyPackage>> FetchKeyPackagesAsync(string publicKeyHex, int limit)
     {
-        _logger.LogInformation("Fetching KeyPackages for {PubKey}", publicKeyHex[..Math.Min(16, publicKeyHex.Length)] + "...");
+        _logger.LogInformation("Fetching KeyPackages for {PubKey} (limit={Limit} per relay)",
+            publicKeyHex[..Math.Min(16, publicKeyHex.Length)] + "...", limit);
 
         var keyPackages = new List<KeyPackage>();
 
@@ -1810,7 +1814,7 @@ public class NostrService : INostrService, IDisposable
         {
             try
             {
-                var packages = await FetchKeyPackagesFromRelayAsync(relayUrl, publicKeyHex);
+                var packages = await FetchKeyPackagesFromRelayAsync(relayUrl, publicKeyHex, limit);
                 foreach (var pkg in packages)
                 {
                     // Deduplicate by NostrEventId across relays
@@ -1833,7 +1837,7 @@ public class NostrService : INostrService, IDisposable
         return keyPackages;
     }
 
-    private async Task<List<KeyPackage>> FetchKeyPackagesFromRelayAsync(string relayUrl, string publicKeyHex)
+    private async Task<List<KeyPackage>> FetchKeyPackagesFromRelayAsync(string relayUrl, string publicKeyHex, int limit)
     {
         var keyPackages = new List<KeyPackage>();
 
@@ -1846,12 +1850,12 @@ public class NostrService : INostrService, IDisposable
         // Generate a unique subscription ID
         var subId = $"kp_{Guid.NewGuid():N}"[..16];
 
-        // Build REQ message: ["REQ", subId, {"kinds": [30443], "authors": [pubkey], "limit": 5}]
+        // Build REQ message: ["REQ", subId, {"kinds": [30443], "authors": [pubkey], "limit": N}]
         var filter = new
         {
             kinds = new[] { 30443 },
             authors = new[] { publicKeyHex },
-            limit = 5
+            limit
         };
         var reqMessage = JsonSerializer.Serialize(new object[] { "REQ", subId, filter });
 

@@ -1751,8 +1751,10 @@ public class MessageService : IMessageService, IDisposable
 
         var result = new KeyPackageAuditResult();
 
-        // Fetch all our KeyPackages from relays
-        var relayKeyPackages = (await _nostrService.FetchKeyPackagesAsync(_currentUser.PublicKeyHex)).ToList();
+        // Fetch all our KeyPackages from relays. Use a high per-relay limit (100) so the audit
+        // surfaces stale slots from before the rotation fix and multi-device deployments — the
+        // default cap of 5 is fine for invite flows but would silently truncate the audit count.
+        var relayKeyPackages = (await _nostrService.FetchKeyPackagesAsync(_currentUser.PublicKeyHex, limit: 100)).ToList();
         result.TotalOnRelays = relayKeyPackages.Count;
 
         _logger.LogInformation("AuditKeyPackages: found {Count} KeyPackages on relays", relayKeyPackages.Count);
