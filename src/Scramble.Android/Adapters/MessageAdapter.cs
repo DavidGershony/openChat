@@ -1,3 +1,4 @@
+using Android.Content;
 using Android.Graphics;
 using Android.Views;
 using Android.Widget;
@@ -16,6 +17,8 @@ public class MessageAdapter : RecyclerView.Adapter
 {
     private const int ViewTypeSent = 0;
     private const int ViewTypeReceived = 1;
+    private const int MenuItemReply = 100;
+    private const int MenuItemCopyText = 101;
 
     private List<MessageViewModel> _items = new();
 
@@ -252,22 +255,43 @@ public class MessageAdapter : RecyclerView.Adapter
 
         var popup = new AndroidX.AppCompat.Widget.PopupMenu(context, anchor);
         // Reply option
-        popup.Menu?.Add(0, 100, 0, "\u21a9 Reply");
+        popup.Menu?.Add(0, MenuItemReply, 0, "\u21a9 Reply");
+        var hasCopyableText = !string.IsNullOrWhiteSpace(item.Content);
+        if (hasCopyableText)
+            popup.Menu?.Add(0, MenuItemCopyText, 1, "\ud83d\udccb Copy text");
         for (var i = 0; i < ReactionEmojis.Length; i++)
         {
-            popup.Menu?.Add(0, i, i + 1, ReactionEmojis[i]);
+            popup.Menu?.Add(0, i, i + (hasCopyableText ? 2 : 1), ReactionEmojis[i]);
         }
         popup.MenuItemClick += (s, e) =>
         {
-            if (e.Item!.ItemId == 100)
+            if (e.Item!.ItemId == MenuItemReply)
             {
                 OnReplyRequested?.Invoke(item);
+                return;
+            }
+            if (e.Item.ItemId == MenuItemCopyText)
+            {
+                CopyTextToClipboard(context, item.Content);
                 return;
             }
             var emoji = ReactionEmojis[e.Item.ItemId];
             item.ReactCommand?.Execute(emoji).Subscribe();
         };
         popup.Show();
+    }
+
+    private static void CopyTextToClipboard(Context context, string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return;
+
+        var clipboard = context.GetSystemService(Context.ClipboardService) as ClipboardManager;
+        if (clipboard == null)
+            return;
+
+        clipboard.PrimaryClip = ClipData.NewPlainText("message", text);
+        Toast.MakeText(context, "Message copied", ToastLength.Short)?.Show();
     }
 
     private static void BindReplyQuote(View itemView, MessageViewModel item)
