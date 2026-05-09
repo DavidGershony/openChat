@@ -9,7 +9,14 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
-RUN git clone --depth 1 https://github.com/marmot-protocol/whitenoise-rs.git .
+# Pull the latest whitenoise-rs from the default branch (master) for newest updates.
+# WHITENOISE_REF can be overridden at build time; default is the master branch HEAD.
+ARG WHITENOISE_REF=master
+ARG CACHEBUST=1
+RUN echo "Building whitenoise-rs ref=${WHITENOISE_REF} cachebust=${CACHEBUST}" \
+    && git clone https://github.com/marmot-protocol/whitenoise-rs.git . \
+    && git checkout ${WHITENOISE_REF} \
+    && git log -1 --oneline
 
 # Build the standard CLI binaries
 RUN cargo build --release --features cli
