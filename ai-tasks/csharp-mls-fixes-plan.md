@@ -5,6 +5,23 @@ upstream MDK / Whitenoise drift. This document is the C#-side engineering
 plan: what to change, in what order, and why we are starting in C# rather
 than bumping the Rust MDK pin first.
 
+## Status (live)
+
+| Fix | State | Commit |
+|---|---|---|
+| B — Stop swallowing decrypt failures | **Done** | `b483de3` |
+| A — NIP-01 rumor id (managed path) | **Done** | `933eb9c` |
+| C — Widen KeyPackage extensions | **Deferred — see Correction below** | — |
+| D — RequiredCapabilities at group creation | **Deferred — see Correction below** | — |
+| MDK pin bump | Not started | — |
+| E — Map MDK error variants | Deferred | — |
+| F — Empty admin pubkeys | Open question | — |
+| G — Stale generated FFI bindings | Cleanup, low priority | — |
+
+**Currently waiting for:** human-run diagnostics against rebuilt WN-master
+container, to read the new log lines from Fix B and confirm or refute the
+remaining diagnoses.
+
 ## Architecture recap
 
 Scramble has two parallel `IMlsService` backends:
@@ -17,11 +34,8 @@ Scramble has two parallel `IMlsService` backends:
   `lib/marmot-cs` (`MarmotCs.Core.Mdk`) → `lib/dotnet-mls` (pure-C# RFC 9420
   MLS implementation).
 
-Both paths satisfy `IMlsService` and `MessageService.cs` uses whichever is DI-
-registered. The managed path has full GCE-proposal support already in
-`lib/dotnet-mls/src/DotnetMls/Group/MlsGroup.cs` (lines 311, 707-755, 1869,
-1941-1958); what's missing is just plumbing it up through marmot-cs and
-Scramble.Core.
+Both paths satisfy `IMlsService` and `MessageService.cs` uses whichever is
+DI-registered.
 
 ## Ordering rationale (why C# first, not Rust first)
 
@@ -33,120 +47,160 @@ drift probe." That is wrong for this codebase, for three reasons:
    bump is `cargo update` plus fallout — not a structured pass over the API
    surface.
 2. **There are pre-existing C# bugs that exist regardless of the drift.**
-   Fixes A and B below are correctness bugs that MDK 0.7.1's leniency was
-   hiding. They want fixing on their own merits.
+   Fixes A and B were correctness bugs that MDK 0.7.1's leniency was hiding.
+   They wanted fixing on their own merits.
 3. **The Rust path is most useful as a differential oracle.** With the
    managed path fixed and the native path still on MDK 0.7.1, the diff
    between the two backends becomes a precise read on what MDK 0.7.1→0.8.0
    actually changes. That's only possible if both paths aren't broken in the
    same place for the same reason.
 
-Order: **B → A → C → D → bump MDK → revisit E → cleanup F/G**.
+Original order: **B → A → C → D → bump MDK → revisit E → cleanup F/G**.
+After Fixes A + B landed, see the *Correction* section below — Fixes C/D
+are no longer next.
 
 ## Fixes
 
-### Fix B — Stop swallowing commit-decrypt failures (do first)
+### Fix B — Stop swallowing commit-decrypt failures (DONE, commit `b483de3`)
 
-**File:** `src/Scramble.Core/Services/MessageService.cs:1220-1234`
+**File:** `src/Scramble.Core/Services/MessageService.cs`
 
-Currently catches and silently discards exceptions whose messages contain
-`"Failed to extract MLS message"`, `"UnprocessableResult"`, or `"stale"`. This
-masks both rumor-verify failures and GCE-commit-rejection failures, which is
-why the diagnostic tests fail with 15 s timeouts rather than visible errors.
+The previous catch matched any exception whose message contained
+`"Failed to extract MLS message"`, `"UnprocessableResult"`, or `"stale"`.
+That masked rumor-verify failures (MDK PR #287) and any other Unprocessable
+result, which is why diagnostic tests failed with 15 s timeouts rather than
+visible errors.
 
-**Change:** keep the swallow for genuinely benign cases (e.g. duplicate
-delivery) but log the full exception at warning level with the kind:445 event
-id, sender pubkey, group id, and exception type. Without this, no other fix
-is verifiable.
+Replaced with a narrow predicate `IsExpectedPreJoinCommitFailure` that
+requires **both** `"UnprocessableResult"` and `"epoch"` in the exception
+message; everything else is logged at `LogError` with exception type, group
+epoch, and ciphertext prefix.
 
-**Effort:** ~30 min. Pure C#. No protocol semantics change.
+Pure C#. Zero protocol semantics change. No regressions in unit tests.
 
-### Fix A — Compute proper NIP-01 rumor id on the managed path
+### Fix A — Compute proper NIP-01 rumor id on the managed path (DONE, commit `933eb9c`)
 
-**Files:**
-- `src/Scramble.Core/Services/ManagedMlsService.cs:499` (EncryptMessageAsync)
-- `src/Scramble.Core/Services/ManagedMlsService.cs:548` (EncryptReactionAsync)
-- `src/Scramble.Core/Marmot/MarmotWrapper.cs:306` (synthetic rumor in
-  ProcessWelcomeAsync)
+**File:** `src/Scramble.Core/Services/ManagedMlsService.cs`
 
-**Bug:** rumor `id` is built as
-`Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N")` — a 64-char
-random hex string. NIP-01 requires
-`id = SHA256(JSON.stringify([0,pubkey,created_at,kind,tags,content]))`. MDK
-0.7.1 was lenient; MDK 0.8.0 enforces this via `verify_id()` and silently
-drops mismatches. This is the proximate cause of the "WN sees Alice's
-message" timeouts on the managed path.
+Replaced `Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N")` rumor
+id at lines 499 (kind:9) and 548 (kind:7) with
+`SHA256(JSON.stringify([0,pubkey,created_at,kind,tags,content]))` via a
+private `ComputeRumorEventId` helper that reuses
+`NostrService.SerializeForEventId`.
 
-**Helper already exists in the same file:**
-- `BuildSignedNostrEventAsync` lines 1273-1302
-- `BuildEphemeralSignedEvent` lines 1391-1393
+This makes outbound MIP-03 rumors verify-id-clean against MDK 0.8.0
+(PR #287). Also makes `LastEncryptedRumorEventId` match the value the
+receiver computes, so reaction/reply "e"-tag references stay correlatable
+across the wire.
 
-Both compute a real NIP-01 id via the canonical `[0,pk,ts,kind,tags,content]`
-JSON-serialise → SHA-256 path.
+**Out of scope (deliberately deferred):** the synthetic-rumor `id` at
+`MarmotWrapper.cs:306` is on the *native* path. Scope was managed-only; the
+bug only triggers after the MDK Rust pin bumps to 0.8.0 anyway.
 
-**Change:**
-1. Extract a private `static string ComputeNip01EventId(string pubkeyHex, long createdAt, int kind, IEnumerable<string[]> tags, string content)` from the existing helpers.
-2. Replace the two `Guid.NewGuid()` rumor-id sites at lines 499 and 548.
-3. Replace the synthetic id at `MarmotWrapper.cs:306` (currently uses the
-   *outer 1059 wrapper* event id, which is also wrong) with a NIP-01 id over
-   the synthesised rumor's own fields. If the source kind:444 welcome doesn't
-   carry enough fields to compute one, this site needs a different approach
-   — either pass raw bytes through a different MDK API or accept that this
-   path will only work with managed-side senders.
+Pure C#. No regressions in `Scramble.Core.Tests`, `Scramble.UI.Tests`, or
+`MarmotCs.Core.Tests`.
 
-**Effort:** ~2-4 hours including tests. Pure C#. Correctness fix valid
-against both MDK versions.
+### Correction: Fix C and Fix D were based on a misread of WN PR #791
 
-**Verification:** managed-path Scramble → WN-master kind:445 send should
-succeed once this lands; can be tested today against the rebuilt WN docker
-image without any Rust change.
+After Fix A landed, before starting Fix C I read the actual diff of
+[whitenoise-rs PR #791](https://github.com/marmot-protocol/whitenoise-rs/pull/791).
+The original "WN injects GCE upgrade commits into legacy groups" reading
+was wrong.
 
-### Fix C — Widen `supportedExtensionTypes` in KeyPackages
+What PR #791 actually does:
+
+- Adds *opt-in* admin APIs `Whitenoise::group_capability_upgrade_status`
+  and `Whitenoise::upgrade_group_required_proposals`.
+- Adds mirror types `GroupCapabilityUpgradeStatus`,
+  `RequiredProposalUpgradeStatus`, `RequiredProposalUpgradability`.
+- Adds `CapabilityUpgradeBlocked { proposal, blockers }` error variant.
+- Adds an integration scenario `UpgradeRequiredProposalsAfterLegacySelfUpdate`
+  that exercises the new admin API end-to-end.
+- Adds a per-process `MDK_STORAGE_INIT_LOCK` to serialize MDK SQLite
+  initialisation across concurrent MDK creations.
+
+What PR #791 does **not** do:
+
+- It does NOT change WN's default behaviour against legacy groups. WN does
+  not automatically inject `GroupContextExtensions` upgrade commits into
+  Scramble-created groups when those groups receive messages.
+- An admin must explicitly call the new upgrade API for any GCE upgrade
+  commit to be sent.
+- Diagnostic tests in this repo do not call that API.
+
+Implications for Fixes C and D:
+
+- **Fix C (widen `supportedExtensionTypes`)** has no concrete failure to
+  fix. The validator at
+  `lib/dotnet-mls/src/DotnetMls/Group/MlsGroup.cs:1947-1949` already exempts
+  `RequiredCapabilities` (0x0003) and `ExternalSenders` (0x0005) from the
+  per-leaf check. Adding 0x0003 to `supportedExtensionTypes` is a no-op for
+  the validator.
+- **Fix D (advertise updated `RequiredCapabilities` at create)** has the
+  same problem. Without WN treating Scramble groups as "legacy" in any
+  default code path, advertising different capabilities at create-time
+  doesn't change anything observable.
+
+Both fixes are **deferred pending evidence** that WN actually rejects or
+mutates groups based on advertised capabilities in a default code path. The
+4 "membership not found" / "filter not matched" / "value is null" failures
+in the diagnostic suite need a different root-cause hypothesis.
+
+### Plausible remaining causes for the 4 group-interop failures
+
+To investigate after Fix B's improved logging gives us evidence:
+
+1. **MDK #287 verify_id on inbound *commit* messages.** Fix A only fixed
+   outbound application/reaction rumors. Commits constructed by
+   `ManagedMlsService` and sent through `EncryptCommitAsync` /
+   `AddMemberAsync` may have rumor-id problems on the inbound side too. WN's
+   MDK 0.8.0 would silently drop them, leaving Scramble's view of the group
+   diverged from WN's. This would manifest as exactly the "WN doesn't see
+   the new member" symptom.
+2. **Some other change in the 21-commit MDK 0.7.1 → 0.8.0 gap** that the
+   divergence analysis didn't surface. The original analysis focused on
+   PR #287, PR #266, and the upgrade-API plumbing, but 21 commits is a lot
+   and there may be a behaviour change in commit-processing or KeyPackage
+   format negotiation that we missed.
+3. **WN container readiness race.** `WhitenoiseDockerClient.EnsureRunningAsync`
+   only checks `State.Running`; WN's SQLCipher cold-start can leave
+   `wnd.sock` not yet listening when the first command runs. Exacerbated by
+   PR #791's new `MDK_STORAGE_INIT_LOCK` serialising init under load. Could
+   cause first-command races that look like "Filter not matched" or
+   "Value is null".
+4. **Empty admin pubkey list (Fix F below).**
+
+Fix B's improved logging will, on the next diagnostic run, surface the
+underlying exception type and `UnprocessableResult.Reason` for every
+silently-discarded failure. Pick the next fix from the evidence rather than
+from the divergence analysis.
+
+### Fix C — Widen `supportedExtensionTypes` in KeyPackages — DEFERRED
 
 **File:** `src/Scramble.Core/Services/ManagedMlsService.cs:239`
 
-**Current:** advertises only `{0x000A LastResort, 0xF2EE NostrGroupData}` in
-`supportedExtensionTypes` when generating KeyPackages.
+**Status:** deferred pending evidence. See *Correction* above. The original
+rationale (WN PR #791 injects GCE upgrade commits requiring this) was wrong.
 
-**Why it matters:** Whitenoise PR #791 injects `GroupContextExtensions` (GCE)
-upgrade commits into groups that look "legacy." For the GCE proposal to
-validate on the managed receive side,
-`MlsGroup.ValidateGroupContextExtensions`
-(`lib/dotnet-mls/src/DotnetMls/Group/MlsGroup.cs:1941-1958`) requires every
-member's leaf to advertise the relevant extension types. Right now those
-extensions aren't advertised, so even after the rumor-id fix, WN's GCE
-commit will fail to apply on the managed side.
+**If reactivated:** the validator only requires per-leaf advertisement for
+extension types *other than* `RequiredCapabilities` and `ExternalSenders`.
+Only widen if a specific extension type appears in an inbound GCE commit
+that we want to apply.
 
-**Change:** add `0x0003 RequiredCapabilities` and any additional extension
-types that WN's GCE upgrade carries. The `ExtensionType` enum already exists
-in dotnet-mls (`Types/Extension.cs:8-15`).
-
-**Effort:** ~30 min plus interop test. Pure C#. No submodule edit.
-
-### Fix D — Set initial RequiredCapabilities at group creation
+### Fix D — Set initial RequiredCapabilities at group creation — DEFERRED
 
 **Files:**
 - `src/Scramble.Core/Services/ManagedMlsService.cs:270-299` (CreateGroupAsync)
-- `lib/marmot-cs/src/MarmotCs.Core/Mdk.cs` (CreateGroupAsync — needs new param)
+- `lib/marmot-cs/src/MarmotCs.Core/Mdk.cs` (CreateGroupAsync — would need new param)
 
-**Why it matters:** if Scramble advertises an up-to-date `RequiredCapabilities`
-at group creation, WN won't classify the group as legacy and won't inject the
-GCE upgrade commit at all. This is the preventive complement to Fix C.
+**Status:** deferred pending evidence. See *Correction* above. The original
+rationale (prevent WN from classifying Scramble groups as legacy) was wrong:
+WN's default code paths don't classify-and-act on this.
 
-**Change:** thread a `RequiredCapabilities` extension (and supported-proposal
-list) through `Mdk.CreateGroupAsync` into the initial `GroupContext`.
-dotnet-mls already supports this on `MlsGroup`; marmot-cs just needs the
-parameter exposed.
+**If reactivated:** would require the marmot-cs submodule to expose a
+`RequiredCapabilities` parameter on `CreateGroupAsync`.
 
-**Effort:** ~half a day. Pure C# but touches the marmot-cs submodule.
-
-**Caveat:** the precise capability values to advertise depend on which MDK
-version's required-capabilities format we want to match. May want to do this
-*after* the MDK bump so we know the correct values to send. Could also be
-deferred indefinitely if Fix C is sufficient (reactive strategy works on its
-own; preventive is belt-and-braces).
-
-### Bump MDK pin (after C, possibly D)
+### Bump MDK pin (after evidence-driven fixes)
 
 **Files:**
 - `src/Scramble.Native/Cargo.toml:14-15` — currently `branch = "master"`
@@ -156,7 +210,7 @@ own; preventive is belt-and-braces).
 `7f809f85` (v0.8.0). Then fix any FFI compile errors in
 `src/Scramble.Native/src/client.rs` and `error.rs`.
 
-This unblocks the native path against current WN. The C# changes from A/B/C
+This unblocks the native path against current WN. The C# changes from A/B
 fix the managed path independently; the bump fixes the native path.
 
 **Effort:** unknown — depends on FFI breakage. Estimate ~half a day if the
@@ -176,12 +230,14 @@ breakage is just renames/signature tweaks.
 
 **Variants to map:** `NotAdmin`, `EmptyUpgradeSet`,
 `ProposalNotInSupportedSet`, `ProposalAlreadyRequired`,
-`ProposalNotAvailableForUpgrade`.
+`ProposalNotAvailableForUpgrade`. (Per PR #791's
+`CapabilityUpgradeBlocked` and the upgrade-API surface.)
 
-**Why defer:** purely a diagnostics-quality improvement. The current
-string-based `MarmotException` keeps working; nothing test-failing depends on
-this. Touching it requires changes across Rust + FFI + C# + a submodule, and
-the value is "better error messages." Do this once everything else is green.
+**Why defer:** purely a diagnostics-quality improvement, and only relevant
+if Scramble starts calling the upgrade APIs from PR #791 — which is not
+planned. Touching it requires changes across Rust + FFI + C# + a submodule
+for value of "better error messages" on a code path we don't exercise. Do
+this only if/when we adopt the upgrade APIs.
 
 ### Fix F — `MlsService.GetAdminPubkeys` returns empty list (investigate)
 
@@ -190,8 +246,9 @@ the value is "better error messages." Do this once everything else is green.
 Returns `new List<string>()` unconditionally. `MessageService.cs:530-532`
 falls back to creator-only admins, so today this is harmless. But it may be
 relevant to "Filter not matched" symptoms in
-`WhitenoiseGroupInteropTests.GroupChat_*` tests #3 and #4 if the filter is
-joined against the admin set. Verify after A/B/C land.
+`WhitenoiseGroupInteropTests.GroupChat_*` tests #3 and #4 if WN's group
+view includes an admin-set check. Now a candidate cause for the remaining
+4 failures — verify after the next diagnostic run.
 
 ### Fix G — Stale generated FFI bindings
 
@@ -201,22 +258,21 @@ Auto-generated by csbindgen, sits unused next to the hand-rolled
 `MarmotInterop.cs`. Drift hazard. Either delete it or switch the wrapper to
 use it. Cleanup task.
 
-## Sequenced plan
+## What to do next
 
-| # | Fix | Path | Effort | Verifiable how |
-|---|---|---|---|---|
-| 1 | B (logging) | C# only | 30 min | Re-run failing diagnostics; failures should now produce log lines instead of timeouts |
-| 2 | A (rumor id) | C# only, managed path | 2-4 h | Managed-path Scramble→WN kind:445 sends start being received |
-| 3 | C (KeyPackage caps) | C# only, managed path | 30 min + test | WN-injected GCE commits now validate on managed receive |
-| 4 | D (RequiredCapabilities at create) | C# + lib/marmot-cs | ~half day, optional | WN no longer injects GCE upgrade commits into Scramble-created groups |
-| 5 | MDK pin bump | Rust | ~half day + fallout | Native-path diagnostic tests fixed |
-| 6 | E (error variants) | Rust + C# + submodule | 1+ day, defer | Diagnostics polish |
-| 7 | F, G | C# cleanup | small | Cleanup |
-
-After step 3, expect the managed-path interop tests to pass. After step 5,
-expect the native-path interop tests to pass. The gap between steps 3 and 5
-is the differential window where the Rust path serves as a controlled-
-variable reproduction harness.
+1. **Run the diagnostic suite** against the rebuilt WN-master container.
+   Read the new `LogError` lines from Fix B for each failing test.
+2. **Triage each failure by exception type and reason.** Group them: which
+   are still "WN sees nothing" (likely more verify_id), which are
+   "Scramble sees nothing" (likely commit-side processing), which are
+   "container race" (early-test-only).
+3. **Pick the next fix from the evidence**, not from the original
+   divergence analysis. Likely candidates: outbound commit rumor-id (Fix A
+   extended to commits), readiness wait for `wnd.sock` (improving
+   `WhitenoiseDockerClient.EnsureRunningAsync`), Fix F.
+4. **Bump MDK pin** when the managed path is fully green so the native
+   path can catch up using the same backend that the C# code is now
+   verified against.
 
 ## Out-of-scope reminders
 
