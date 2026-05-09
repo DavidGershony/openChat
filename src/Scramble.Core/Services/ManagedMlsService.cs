@@ -53,6 +53,12 @@ public class ManagedMlsService : IMlsService
     // All stored KeyPackages with their private keys (supports multiple)
     private readonly List<StoredKeyPackageMaterial> _storedKeyPackages = new();
 
+    // Stable d-tag (slot ID) for kind 30443 KeyPackage events. MIP-00 requires this to be
+    // generated once per slot and reused on every rotation so the relay replaces the previous
+    // KeyPackage in place rather than accumulating new addressable-event slots. Persisted in the
+    // service state and lazily generated on first KeyPackage publish.
+    private string? _keyPackageSlotId;
+
     // Optional external signer for kind 445 events (Amber / NIP-46)
     private INostrEventSigner? _nostrEventSigner;
 
@@ -60,9 +66,10 @@ public class ManagedMlsService : IMlsService
     private readonly SemaphoreSlim _initLock = new(1, 1);
 
     private const string ServiceStateKey = "__service__";
-    private const byte ServiceStateVersion = 3;
+    private const byte ServiceStateVersion = 4;
     private const byte ServiceStateVersion1 = 1;
     private const byte ServiceStateVersion2 = 2;
+    private const byte ServiceStateVersion3 = 3;
 
     public ManagedMlsService(IStorageService? storageService = null)
     {
@@ -204,6 +211,7 @@ public class ManagedMlsService : IMlsService
             _signingPrivateKey = null;
             _signingPublicKey = null;
             _storedKeyPackages.Clear();
+            _keyPackageSlotId = null;
             _nostrEventSigner = null;
 
             // Clear persisted service state so next login starts fresh
@@ -247,10 +255,21 @@ public class ManagedMlsService : IMlsService
             HpkePrivateKey = hpkePrivateKey
         });
 
-        // Build Nostr event tags using the protocol builder
+        // Build Nostr event tags using the protocol builder.
+        // Lazily generate the per-identity KeyPackage slot ID on first publish, then reuse it for
+        // every rotation so the kind 30443 addressable event is replaced in place on the relay
+        // instead of accumulating fresh slots (MIP-00 KeyPackage Lifecycle Management).
+        if (string.IsNullOrEmpty(_keyPackageSlotId))
+        {
+            _keyPackageSlotId = KeyPackageSlotId.GenerateNew();
+            _logger.LogInformation("Generated new KeyPackage slot ID for identity {Identity}",
+                _publicKeyHex![..Math.Min(16, _publicKeyHex!.Length)]);
+        }
+
         var (content, tags) = KeyPackageEventBuilder.BuildKeyPackageEvent(
             kpBytes, _publicKeyHex!, Array.Empty<string>(),
-            supportedExtensionTypes: new ushort[] { 0x000A, 0xF2EE });
+            supportedExtensionTypes: new ushort[] { 0x000A, 0xF2EE },
+            slotId: _keyPackageSlotId);
 
         // Convert string[][] tags to List<List<string>> for Scramble's KeyPackage model
         var nostrTags = tags.Select(t => t.ToList()).ToList();
@@ -892,10 +911,18 @@ public class ManagedMlsService : IMlsService
         var stateBytes = TlsCodec.Serialize(writer =>
         {
             writer.WriteUint8(ServiceStateVersion);
-            // v3: identity first, so we can verify on restore
+            // v4: identity + signing keys + KeyPackage slot ID + stored KeyPackages.
+            // The slot ID is the stable d-tag for kind 30443 events (see GenerateKeyPackageAsync).
             writer.WriteOpaqueV(_identity ?? Array.Empty<byte>());
             writer.WriteOpaqueV(_signingPrivateKey);
             writer.WriteOpaqueV(_signingPublicKey);
+
+            // Slot ID may be null if no KeyPackage has been generated yet on this identity.
+            // Encode as length-prefixed UTF-8; empty string means "not yet generated".
+            var slotBytes = string.IsNullOrEmpty(_keyPackageSlotId)
+                ? Array.Empty<byte>()
+                : Encoding.UTF8.GetBytes(_keyPackageSlotId);
+            writer.WriteOpaqueV(slotBytes);
 
             // Write count of stored KeyPackages, then each one
             writer.WriteUint16((ushort)_storedKeyPackages.Count);
@@ -919,7 +946,7 @@ public class ManagedMlsService : IMlsService
 
         if (version == ServiceStateVersion)
         {
-            // v3 format: identity + signing keys + KeyPackages
+            // v4 format: identity + signing keys + KeyPackage slot ID + KeyPackages
             var storedIdentity = reader.ReadOpaqueV();
 
             // Verify identity matches current user
@@ -934,6 +961,11 @@ public class ManagedMlsService : IMlsService
             _signingPrivateKey = reader.ReadOpaqueV();
             _signingPublicKey = reader.ReadOpaqueV();
 
+            // Slot ID: empty bytes means "not yet generated"; the next GenerateKeyPackageAsync
+            // call will lazily produce one.
+            var slotBytes = reader.ReadOpaqueV();
+            _keyPackageSlotId = slotBytes.Length == 0 ? null : Encoding.UTF8.GetString(slotBytes);
+
             ushort count = reader.ReadUint16();
             for (int i = 0; i < count; i++)
             {
@@ -944,6 +976,41 @@ public class ManagedMlsService : IMlsService
                     HpkePrivateKey = reader.ReadOpaqueV()
                 });
             }
+        }
+        else if (version == ServiceStateVersion3)
+        {
+            // v3 format: identity + signing keys + KeyPackages (no slot ID).
+            // Migrate by reading v3 fields; the next GenerateKeyPackageAsync call will lazily
+            // mint a slot ID on first use, and the next SaveServiceStateAsync will persist as v4.
+            // NOTE: any KeyPackages already published under random d-tags before this upgrade
+            // will remain orphaned on relays until they expire; this is acceptable per MIP-00
+            // (no NIP-09 deletion required for KeyPackage rotation).
+            var storedIdentity = reader.ReadOpaqueV();
+
+            if (_identity != null && !storedIdentity.SequenceEqual(_identity))
+            {
+                _logger.LogWarning("Persisted MLS state identity mismatch (stored={Stored}, current={Current}). Discarding stale state.",
+                    Convert.ToHexString(storedIdentity).ToLowerInvariant()[..Math.Min(16, storedIdentity.Length * 2)],
+                    Convert.ToHexString(_identity).ToLowerInvariant()[..Math.Min(16, _identity.Length * 2)]);
+                return Task.CompletedTask;
+            }
+
+            _signingPrivateKey = reader.ReadOpaqueV();
+            _signingPublicKey = reader.ReadOpaqueV();
+            _keyPackageSlotId = null; // will be lazily generated on next publish
+
+            ushort count = reader.ReadUint16();
+            for (int i = 0; i < count; i++)
+            {
+                _storedKeyPackages.Add(new StoredKeyPackageMaterial
+                {
+                    KeyPackageBytes = reader.ReadOpaqueV(),
+                    InitPrivateKey = reader.ReadOpaqueV(),
+                    HpkePrivateKey = reader.ReadOpaqueV()
+                });
+            }
+
+            _logger.LogInformation("Migrated MLS service state v3 -> v4 (slot ID will be generated on next KeyPackage publish)");
         }
         else if (version == ServiceStateVersion1)
         {
@@ -962,8 +1029,8 @@ public class ManagedMlsService : IMlsService
             throw new InvalidOperationException($"Unsupported service state version: {version}");
         }
 
-        _logger.LogInformation("Restored MLS service state (signingKey={Len} bytes, storedKeyPackages={Count})",
-            _signingPrivateKey.Length, _storedKeyPackages.Count);
+        _logger.LogInformation("Restored MLS service state (signingKey={Len} bytes, storedKeyPackages={Count}, slotId={HasSlot})",
+            _signingPrivateKey.Length, _storedKeyPackages.Count, _keyPackageSlotId != null);
         return Task.CompletedTask;
     }
 

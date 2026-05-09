@@ -545,6 +545,127 @@ public class KeyPackagePublishDiagnosticTests
         Assert.True(fetched.Count > 0, $"Published {eventId} but fetch returned 0");
     }
 
+    /// <summary>
+    /// Regression test for the audit-shows-many-but-only-one-has-key-material bug.
+    /// MIP-00 KeyPackage events (kind 30443) are addressable: replacing should happen in place
+    /// per (kind, pubkey, d-tag). Before the fix, ManagedMlsService generated a fresh random
+    /// d-tag on every publish so each rotation created a new slot, leaving stale KeyPackages
+    /// on the relay whose init keys the client no longer held.
+    /// This test publishes a KeyPackage twice for the same identity and asserts the relay
+    /// holds exactly ONE live event afterward, with the same d-tag, and that the audit-flow
+    /// fetcher (FetchKeyPackagesAsync) returns exactly one entry whose key material is held
+    /// locally — i.e. the result a working audit should show.
+    /// </summary>
+    [Fact]
+    public async Task RotateKeyPackage_Twice_RelayHoldsExactlyOneSlot()
+    {
+        var relays = new[] { "ws://localhost:7777" };
+
+        var nostrService = new NostrService();
+        var (privKey, pubKey, _, _) = nostrService.GenerateKeyPair();
+        _output.WriteLine($"Test pubkey: {pubKey}");
+
+        var dbPath = Path.Combine(Path.GetTempPath(), $"kp_rotate_{Guid.NewGuid()}.db");
+        var storage = new StorageService(dbPath, new MockSecureStorage());
+        await storage.InitializeAsync();
+
+        var mlsService = new ManagedMlsService(storage);
+        await mlsService.InitializeAsync(privKey, pubKey);
+
+        // Connect to the local relay
+        _output.WriteLine("\n--- Connecting to relays ---");
+        foreach (var relay in relays)
+        {
+            try { await nostrService.ConnectAsync(relay); _output.WriteLine($"  Connected: {relay}"); }
+            catch (Exception ex) { _output.WriteLine($"  FAILED: {relay} — {ex.Message}"); }
+        }
+        Assert.True(nostrService.ConnectedRelayUrls.Count > 0, "Must connect to at least one relay");
+        await Task.Delay(1000);
+
+        // ---- Publish #1 ----
+        _output.WriteLine("\n--- Publish #1 ---");
+        var kp1 = await mlsService.GenerateKeyPackageAsync();
+        var dTag1 = kp1.NostrTags.First(t => t.Count >= 2 && t[0] == "d")[1];
+        _output.WriteLine($"  KP#1 d-tag: {dTag1}");
+
+        var eventId1 = await nostrService.PublishKeyPackageAsync(kp1.Data, privKey, kp1.NostrTags);
+        Assert.NotNull(eventId1);
+        _output.WriteLine($"  Published event #1: {eventId1}");
+
+        // Give the relay a moment to settle the addressable replacement bookkeeping
+        await Task.Delay(500);
+
+        // Confirm 1 event on the relay after the first publish
+        var afterFirst = await FetchKind30443FromRelay(relays[0], pubKey);
+        _output.WriteLine($"  Relay after publish #1: {afterFirst.Count} event(s)");
+        Assert.Single(afterFirst);
+
+        // ---- Publish #2 (rotation) ----
+        // Force a tick so created_at can differ (Nostr is second-resolution) — relays use
+        // created_at to pick the surviving addressable event when there's a tie on d-tag.
+        await Task.Delay(1100);
+
+        _output.WriteLine("\n--- Publish #2 (rotation) ---");
+        var kp2 = await mlsService.GenerateKeyPackageAsync();
+        var dTag2 = kp2.NostrTags.First(t => t.Count >= 2 && t[0] == "d")[1];
+        _output.WriteLine($"  KP#2 d-tag: {dTag2}");
+
+        // Core assertion: rotation reuses the same slot d-tag
+        Assert.Equal(dTag1, dTag2);
+
+        // Sanity: the KeyPackage bytes themselves must be different (it's a new key pair)
+        Assert.False(kp1.Data.AsSpan().SequenceEqual(kp2.Data.AsSpan()),
+            "Rotation must produce a fresh KeyPackage, only the slot d-tag is reused");
+
+        var eventId2 = await nostrService.PublishKeyPackageAsync(kp2.Data, privKey, kp2.NostrTags);
+        Assert.NotNull(eventId2);
+        Assert.NotEqual(eventId1, eventId2);
+        _output.WriteLine($"  Published event #2: {eventId2}");
+
+        await Task.Delay(500);
+
+        // ---- Verify the relay replaced #1 in place (still 1 live event, but the new one) ----
+        var afterSecond = await FetchKind30443FromRelay(relays[0], pubKey);
+        _output.WriteLine($"  Relay after publish #2: {afterSecond.Count} event(s)");
+
+        // The whole point of the fix: addressable replacement leaves exactly one live event,
+        // not one-per-publish.
+        Assert.Single(afterSecond);
+
+        // And it should be the new event, not the stale one.
+        using (var doc = JsonDocument.Parse(afterSecond[0]))
+        {
+            var liveId = doc.RootElement.GetProperty("id").GetString();
+            _output.WriteLine($"  Live event id on relay: {liveId}");
+            Assert.Equal(eventId2, liveId);
+
+            // d-tag on the live event must equal the slot id
+            var dTagOnRelay = doc.RootElement.GetProperty("tags").EnumerateArray()
+                .FirstOrDefault(t => t.GetArrayLength() >= 2 && t[0].GetString() == "d");
+            Assert.NotEqual(default, dTagOnRelay);
+            Assert.Equal(dTag1, dTagOnRelay[1].GetString());
+        }
+
+        // ---- Verify the audit code path agrees ----
+        // FetchKeyPackagesAsync feeds AuditKeyPackagesAsync; it should report 1 KeyPackage,
+        // and the local MLS service should hold key material for it (i.e. "Active", not "Lost").
+        _output.WriteLine("\n--- Audit code path (FetchKeyPackagesAsync) ---");
+        var fetched = (await nostrService.FetchKeyPackagesAsync(pubKey)).ToList();
+        _output.WriteLine($"  Fetched {fetched.Count} KeyPackage(s) for audit");
+        Assert.Single(fetched);
+
+        bool hasMaterial = mlsService.HasKeyMaterialForKeyPackage(fetched[0].Data);
+        _output.WriteLine($"  HasKeyMaterialForKeyPackage: {hasMaterial}");
+        Assert.True(hasMaterial,
+            "The single live KeyPackage on the relay must match the local key material " +
+            "(the most recently rotated one) — this is the bug the fix addresses.");
+
+        // Cleanup
+        await nostrService.DisconnectAsync();
+        nostrService.Dispose();
+        try { File.Delete(dbPath); } catch { }
+    }
+
     private static byte[] DerivePublicKeyFromPrivate(string privateKeyHex)
     {
         var privBytes = Convert.FromHexString(privateKeyHex);
