@@ -28,6 +28,11 @@ public class WhitenoiseGroupInteropTests : IAsyncLifetime
     // Relay URL used in group metadata — must be reachable from both host and Docker
     // host.docker.internal resolves to the Docker host from inside containers
     private const string GroupRelayUrl = "ws://host.docker.internal:7777";
+    // The same physical relay as RelayUrl, but addressed by its docker-network DNS
+    // name. Used when telling WN (inside the docker network) to publish/subscribe
+    // there. WN cannot reach ws://localhost:7777 from inside its container, but
+    // ws://nostr-relay:8080 resolves to the same scsibug/nostr-rs-relay process.
+    private const string WnLocalRelayUrl = "ws://nostr-relay:8080";
 
     private readonly ITestOutputHelper _output;
     private readonly List<string> _dbPaths = new();
@@ -522,6 +527,13 @@ public class WhitenoiseGroupInteropTests : IAsyncLifetime
         var alice = await CreateScrambleUser("Alice");
         var bob = await CreateScrambleUser("Bob");
         var charliePubkey = await _wnClient!.CreateIdentityAsync();
+
+        // Tell WN to publish/subscribe on the local docker relay so the group it
+        // creates advertises that relay and Scramble's kind:445 publishes to
+        // ws://localhost:7777 are visible to WN. Without this, WN tags the group
+        // with its default discovery relays (public ones) and never subscribes
+        // to the local docker relay where Scramble actually sends.
+        await _wnClient.AddRelayAsync(WnLocalRelayUrl);
 
         await alice.NostrService.ConnectAsync(RelayUrl);
         await bob.NostrService.ConnectAsync(RelayUrl);
