@@ -1163,6 +1163,39 @@ public class MessageService : IMessageService, IDisposable
         _newInvites.OnNext(invite);
     }
 
+    /// <summary>
+    /// Detects the "pre-join commit" case: an inbound MLS commit at an epoch
+    /// older than our local group state, typically the commit that added us to
+    /// the group (we joined via the subsequent Welcome and are already at the
+    /// post-commit epoch). This is expected MLS behaviour and should not surface
+    /// as a decryption error.
+    ///
+    /// The match is intentionally narrow. Other Unprocessable failures
+    /// — verify_id mismatches (MDK PR #287), unknown GroupContextExtensions
+    /// proposals (WN PR #791), bad signatures, decryption failures —
+    /// must NOT be swallowed; they indicate real protocol drift or bugs.
+    ///
+    /// Note: marmot-cs's <c>Mdk.ProcessMessageAsync</c> currently flattens
+    /// inner exceptions into <c>UnprocessableResult.Reason = ex.Message</c>
+    /// (see lib/marmot-cs/src/MarmotCs.Core/Mdk.cs:791-798), so we cannot
+    /// discriminate on a typed <see cref="MarmotCs.Core.Errors.StaleEpochException"/>;
+    /// we have to substring-match the reason. Until marmot-cs surfaces a
+    /// typed stale-epoch result this is the best we can do without masking
+    /// real failures.
+    /// </summary>
+    private static bool IsExpectedPreJoinCommitFailure(Exception ex)
+    {
+        // ManagedMlsService.DecryptMessageAsync wraps Unprocessable as:
+        //   "Expected ApplicationMessageResult or CommitResult but got
+        //    UnprocessableResult: <reason>"
+        // So we only treat it as pre-join if BOTH markers are present AND the
+        // reason mentions an epoch issue.
+        var msg = ex.Message;
+        if (msg is null) return false;
+        if (!msg.Contains("UnprocessableResult", StringComparison.Ordinal)) return false;
+        return msg.Contains("epoch", StringComparison.OrdinalIgnoreCase);
+    }
+
     private async Task HandleGroupMessageEventAsync(NostrEventReceived nostrEvent)
     {
         // Find the group tag (MIP-03 uses 'h', legacy uses 'g')
@@ -1217,26 +1250,37 @@ public class MessageService : IMessageService, IDisposable
         {
             decrypted = await _mlsService.DecryptMessageAsync(chat.MlsGroupId!, encryptedData);
         }
-        catch (Exception ex) when (
-            ex.Message.Contains("Failed to extract MLS message") ||
-            ex.Message.Contains("UnprocessableResult") ||
-            ex.Message.Contains("stale", StringComparison.OrdinalIgnoreCase))
+        catch (Exception ex) when (IsExpectedPreJoinCommitFailure(ex))
         {
-            // Likely a commit that added us to the group — we joined via Welcome
-            // and are already at the post-commit epoch, so we can't decrypt the
-            // commit that preceded our Welcome. This is expected MLS behavior.
+            // Pre-join commit: we joined via Welcome at epoch N+1 and cannot
+            // decrypt the commit at epoch N that preceded our Welcome. This is
+            // expected MLS behaviour. We log at Warning (not Error) and don't
+            // surface to the UI via _decryptionErrors.
+            //
+            // NOTE: this filter is intentionally narrow. Broader catches (e.g.
+            // any "Unprocessable" or any "stale*") mask real bugs such as
+            // verify_id failures (MDK PR #287) and unhandled GroupContextExtensions
+            // commits (WN PR #791) — both of which surface as Unprocessable from
+            // the underlying MDK and must be visible.
             _logger.LogWarning(
-                "HandleGroupMessage: skipping undecryptable event {EventId} in group {GroupId} (likely pre-join commit): {Error}",
+                "HandleGroupMessage: skipping pre-join commit on event {EventId} in group {GroupId} (epoch={CurrentEpoch}, type={ExType}): {Error}",
                 nostrEvent.EventId[..Math.Min(16, nostrEvent.EventId.Length)],
                 groupIdHex[..Math.Min(16, groupIdHex.Length)],
+                chat.MlsEpoch,
+                ex.GetType().Name,
                 ex.Message);
             return;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "HandleGroupMessage: MLS decrypt failed for event {EventId} in group {GroupId}",
+            _logger.LogError(ex,
+                "HandleGroupMessage: MLS decrypt failed for event {EventId} in group {GroupId} (epoch={CurrentEpoch}, type={ExType}, ciphertextLen={Len}, first4hex={First4})",
                 nostrEvent.EventId[..Math.Min(16, nostrEvent.EventId.Length)],
-                groupIdHex[..Math.Min(16, groupIdHex.Length)]);
+                groupIdHex[..Math.Min(16, groupIdHex.Length)],
+                chat.MlsEpoch,
+                ex.GetType().Name,
+                encryptedData.Length,
+                Convert.ToHexString(encryptedData[..Math.Min(4, encryptedData.Length)]).ToLowerInvariant());
             _decryptionErrors.OnNext(new MlsDecryptionError
             {
                 ChatId = chat.Id,
