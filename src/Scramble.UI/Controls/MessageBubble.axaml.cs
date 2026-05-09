@@ -50,6 +50,18 @@ public partial class MessageBubble : UserControl
         }
     }
 
+    private async void OnCopyClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn || btn.Tag is not MessageViewModel msgVm || string.IsNullOrWhiteSpace(msgVm.Content))
+            return;
+
+        var topLevel = TopLevel.GetTopLevel(this);
+        if (topLevel?.Clipboard == null)
+            return;
+
+        await topLevel.Clipboard.SetTextAsync(msgVm.Content);
+    }
+
     private void AudioSlider_PointerPressed(object? sender, RoutedEventArgs e)
     {
         if (DataContext is MessageViewModel vm)
