@@ -877,6 +877,8 @@ public class ChatViewModel : ViewModelBase
             if (requestId != Volatile.Read(ref _messageLoadRequestId) ||
                 !string.Equals(ChatId, chatId, StringComparison.Ordinal))
             {
+                // A newer chat selection started another load request; ignore this stale result.
+                // Keep IsLoading controlled by the latest request so the spinner reflects current work.
                 return;
             }
 
