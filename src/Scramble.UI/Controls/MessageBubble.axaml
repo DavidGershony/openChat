@@ -284,6 +284,11 @@
                             ToolTip.Tip="Reply"
                             Tag="{Binding}"
                             Click="OnReplyClick" />
+                    <Button Content="📋" Classes="icon" Padding="4,2" FontSize="14"
+                            ToolTip.Tip="Copy text"
+                            Tag="{Binding}"
+                            IsVisible="{Binding IsTextMessage}"
+                            Click="OnCopyClick" />
                     <Button Content="👍" Classes="icon" Padding="4,2" FontSize="14"
                             Command="{Binding ReactCommand}" CommandParameter="👍" />
                     <Button Content="❤️" Classes="icon" Padding="4,2" FontSize="14"
@@ -553,6 +558,11 @@
                             ToolTip.Tip="Reply"
                             Tag="{Binding}"
                             Click="OnReplyClick" />
+                    <Button Content="📋" Classes="icon" Padding="4,2" FontSize="14"
+                            ToolTip.Tip="Copy text"
+                            Tag="{Binding}"
+                            IsVisible="{Binding IsTextMessage}"
+                            Click="OnCopyClick" />
                     <Button Content="👍" Classes="icon" Padding="4,2" FontSize="14"
                             Command="{Binding ReactCommand}" CommandParameter="👍" />
                     <Button Content="❤️" Classes="icon" Padding="4,2" FontSize="14"

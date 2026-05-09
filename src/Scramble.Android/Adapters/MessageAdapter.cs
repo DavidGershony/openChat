@@ -254,14 +254,15 @@ public class MessageAdapter : RecyclerView.Adapter
         if (context == null) return;
 
         var popup = new AndroidX.AppCompat.Widget.PopupMenu(context, anchor);
+        var menuOrder = 0;
         // Reply option
-        popup.Menu?.Add(0, MenuItemReply, 0, "\u21a9 Reply");
+        popup.Menu?.Add(0, MenuItemReply, menuOrder++, "\u21a9 Reply");
         var hasCopyableText = !string.IsNullOrWhiteSpace(item.Content);
         if (hasCopyableText)
-            popup.Menu?.Add(0, MenuItemCopyText, 1, "\ud83d\udccb Copy text");
+            popup.Menu?.Add(0, MenuItemCopyText, menuOrder++, "\ud83d\udccb Copy text");
         for (var i = 0; i < ReactionEmojis.Length; i++)
         {
-            popup.Menu?.Add(0, i, i + (hasCopyableText ? 2 : 1), ReactionEmojis[i]);
+            popup.Menu?.Add(0, i, menuOrder++, ReactionEmojis[i]);
         }
         popup.MenuItemClick += (s, e) =>
         {
