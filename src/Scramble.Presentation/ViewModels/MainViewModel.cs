@@ -125,7 +125,7 @@ public class MainViewModel : ViewModelBase
             MyName = null;
             MyPictureUrl = null;
             MyAbout = null;
-            MyNpubQrPngBytes = _qrCodeGenerator.GeneratePng(MyNpub, 10);
+            MyNpubQrPngBytes = _qrCodeGenerator.GeneratePng(BuildShareableProfilePayload(), 10);
             ShowMyProfileDialog = true;
 
             // Fetch profile metadata from Nostr
@@ -493,6 +493,45 @@ public class MainViewModel : ViewModelBase
         ConnectedRelayCount = RelayStatuses.Count(r => r.IsConnected);
         TotalRelayCount = RelayStatuses.Count;
         RelayCountText = $"Relays: {ConnectedRelayCount}/{TotalRelayCount}";
+    }
+
+    /// <summary>
+    /// Builds the payload encoded into the user's "share me" QR. Prefers a NIP-21
+    /// <c>nostr:nprofile1...</c> URI carrying the pubkey plus up to 3 connected relay
+    /// hints — this lets a scanning client locate the user's keypackages and metadata
+    /// immediately, instead of guessing relays from a bare npub. Falls back to the bare
+    /// npub if the hex pubkey isn't available (e.g. early in startup).
+    ///
+    /// The <c>nostr:</c> prefix lets generic QR scanners deep-link into any registered
+    /// Nostr handler; Scramble's own scanner strips it on the way in.
+    /// </summary>
+    private string BuildShareableProfilePayload()
+    {
+        var hex = CurrentUser?.PublicKeyHex;
+        if (string.IsNullOrEmpty(hex))
+            return MyNpub ?? string.Empty;
+
+        // Cap at 3 relays to keep the QR scannable. Prefer connected relays so the
+        // hint actually works for the recipient; if none are connected (offline at
+        // the moment of opening the dialog) fall back to all configured relays.
+        var relays = RelayStatuses
+            .Where(r => r.IsConnected)
+            .Select(r => r.Url)
+            .Take(3)
+            .ToList();
+        if (relays.Count == 0)
+            relays = RelayStatuses.Select(r => r.Url).Take(3).ToList();
+
+        try
+        {
+            return "nostr:" + Nip19.EncodeNprofile(hex, relays);
+        }
+        catch
+        {
+            // EncodeNprofile only throws on a malformed hex pubkey; the bare npub is
+            // still useful even without relay hints.
+            return MyNpub ?? string.Empty;
+        }
     }
 
     /// <summary>
