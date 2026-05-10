@@ -22,8 +22,37 @@
     <PackageReference Include="Xamarin.Google.Android.Material" Version="1.11.0.3" />
     <PackageReference Include="QRCoder" Version="1.6.0" />
     <PackageReference Include="System.Reactive" Version="6.1.0" />
-    <!-- Resolve diamond dependency conflict between Material and ReactiveUI.AndroidX -->
-    <PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData.Core" Version="2.8.5.1" />
+    <!--
+      Resolve diamond dependency conflict between Material, ReactiveUI.AndroidX, and CameraX.
+      ReactiveUI.AndroidX 20.1.52's transitive Xamarin.AndroidX.Core 1.17 and CameraX 1.5+ both require
+      Xamarin.AndroidX.Lifecycle.Common >= 2.10.0.2, so the older 2.8.x pin is no longer satisfiable.
+      Bumping triggers NU1608 warnings on transitive *.Ktx 2.8.4.1 packages — binary-compatible in practice.
+    -->
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData.Core" Version="2.10.0.2" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.Common" Version="2.10.0.2" />
+    <!--
+      AndroidX SavedState 1.3.0+ merged the Ktx artifact into the main artifact (ViewKt now lives in
+      savedstate-android.aar). The old transitive Xamarin.AndroidX.SavedState.SavedState.Ktx 1.2.1.12
+      pulled by ReactiveUI.AndroidX -> Preference -> Activity.Ktx still ships a stale ViewKt.class,
+      causing a D8 'defined multiple times' error. Pin the Ktx package to 1.4.0.2 (a stub matching the
+      modern empty upstream Ktx artifact) so D8 sees only one ViewKt.
+    -->
+    <PackageReference Include="Xamarin.AndroidX.SavedState.SavedState.Ktx" Version="1.4.0.2" />
+    <!--
+      QR scanner: CameraX preview + lifecycle + ImageAnalysis pipeline, decoded by MLKit Barcode Scanning.
+      Pinned to 1.5.2.1 deliberately:
+        * 1.6.0 fails with XA4217 (Kotlin inline-class methods like onCameraError-3M5Xam4 cannot be
+          bound by .NET-for-Android's JCW generator).
+        * 1.4.2.3 fails with D8 'Type androidx.savedstate.ViewKt is defined multiple times' once
+          Lifecycle is bumped to 2.10.
+        * 1.5.x is the last branch built against the older Kotlin compiler (no inline classes) and
+          targets the post-2.10 androidx.savedstate, so it sits cleanly between both failure modes.
+    -->
+    <PackageReference Include="Xamarin.AndroidX.Camera.Core" Version="1.5.2.1" />
+    <PackageReference Include="Xamarin.AndroidX.Camera.Camera2" Version="1.5.2.1" />
+    <PackageReference Include="Xamarin.AndroidX.Camera.Lifecycle" Version="1.5.2.1" />
+    <PackageReference Include="Xamarin.AndroidX.Camera.View" Version="1.5.2.1" />
+    <PackageReference Include="Xamarin.GooglePlayServices.MLKit.BarcodeScanning" Version="118.3.1.7" />
   </ItemGroup>
 
   <ItemGroup>

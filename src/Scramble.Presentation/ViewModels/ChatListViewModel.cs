@@ -285,27 +285,24 @@ public class ChatListViewModel : ViewModelBase
             RenameChatInput = string.Empty;
         });
 
-        // Filter Following list and validate npub as the user types
+        // Filter Following list and validate npub/nprofile (with optional nostr: URI prefix) as the user types
         this.WhenAnyValue(x => x.NewChatParticipantInput)
             .Throttle(TimeSpan.FromMilliseconds(120))
             .ObserveOn(RxApp.MainThreadScheduler)
             .Subscribe(q =>
             {
                 var query = (q ?? string.Empty).Trim();
-                bool isFullNpub = query.StartsWith("npub1") && query.Length >= 60;
+                var stripped = query.StartsWith("nostr:", StringComparison.OrdinalIgnoreCase)
+                    ? query["nostr:".Length..]
+                    : query;
 
-                // Validate: mark invalid if it looks like a complete npub but fails to decode
-                if (isFullNpub)
+                bool isFullNpub = stripped.StartsWith("npub1", StringComparison.OrdinalIgnoreCase) && stripped.Length >= 60;
+                bool isFullNprofile = stripped.StartsWith("nprofile1", StringComparison.OrdinalIgnoreCase) && stripped.Length >= 60;
+
+                // Validate: mark invalid if it looks like a complete bech32 entity but fails to decode.
+                if (isFullNpub || isFullNprofile)
                 {
-                    try
-                    {
-                        var data = Core.Crypto.Bech32.Decode(query, out var hrp);
-                        IsParticipantInputInvalid = hrp != "npub" || data.Length != 32;
-                    }
-                    catch
-                    {
-                        IsParticipantInputInvalid = true;
-                    }
+                    IsParticipantInputInvalid = !Core.Crypto.Nip19.TryDecodePubkey(query, out _);
                 }
                 else if (query.Length == 64 && query.All(Uri.IsHexDigit))
                 {
@@ -320,7 +317,7 @@ public class ChatListViewModel : ViewModelBase
                 {
                     if (isFullNpub)
                     {
-                        f.IsVisible = string.Equals(f.Npub, query, StringComparison.OrdinalIgnoreCase);
+                        f.IsVisible = string.Equals(f.Npub, stripped, StringComparison.OrdinalIgnoreCase);
                     }
                     else if (string.IsNullOrEmpty(query))
                     {
@@ -924,24 +921,24 @@ public class ChatListViewModel : ViewModelBase
         if (string.IsNullOrWhiteSpace(input)) return;
         var raw = input.Trim();
 
+        // Strip the optional nostr: URI scheme so we can pattern-match the entity prefix.
+        var stripped = raw.StartsWith("nostr:", StringComparison.OrdinalIgnoreCase) ? raw["nostr:".Length..] : raw;
+
         string publicKeyHex;
-        if (raw.StartsWith("npub1", StringComparison.OrdinalIgnoreCase))
+        if (stripped.StartsWith("npub1", StringComparison.OrdinalIgnoreCase) ||
+            stripped.StartsWith("nprofile1", StringComparison.OrdinalIgnoreCase))
         {
-            try
+            // Single decoder handles npub, nprofile, and any nostr: prefix variant; relay hints
+            // (from nprofile TLV type 1) are intentionally discarded here for now — capturing them
+            // is the next step once the basic add flow is verified.
+            if (!Core.Crypto.Nip19.TryDecodePubkey(raw, out var decoded))
             {
-                var data = Core.Crypto.Bech32.Decode(raw, out var hrp);
-                if (hrp != "npub" || data.Length != 32)
-                {
-                    NewChatError = "Invalid npub";
-                    return;
-                }
-                publicKeyHex = Convert.ToHexString(data).ToLowerInvariant();
-            }
-            catch
-            {
-                NewChatError = "Invalid npub";
+                NewChatError = stripped.StartsWith("nprofile", StringComparison.OrdinalIgnoreCase)
+                    ? "Invalid nprofile"
+                    : "Invalid npub";
                 return;
             }
+            publicKeyHex = decoded!.PubkeyHex;
         }
         else if (raw.Length == 64 && raw.All(Uri.IsHexDigit))
         {
@@ -949,7 +946,7 @@ public class ChatListViewModel : ViewModelBase
         }
         else
         {
-            NewChatError = "Enter an npub or 64-char hex pubkey";
+            NewChatError = "Enter an npub, nprofile, or 64-char hex pubkey";
             return;
         }
 
