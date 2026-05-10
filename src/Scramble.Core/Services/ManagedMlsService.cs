@@ -103,12 +103,18 @@ public class ManagedMlsService : IMlsService
                 try
                 {
                     var serviceState = await _storageService.GetMlsStateAsync(ServiceStateKey);
-                    if (serviceState != null)
+                    if (serviceState != null && serviceState.Length > 0)
                     {
                         await ImportServiceStateAsync(serviceState);
                         restoredKeys = _signingPrivateKey != null && _signingPublicKey != null;
                         _logger.LogInformation("Restored MLS service state from persistence (signingKey={HasKey}, storedKeyPackages={Count})",
                             restoredKeys, _storedKeyPackages.Count);
+                    }
+                    else if (serviceState != null)
+                    {
+                        // Zero-byte blob: treat as "no prior state" rather than feeding it to the
+                        // TLS decoder and tripping a noisy "Insufficient data" stack trace.
+                        _logger.LogDebug("Persisted MLS service state is empty; will generate new keys");
                     }
                 }
                 catch (Exception ex)
@@ -939,6 +945,12 @@ public class ManagedMlsService : IMlsService
 
     public Task ImportServiceStateAsync(byte[] state)
     {
+        // Defensive guard: an empty buffer is "no state to import", not a parse error.
+        // Keeps the TLS decoder from throwing a noisy "Insufficient data" stack trace
+        // when the storage layer returns an empty blob (multi-account first-use, etc.).
+        if (state == null || state.Length == 0)
+            return Task.CompletedTask;
+
         var reader = new TlsReader(state);
         byte version = reader.ReadUint8();
 
