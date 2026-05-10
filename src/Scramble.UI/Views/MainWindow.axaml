@@ -627,7 +627,7 @@
                             <Grid ColumnDefinitions="*,8,Auto">
                                 <TextBox Grid.Column="0"
                                          Text="{Binding NewChatParticipantInput}"
-                                         Watermark="npub1... or hex pubkey" />
+                                          Watermark="npub / nprofile / nostr: / hex" />
                                 <Button Grid.Column="2"
                                         Content="Add"
                                         Classes="secondary"

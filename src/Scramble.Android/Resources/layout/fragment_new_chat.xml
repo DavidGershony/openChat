@@ -79,7 +79,10 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:hint="npub1... or hex pubkey">
+                    android:hint="npub / nprofile / nostr: / hex"
+                    app:endIconMode="custom"
+                    app:endIconDrawable="@drawable/ic_qr_scan"
+                    app:endIconContentDescription="Scan QR code">
 
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/new_chat_participant_input"
