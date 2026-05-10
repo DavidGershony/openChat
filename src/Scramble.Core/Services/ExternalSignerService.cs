@@ -37,6 +37,15 @@ public class ExternalSignerService : IExternalSigner, IDisposable
     private long _subscriptionSince;
     private bool _disposed;
 
+    // Bounded set of event ids whose receipt has already been logged once (across relays).
+    // Used to suppress N×relay-fanout duplicate "received event" INFO log lines that bloated
+    // mobile log files (~94% of a 25 MB log was NIP-46 fanout). Capped to keep memory tiny;
+    // when capacity is reached the oldest entries are evicted (FIFO via Queue).
+    private readonly object _loggedEventsLock = new();
+    private readonly HashSet<string> _loggedEventIds = new();
+    private readonly Queue<string> _loggedEventOrder = new();
+    private const int LoggedEventsCapacity = 1024;
+
     private class RelayConnection : IDisposable
     {
         public string Url { get; }
@@ -892,7 +901,9 @@ public class ExternalSignerService : IExternalSigner, IDisposable
                 {
                     var message = Encoding.UTF8.GetString(messageBuffer.ToArray());
                     messageBuffer.Clear();
-                    _logger.LogInformation("NIP-46 raw relay data from {Relay} ({Len} bytes): {Data}",
+                    // Debug-level: every NIP-46 relay frame echoes encrypted base64 content.
+                    // At INF on a 5-relay setup this produced ~94% of a 25 MB daily log.
+                    _logger.LogDebug("NIP-46 raw relay data from {Relay} ({Len} bytes): {Data}",
                         conn.Url, message.Length, message.Length > 300 ? message[..300] + "..." : message);
                     ProcessMessage(message, conn);
                 }
@@ -910,6 +921,28 @@ public class ExternalSignerService : IExternalSigner, IDisposable
 
         _logger.LogWarning("NIP-46 WebSocket listener exited for {Relay}. State: {State}, Cancelled: {Cancelled}",
             conn.Url, conn.WebSocket?.State, ct.IsCancellationRequested);
+    }
+
+    /// <summary>
+    /// Returns true the first time a given NIP-46 event id is observed and false on subsequent
+    /// per-relay duplicates. Bounded FIFO cache; the same event id observed after eviction will
+    /// log again, which is acceptable for diagnostic noise reduction.
+    /// </summary>
+    private bool ShouldLogReceivedEvent(string eventId)
+    {
+        lock (_loggedEventsLock)
+        {
+            if (!_loggedEventIds.Add(eventId))
+                return false;
+
+            _loggedEventOrder.Enqueue(eventId);
+            if (_loggedEventOrder.Count > LoggedEventsCapacity)
+            {
+                var evicted = _loggedEventOrder.Dequeue();
+                _loggedEventIds.Remove(evicted);
+            }
+            return true;
+        }
     }
 
     private void ProcessMessage(string message, RelayConnection conn)
@@ -959,7 +992,18 @@ public class ExternalSignerService : IExternalSigner, IDisposable
                 var eventObj = root[2];
                 var kind = eventObj.GetProperty("kind").GetInt32();
                 var senderPubKey = eventObj.GetProperty("pubkey").GetString();
-                _logger.LogInformation("NIP-46 received event kind={Kind} from {Sender}", kind, senderPubKey?[..16]);
+                var eventId = eventObj.TryGetProperty("id", out var idProp) ? idProp.GetString() : null;
+
+                // Suppress per-relay fanout: a single event delivered on N NIP-46 relays
+                // used to log N INFO lines. Now we log once per unique event id.
+                if (eventId == null || ShouldLogReceivedEvent(eventId))
+                {
+                    _logger.LogInformation("NIP-46 received event kind={Kind} from {Sender}", kind, senderPubKey?[..16]);
+                }
+                else
+                {
+                    _logger.LogDebug("NIP-46 duplicate event {EventId} from {Relay} (already processed)", eventId[..16], conn.Url);
+                }
 
                 if (kind == 24133 && _localPrivateKeyHex != null)
                 {
