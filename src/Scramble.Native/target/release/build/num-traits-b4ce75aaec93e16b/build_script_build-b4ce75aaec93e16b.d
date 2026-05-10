@@ -1,5 +1,0 @@
-D:\Users\david\openCodeProjects\openChat\src\OpenChat.Native\target\release\build\num-traits-b4ce75aaec93e16b\build_script_build-b4ce75aaec93e16b.d: C:\Users\David.THEDRAGON\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\num-traits-0.2.19\build.rs
-
-D:\Users\david\openCodeProjects\openChat\src\OpenChat.Native\target\release\build\num-traits-b4ce75aaec93e16b\build_script_build-b4ce75aaec93e16b.exe: C:\Users\David.THEDRAGON\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\num-traits-0.2.19\build.rs
-
-C:\Users\David.THEDRAGON\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\num-traits-0.2.19\build.rs:

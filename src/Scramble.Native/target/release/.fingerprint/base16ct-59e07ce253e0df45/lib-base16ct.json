@@ -1,1 +1,0 @@
-{"rustc":8891013984288978370,"features":"[\"alloc\"]","declared_features":"[\"alloc\", \"std\"]","target":5671527864245789203,"profile":4701875279837757004,"path":17456708893929763006,"deps":[],"local":[{"CheckDepInfo":{"dep_info":"release\\.fingerprint\\base16ct-59e07ce253e0df45\\dep-lib-base16ct","checksum":false}}],"rustflags":[],"config":8247474407144887393,"compile_kind":0}

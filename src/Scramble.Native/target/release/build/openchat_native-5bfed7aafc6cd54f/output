@@ -1,5 +1,0 @@
-csbindgen can't handle Enum containing any variable with field, so ignore generate, enum_name: MarmotError
-cargo:rerun-if-changed=src/lib.rs
-cargo:rerun-if-changed=src/client.rs
-cargo:rerun-if-changed=src/group.rs
-cargo:rerun-if-changed=src/error.rs

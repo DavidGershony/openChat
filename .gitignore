@@ -4,9 +4,13 @@ obj/
 
 # Rust build artifacts
 src/OpenChat.Native/target/
+src/Scramble.Native/target/
 
 # Native DLL (build from source with `cargo build --release`)
 src/OpenChat.Desktop/openchat_native.dll
+src/Scramble.Desktop/scramble_native.dll
+src/Scramble.Desktop/libscramble_native.so
+src/Scramble.Desktop/libscramble_native.dylib
 
 # IDE
 .vs/
