@@ -84,13 +84,20 @@ public static class LoggingConfiguration
 
             _loggerFactory = new SerilogLoggerFactory(Log.Logger);
 
+            // Set _initialized BEFORE writing the banner so any reentrant CreateLogger<T>()
+            // call triggered by a sink/enricher dereferencing a static logger field on
+            // another type does not loop back through Initialize() and write a second banner.
+            // Without this guard the lock is reentrant on the same thread and the inner call
+            // re-enters Initialize() in full (because _initialized is still false), producing
+            // a duplicate "=== Scramble Application Started ===" pair ~100 ms apart in every
+            // mobile log. (See ai-tasks/log-analysis-2026-05-08-mobile.md, Finding 1.)
+            _initialized = true;
+
             Log.Information("=== Scramble Application Started ===");
             if (!string.IsNullOrEmpty(appVersion))
                 Log.Information("App version: {AppVersion}", appVersion);
             Log.Information("Log directory: {LogDirectory}", LogDirectory);
             Log.Information("Log level: {Level}", minimumLevel);
-
-            _initialized = true;
         }
     }
 
