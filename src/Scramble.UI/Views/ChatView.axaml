@@ -169,13 +169,20 @@
                 </Button>
 
                 <!-- Text Input (hidden when recording) -->
+                <!-- Multi-line paste support: paste preserves newlines, Shift+Enter inserts a newline,
+                     Enter sends. AcceptsReturn=True is required so the TextBox does not strip \n on paste. -->
                 <TextBox Grid.Column="1" Text="{Binding MessageText}"
                          Watermark="Type a message..."
-                         AcceptsReturn="False"
-                         TextWrapping="NoWrap"
-                         VerticalContentAlignment="Center"
+                         AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         MaxHeight="120"
+                         VerticalContentAlignment="Top"
+                         VerticalAlignment="Center"
                          IsVisible="{Binding !IsRecording}">
                     <TextBox.KeyBindings>
+                        <!-- Plain Enter sends. Shift+Enter falls through to the TextBox and
+                             inserts a newline (because AcceptsReturn=True and KeyBinding gestures
+                             are modifier-sensitive in Avalonia). -->
                         <KeyBinding Gesture="Enter" Command="{Binding SendMessageCommand}" />
                     </TextBox.KeyBindings>
                 </TextBox>
