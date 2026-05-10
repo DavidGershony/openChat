@@ -4,6 +4,7 @@ using System.Reactive;
 using System.Reactive.Disposables;
 using System.Text.RegularExpressions;
 using System.Reactive.Linq;
+using System.Threading;
 using Microsoft.Extensions.Logging;
 using ReactiveUI;
 using ReactiveUI.Fody.Helpers;
@@ -31,6 +32,7 @@ public class ChatViewModel : ViewModelBase
     private string? _currentUserPrivateKeyHex;
     private string? _currentUserPublicKeyHex;
     private DateTimeOffset? _fetchBoundary;
+    private int _messageLoadRequestId;
 
     // MIP-04 media cache (messageId -> decrypted bytes)
     private readonly Dictionary<string, byte[]> _mediaCache = new();
@@ -415,7 +417,8 @@ public class ChatViewModel : ViewModelBase
                 _logger.LogDebug("Contact public key deferred — current user key not yet available");
         }
 
-        LoadMessagesAsync().ConfigureAwait(false);
+        var requestId = Interlocked.Increment(ref _messageLoadRequestId);
+        LoadMessagesAsync(chat.Id, requestId).ConfigureAwait(false);
 
         // Load cached contact profile from DB so the avatar shows immediately (no relay fetch)
         if (!IsGroup && ContactPublicKey != null)
@@ -859,9 +862,9 @@ public class ChatViewModel : ViewModelBase
         }
     }
 
-    private async Task LoadMessagesAsync()
+    private async Task LoadMessagesAsync(string chatId, int requestId)
     {
-        if (ChatId == null) return;
+        if (string.IsNullOrEmpty(chatId)) return;
 
         IsLoading = true;
 
@@ -869,7 +872,16 @@ public class ChatViewModel : ViewModelBase
         {
             Messages.Clear();
 
-            var messages = await _messageService.GetMessagesAsync(ChatId);
+            var messages = await _messageService.GetMessagesAsync(chatId);
+
+            if (requestId != Volatile.Read(ref _messageLoadRequestId) ||
+                !string.Equals(ChatId, chatId, StringComparison.Ordinal))
+            {
+                // Ignore stale data if a newer selection started, or if the chat was cleared/switched.
+                // The finally-block below keeps IsLoading owned by the latest active request only.
+                return;
+            }
+
             foreach (var message in messages)
             {
                 Messages.Add(new MessageViewModel(message));
@@ -879,7 +891,10 @@ public class ChatViewModel : ViewModelBase
         }
         finally
         {
-            IsLoading = false;
+            if (requestId == Volatile.Read(ref _messageLoadRequestId))
+            {
+                IsLoading = false;
+            }
         }
     }
 
