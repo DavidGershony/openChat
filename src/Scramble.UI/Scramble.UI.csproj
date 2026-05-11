@@ -1,7 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFrameworks Condition="'$(DesktopOnly)' != 'true'">net10.0;net10.0-android</TargetFrameworks>
+    <TargetFrameworks Condition="'$(DesktopOnly)' == 'true'">net10.0</TargetFrameworks>
+    <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">24.0</SupportedOSPlatformVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
@@ -12,7 +14,6 @@
 
   <ItemGroup>
     <PackageReference Include="AsyncImageLoader.Avalonia" Version="3.3.0" />
-    <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="QRCoder" Version="1.6.0" />
     <PackageReference Include="Avalonia" Version="12.0.3" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.3" />
@@ -22,12 +23,18 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>
     <PackageReference Include="ReactiveUI.Avalonia" Version="12.0.1" />
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.*" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Scramble.Core\Scramble.Core.csproj" />
     <ProjectReference Include="..\Scramble.Presentation\Scramble.Presentation.csproj" />
+  </ItemGroup>
+
+  <!-- Desktop-only services (Linux secure storage via AesGcm + key file, system-toast notifications).
+       Excluded on Android: Android uses Keystore (TODO) and Android NotificationManager (TODO). -->
+  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+    <Compile Remove="Services\LinuxSecureStorage.cs" />
+    <Compile Remove="Services\DesktopNotificationService.cs" />
   </ItemGroup>
 
 </Project>

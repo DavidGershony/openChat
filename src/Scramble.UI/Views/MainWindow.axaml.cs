@@ -83,7 +83,7 @@ public partial class MainWindow : Window
 
     private void AccountItem_Click(object? sender, RoutedEventArgs e)
     {
-        if (sender is Button btn && btn.Tag is string pubKeyHex && DataContext is ShellViewModel shell)
+        if (sender is Avalonia.Controls.Button btn && btn.Tag is string pubKeyHex && DataContext is ShellViewModel shell)
         {
             _ = shell.SwitchAccountAsync(pubKeyHex);
         }

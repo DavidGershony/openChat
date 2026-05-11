@@ -12,6 +12,8 @@
     <PackageReference Include="Avalonia.Desktop" Version="12.0.3" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.3" />
     <PackageReference Include="ReactiveUI.Avalonia" Version="12.0.1" />
+    <PackageReference Include="NAudio" Version="2.2.1" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.*" />
     <!-- Avalonia.Diagnostics removed: no AttachDevTools() call site and no 12.x release yet. Re-add when needed for live UI debugging. -->
   </ItemGroup>
 

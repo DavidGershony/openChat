@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 using Scramble.Core.Logging;
 using Scramble.Core.Services;
 
-namespace Scramble.UI.Services;
+namespace Scramble.Desktop;
 
 /// <summary>
 /// Cross-platform desktop audio recording using system tools.
