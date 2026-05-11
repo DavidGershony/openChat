@@ -216,7 +216,7 @@ public class HeadlessSettingsTests : HeadlessTestBase
 
     [InlineData("rust")]
     [InlineData("managed")]
-    [AvaloniaTheory(Skip = "Requires ShellViewModel")]
+    [AvaloniaTheory]
     public async Task Login_WithSavedRelays_UsesThemInsteadOfDefaults(string backend)
     {
         if (ShouldSkip(backend)) return;
@@ -231,12 +231,14 @@ public class HeadlessSettingsTests : HeadlessTestBase
         };
         await ctx.Storage.SaveUserRelayListAsync(ctx.User.PublicKeyHex, customRelays);
 
-        // Create MainViewModel and log in — this triggers InitializeAfterLoginAsync
+        // Create MainViewModel and explicitly run the post-login initialization
+        // (in production this is invoked by ShellViewModel; tests bypass the shell).
         var mainVm = CreateMainViewModel(ctx);
         Dispatcher.UIThread.RunJobs();
         mainVm.CurrentUser = ctx.User;
         mainVm.IsLoggedIn = true;
         Dispatcher.UIThread.RunJobs();
+        await mainVm.InitializeAfterLoginAsync();
         await Task.Delay(500);
         Dispatcher.UIThread.RunJobs();
 

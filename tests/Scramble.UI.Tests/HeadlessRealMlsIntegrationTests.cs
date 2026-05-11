@@ -44,7 +44,7 @@ public class HeadlessRealMlsIntegrationTests : IDisposable
 
     [InlineData("rust")]
     [InlineData("managed")]
-    [AvaloniaTheory(Skip = "Requires ShellViewModel")]
+    [AvaloniaTheory]
     public async Task LoginFlow_SetsIsLoggedIn_MainUIBecomesVisible(string backend)
     {
         if (backend == "rust" && !NativeDllAvailable()) return; // Skip when native DLL absent
@@ -245,7 +245,10 @@ public class HeadlessRealMlsIntegrationTests : IDisposable
 
     [InlineData("rust")]
     [InlineData("managed")]
-    [AvaloniaTheory(Skip = "Requires ShellViewModel")]
+    // Skipped: CreateNewChatAsync now requires NewChatParticipants and SelectableRelays
+    // populated from INostrService.ConnectedRelayUrls. Test bypasses ShellViewModel and
+    // its mock nostr service has no connected relays, so we hit the early-return path.
+    [AvaloniaTheory(Skip = "Requires NewChatParticipants + SelectableRelays setup after CreateNewChat API drift")]
     public async Task FullFlow_Login_CreateGroup_AppearsInChatList(string backend)
     {
         if (backend == "rust" && !NativeDllAvailable()) return;
@@ -260,6 +263,11 @@ public class HeadlessRealMlsIntegrationTests : IDisposable
         mainVm.IsLoggedIn = true;
         Dispatcher.UIThread.RunJobs();
         Assert.True(mainVm.IsLoggedIn);
+
+        // ShellViewModel normally drives this post-login initialization;
+        // tests bypass the shell, so trigger it explicitly.
+        await mainVm.InitializeAfterLoginAsync();
+        Dispatcher.UIThread.RunJobs();
 
         // Open new group dialog
         mainVm.ChatListViewModel.NewChatCommand.Execute().Subscribe();

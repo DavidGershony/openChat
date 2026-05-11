@@ -337,7 +337,12 @@ public class HeadlessIntegrationTests
     // Test 9: Full flow - Login → Create Group → See it in chat list
     // ═══════════════════════════════════════════════════════════════════
 
-    [AvaloniaFact(Skip = "Requires ShellViewModel")]
+    // Skipped: CreateNewChatAsync now requires NewChatParticipants and SelectableRelays
+    // populated from a real INostrService.ConnectedRelayUrls. Mock-driven setup here
+    // hits the "Add at least one participant" / "Select at least one relay" early-return
+    // before MlsService.CreateGroupAsync is invoked. Re-enable when the test is rewritten
+    // against ShellViewModel + a relay-aware nostr mock.
+    [AvaloniaFact(Skip = "Requires NewChatParticipants + SelectableRelays setup after CreateNewChat API drift")]
     public async Task FullFlow_Login_CreateGroup_AppearsInChatList()
     {
         var chatUpdateSubject = new Subject<Chat>();
@@ -381,9 +386,16 @@ public class HeadlessIntegrationTests
             Npub = "npub1test",
             IsCurrentUser = true
         };
+        // ShellViewModel normally drives this transition; tests bypass the shell.
+        mainVm.IsLoggedIn = true;
         Dispatcher.UIThread.RunJobs();
 
         Assert.True(mainVm.IsLoggedIn);
+
+        // ShellViewModel normally drives this post-login initialization;
+        // tests bypass the shell, so trigger it explicitly.
+        await mainVm.InitializeAfterLoginAsync();
+        Dispatcher.UIThread.RunJobs();
 
         // Open new group dialog
         mainVm.ChatListViewModel.NewChatCommand.Execute().Subscribe();
