@@ -43,8 +43,7 @@ public partial class App : Application
         AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
 
-        // Set up RxUI exception handler
-        RxApp.DefaultExceptionHandler = Observer.Create<Exception>(OnRxException);
+        // RxUI exception handler is now configured in Program.BuildAvaloniaApp via ReactiveUIBuilder.WithExceptionHandler
 
         _logger.LogInformation("Global exception handlers registered");
 
@@ -226,6 +225,8 @@ public partial class App : Application
     {
         _logger?.LogError(ex, "RxUI exception caught");
     }
+
+    internal static IObserver<Exception> CreateRxExceptionObserver() => Observer.Create<Exception>(OnRxException);
 }
 
 // Helper for RxUI exception handler

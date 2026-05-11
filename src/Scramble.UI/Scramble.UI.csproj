@@ -16,8 +16,11 @@
     <PackageReference Include="QRCoder" Version="1.6.0" />
     <PackageReference Include="Avalonia" Version="12.0.3" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.3" />
-    <PackageReference Include="ReactiveUI" Version="20.1.1" />
-    <PackageReference Include="ReactiveUI.Fody" Version="19.5.41" />
+    <PackageReference Include="ReactiveUI" Version="23.2.27" />
+    <PackageReference Include="ReactiveUI.SourceGenerators" Version="2.6.30">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="ReactiveUI.Avalonia" Version="12.0.1" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.*" />
   </ItemGroup>

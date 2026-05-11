@@ -5,7 +5,7 @@ using System.Reflection;
 using System.Reactive.Linq;
 using Microsoft.Extensions.Logging;
 using ReactiveUI;
-using ReactiveUI.Fody.Helpers;
+using ReactiveUI.SourceGenerators;
 using Scramble.Core;
 using Scramble.Core.Logging;
 using Scramble.Core.Models;
@@ -14,7 +14,7 @@ using Scramble.Presentation.Services;
 
 namespace Scramble.Presentation.ViewModels;
 
-public class SettingsViewModel : ViewModelBase
+public partial class SettingsViewModel : ViewModelBase
 {
     private readonly ILogger<SettingsViewModel> _logger;
     private readonly INostrService _nostrService;
@@ -23,65 +23,65 @@ public class SettingsViewModel : ViewModelBase
     private readonly IMessageService _messageService;
     private readonly IPlatformLauncher _launcher;
 
-    [Reactive] public string? PublicKeyHex { get; set; }
-    [Reactive] public string? PrivateKeyHex { get; set; }
-    [Reactive] public string? Npub { get; set; }
-    [Reactive] public string? DisplayName { get; set; }
-    [Reactive] public string? Username { get; set; }
-    [Reactive] public string? About { get; set; }
-    [Reactive] public string? AvatarUrl { get; set; }
+    [Reactive] public partial string? PublicKeyHex { get; set; }
+    [Reactive] public partial string? PrivateKeyHex { get; set; }
+    [Reactive] public partial string? Npub { get; set; }
+    [Reactive] public partial string? DisplayName { get; set; }
+    [Reactive] public partial string? Username { get; set; }
+    [Reactive] public partial string? About { get; set; }
+    [Reactive] public partial string? AvatarUrl { get; set; }
 
-    [Reactive] public string NewRelayUrl { get; set; } = string.Empty;
+    [Reactive] public partial string NewRelayUrl { get; set; } = string.Empty;
 
     // Log Viewer
-    [Reactive] public bool ShowLogViewer { get; set; }
-    [Reactive] public string LogContent { get; set; } = string.Empty;
+    [Reactive] public partial bool ShowLogViewer { get; set; }
+    [Reactive] public partial string LogContent { get; set; } = string.Empty;
 
     // Key Package
-    [Reactive] public bool IsPublishingKeyPackage { get; set; }
-    [Reactive] public string? KeyPackageStatus { get; set; }
-    [Reactive] public bool KeyPackageSuccess { get; set; }
+    [Reactive] public partial bool IsPublishingKeyPackage { get; set; }
+    [Reactive] public partial string? KeyPackageStatus { get; set; }
+    [Reactive] public partial bool KeyPackageSuccess { get; set; }
 
     // Key Package Audit
-    [Reactive] public bool IsAuditingKeyPackages { get; set; }
-    [Reactive] public string? AuditStatus { get; set; }
-    [Reactive] public KeyPackageAuditResult? LastAuditResult { get; set; }
+    [Reactive] public partial bool IsAuditingKeyPackages { get; set; }
+    [Reactive] public partial string? AuditStatus { get; set; }
+    [Reactive] public partial KeyPackageAuditResult? LastAuditResult { get; set; }
 
     // Relay list publish
-    [Reactive] public string? PublishRelayListStatus { get; set; }
+    [Reactive] public partial string? PublishRelayListStatus { get; set; }
 
     // Profile editing (hidden when using external signer — no private key to sign kind 0)
-    [Reactive] public bool CanEditProfile { get; set; }
+    [Reactive] public partial bool CanEditProfile { get; set; }
 
     // Profile publish confirmation
-    [Reactive] public bool ShowPublishConfirmation { get; set; }
-    [Reactive] public bool IsPublishingProfile { get; set; }
-    [Reactive] public string? PublishProfileStatus { get; set; }
+    [Reactive] public partial bool ShowPublishConfirmation { get; set; }
+    [Reactive] public partial bool IsPublishingProfile { get; set; }
+    [Reactive] public partial string? PublishProfileStatus { get; set; }
 
     // MIP-04 media loading
-    [Reactive] public bool IsMip04Enabled { get; set; }
-    [Reactive] public string? Mip04DependencyWarning { get; set; }
+    [Reactive] public partial bool IsMip04Enabled { get; set; }
+    [Reactive] public partial string? Mip04DependencyWarning { get; set; }
 
     // Blossom server
-    [Reactive] public string BlossomServerUrl { get; set; } = "https://blossom.primal.net";
-    [Reactive] public string? BlossomStatus { get; set; }
+    [Reactive] public partial string BlossomServerUrl { get; set; } = "https://blossom.primal.net";
+    [Reactive] public partial string? BlossomStatus { get; set; }
 
     // Notifications
-    [Reactive] public bool NotificationModeBackground { get; set; } = true;
-    [Reactive] public bool NotificationModePush { get; set; }
-    [Reactive] public string NotificationServerNpub { get; set; } = string.Empty;
-    [Reactive] public string NotificationServerRelay { get; set; } = string.Empty;
-    [Reactive] public string NotificationPushUrl { get; set; } = string.Empty;
-    [Reactive] public string NotificationVerifyCode { get; set; } = string.Empty;
-    [Reactive] public string? NotificationRegistrationStatus { get; set; }
-    [Reactive] public bool NotificationAwaitingVerification { get; set; }
+    [Reactive] public partial bool NotificationModeBackground { get; set; } = true;
+    [Reactive] public partial bool NotificationModePush { get; set; }
+    [Reactive] public partial string NotificationServerNpub { get; set; } = string.Empty;
+    [Reactive] public partial string NotificationServerRelay { get; set; } = string.Empty;
+    [Reactive] public partial string NotificationPushUrl { get; set; } = string.Empty;
+    [Reactive] public partial string NotificationVerifyCode { get; set; } = string.Empty;
+    [Reactive] public partial string? NotificationRegistrationStatus { get; set; }
+    [Reactive] public partial bool NotificationAwaitingVerification { get; set; }
 
     // Library versions
     public string MarmotCsVersion { get; } = GetPackageVersion("MarmotCs.Core");
     public string DotnetMlsVersion { get; } = GetPackageVersion("DotnetMls");
 
     // Theme selection
-    [Reactive] public int SelectedThemeIndex { get; set; } = 4;
+    [Reactive] public partial int SelectedThemeIndex { get; set; } = 4;
     public static string[] AvailableThemeNames { get; set; } = Array.Empty<string>();
     public static Action<int>? OnThemeChanged { get; set; }
 
@@ -721,12 +721,12 @@ public class SettingsViewModel : ViewModelBase
     }
 }
 
-public class RelayViewModel : ViewModelBase
+public partial class RelayViewModel : ViewModelBase
 {
-    [Reactive] public string Url { get; set; } = string.Empty;
-    [Reactive] public bool IsConnected { get; set; }
-    [Reactive] public string? Error { get; set; }
-    [Reactive] public RelayUsage Usage { get; set; } = RelayUsage.Both;
+    [Reactive] public partial string Url { get; set; } = string.Empty;
+    [Reactive] public partial bool IsConnected { get; set; }
+    [Reactive] public partial string? Error { get; set; }
+    [Reactive] public partial RelayUsage Usage { get; set; } = RelayUsage.Both;
 
     private readonly ObservableAsPropertyHelper<string> _usageLabel;
     public string UsageLabel => _usageLabel.Value;

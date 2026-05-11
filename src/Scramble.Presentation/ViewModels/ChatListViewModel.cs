@@ -7,7 +7,7 @@ using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using Microsoft.Extensions.Logging;
 using ReactiveUI;
-using ReactiveUI.Fody.Helpers;
+using ReactiveUI.SourceGenerators;
 using Scramble.Core.Crypto;
 using Scramble.Core.Logging;
 using Scramble.Core.Models;
@@ -15,7 +15,7 @@ using Scramble.Core.Services;
 
 namespace Scramble.Presentation.ViewModels;
 
-public class ChatListViewModel : ViewModelBase
+public partial class ChatListViewModel : ViewModelBase
 {
     private readonly ILogger<ChatListViewModel> _logger;
     private readonly IMessageService _messageService;
@@ -34,67 +34,67 @@ public class ChatListViewModel : ViewModelBase
     public ObservableCollection<ChatItemViewModel> ArchivedChats { get; } = new();
     public ObservableCollection<PendingInviteItemViewModel> PendingInvites { get; } = new();
     public ObservableCollection<FollowContactViewModel> Following { get; } = new();
-    [Reactive] public bool IsRefreshingFollowing { get; set; }
+    [Reactive] public partial bool IsRefreshingFollowing { get; set; }
 
-    [Reactive] public ChatItemViewModel? SelectedChat { get; set; }
-    [Reactive] public int ArchivedChatsCount { get; set; }
-    [Reactive] public int AgentChatsCount { get; set; }
-    [Reactive] public bool ShowArchivedSection { get; set; }
-    [Reactive] public bool ShowAgentsSection { get; set; }
-    [Reactive] public string SearchText { get; set; } = string.Empty;
-    [Reactive] public bool IsLoading { get; set; }
-    [Reactive] public int PendingInviteCount { get; set; }
-    [Reactive] public int SkippedInviteCount { get; set; }
-    [Reactive] public string? StatusMessage { get; set; }
+    [Reactive] public partial ChatItemViewModel? SelectedChat { get; set; }
+    [Reactive] public partial int ArchivedChatsCount { get; set; }
+    [Reactive] public partial int AgentChatsCount { get; set; }
+    [Reactive] public partial bool ShowArchivedSection { get; set; }
+    [Reactive] public partial bool ShowAgentsSection { get; set; }
+    [Reactive] public partial string SearchText { get; set; } = string.Empty;
+    [Reactive] public partial bool IsLoading { get; set; }
+    [Reactive] public partial int PendingInviteCount { get; set; }
+    [Reactive] public partial int SkippedInviteCount { get; set; }
+    [Reactive] public partial string? StatusMessage { get; set; }
 
     // New Chat Dialog (unified: 1+ participants, optional name)
-    [Reactive] public bool ShowNewChatDialog { get; set; }
-    [Reactive] public string NewChatName { get; set; } = string.Empty;
-    [Reactive] public string NewChatDescription { get; set; } = string.Empty;
-    [Reactive] public string NewChatParticipantInput { get; set; } = string.Empty;
-    [Reactive] public bool IsParticipantInputInvalid { get; set; }
+    [Reactive] public partial bool ShowNewChatDialog { get; set; }
+    [Reactive] public partial string NewChatName { get; set; } = string.Empty;
+    [Reactive] public partial string NewChatDescription { get; set; } = string.Empty;
+    [Reactive] public partial string NewChatParticipantInput { get; set; } = string.Empty;
+    [Reactive] public partial bool IsParticipantInputInvalid { get; set; }
     public ObservableCollection<FollowContactViewModel> NewChatParticipants { get; } = new();
-    [Reactive] public string? NewChatError { get; set; }
-    [Reactive] public bool IsLookingUpKeyPackages { get; set; }
-    [Reactive] public string? KeyPackageStatus { get; set; }
-    [Reactive] public string? CreateProgress { get; set; }
+    [Reactive] public partial string? NewChatError { get; set; }
+    [Reactive] public partial bool IsLookingUpKeyPackages { get; set; }
+    [Reactive] public partial string? KeyPackageStatus { get; set; }
+    [Reactive] public partial string? CreateProgress { get; set; }
 
     // Relay Selection
     public ObservableCollection<RelaySelectionItemViewModel> SelectableRelays { get; } = new();
-    [Reactive] public int SelectedRelayCount { get; set; }
+    [Reactive] public partial int SelectedRelayCount { get; set; }
 
     // Join Group Dialog
-    [Reactive] public bool ShowJoinGroupDialog { get; set; }
-    [Reactive] public string JoinGroupId { get; set; } = string.Empty;
-    [Reactive] public string? JoinGroupError { get; set; }
+    [Reactive] public partial bool ShowJoinGroupDialog { get; set; }
+    [Reactive] public partial string JoinGroupId { get; set; } = string.Empty;
+    [Reactive] public partial string? JoinGroupError { get; set; }
 
     // Add Bot / DM Dialog
-    [Reactive] public bool ShowAddBotDialog { get; set; }
-    [Reactive] public string BotNpub { get; set; } = string.Empty;
-    [Reactive] public string? AddBotError { get; set; }
+    [Reactive] public partial bool ShowAddBotDialog { get; set; }
+    [Reactive] public partial string BotNpub { get; set; } = string.Empty;
+    [Reactive] public partial string? AddBotError { get; set; }
 
     // Relay selection for bot chat
-    [Reactive] public bool BotRelayModeNip65 { get; set; } = true;
-    [Reactive] public bool BotRelayModeList { get; set; }
-    [Reactive] public bool BotRelayModeManual { get; set; }
-    [Reactive] public string BotManualRelay { get; set; } = string.Empty;
-    [Reactive] public bool IsFetchingNip65 { get; set; }
-    [Reactive] public string? Nip65Status { get; set; }
+    [Reactive] public partial bool BotRelayModeNip65 { get; set; } = true;
+    [Reactive] public partial bool BotRelayModeList { get; set; }
+    [Reactive] public partial bool BotRelayModeManual { get; set; }
+    [Reactive] public partial string BotManualRelay { get; set; } = string.Empty;
+    [Reactive] public partial bool IsFetchingNip65 { get; set; }
+    [Reactive] public partial string? Nip65Status { get; set; }
     public ObservableCollection<RelayCheckItem> BotAvailableRelays { get; } = new();
     public ObservableCollection<RelayCheckItem> BotNip65Relays { get; } = new();
 
     // Delete Chat Dialog
-    [Reactive] public bool ShowDeleteChatDialog { get; set; }
-    [Reactive] public ChatItemViewModel? ChatToDelete { get; set; }
+    [Reactive] public partial bool ShowDeleteChatDialog { get; set; }
+    [Reactive] public partial ChatItemViewModel? ChatToDelete { get; set; }
 
     // Reset Group Dialog
-    [Reactive] public bool ShowResetGroupDialog { get; set; }
-    [Reactive] public ChatItemViewModel? GroupToReset { get; set; }
+    [Reactive] public partial bool ShowResetGroupDialog { get; set; }
+    [Reactive] public partial ChatItemViewModel? GroupToReset { get; set; }
 
     // Rename Chat Dialog
-    [Reactive] public bool ShowRenameChatDialog { get; set; }
-    [Reactive] public ChatItemViewModel? ChatToRename { get; set; }
-    [Reactive] public string RenameChatInput { get; set; } = string.Empty;
+    [Reactive] public partial bool ShowRenameChatDialog { get; set; }
+    [Reactive] public partial ChatItemViewModel? ChatToRename { get; set; }
+    [Reactive] public partial string RenameChatInput { get; set; } = string.Empty;
 
     public ReactiveCommand<Unit, Unit> NewChatCommand { get; }
     public ReactiveCommand<Unit, Unit> JoinGroupCommand { get; }
@@ -126,7 +126,7 @@ public class ChatListViewModel : ViewModelBase
     public ReactiveCommand<PendingInviteItemViewModel, Unit> AcceptInviteCommand { get; }
     public ReactiveCommand<PendingInviteItemViewModel, Unit> DeclineInviteCommand { get; }
     public ReactiveCommand<Unit, Unit> RescanInvitesCommand { get; }
-    [Reactive] public bool IsRescanningInvites { get; set; }
+    [Reactive] public partial bool IsRescanningInvites { get; set; }
     public ReactiveCommand<Unit, Unit> AddBotCommand { get; }
     public ReactiveCommand<Unit, Unit> CreateBotChatCommand { get; }
     public ReactiveCommand<Unit, Unit> CancelAddBotCommand { get; }
@@ -288,7 +288,7 @@ public class ChatListViewModel : ViewModelBase
         // Filter Following list and validate npub/nprofile (with optional nostr: URI prefix) as the user types
         this.WhenAnyValue(x => x.NewChatParticipantInput)
             .Throttle(TimeSpan.FromMilliseconds(120))
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(q =>
             {
                 var query = (q ?? string.Empty).Trim();
@@ -411,17 +411,17 @@ public class ChatListViewModel : ViewModelBase
 
         // Subscribe to chat updates
         _chatUpdateSubscription = _messageService.ChatUpdates
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(OnChatUpdated);
 
         // Subscribe to new invites
         _inviteSubscription = _messageService.NewInvites
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(OnNewInvite);
 
         // Subscribe to MLS decryption errors
         _decryptionErrorSubscription = _messageService.DecryptionErrors
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(error =>
             {
                 StatusMessage = $"Failed to decrypt message in \"{error.ChatName}\". Group may need reset.";
@@ -429,7 +429,7 @@ public class ChatListViewModel : ViewModelBase
 
         // Subscribe to skipped invite notifications
         _skippedInviteSubscription = _messageService.SkippedInvites
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(_ => SkippedInviteCount++);
 
         DismissSkippedInviteNoticeCommand = ReactiveCommand.CreateFromTask(DismissSkippedInviteNoticeAsync);
@@ -437,7 +437,7 @@ public class ChatListViewModel : ViewModelBase
         // Filter chats based on search
         this.WhenAnyValue(x => x.SearchText)
             .Throttle(TimeSpan.FromMilliseconds(300))
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(_ => ApplyFilter());
     }
 
@@ -657,7 +657,7 @@ public class ChatListViewModel : ViewModelBase
                 var existingUser = await _storageService.GetUserByPublicKeyAsync(otherPubKey);
                 if (existingUser?.LocalAvatarPath != null && File.Exists(existingUser.LocalAvatarPath))
                 {
-                    RxApp.MainThreadScheduler.Schedule(() => chatItem.LocalAvatarPath = existingUser.LocalAvatarPath);
+                    RxSchedulers.MainThreadScheduler.Schedule(() => chatItem.LocalAvatarPath = existingUser.LocalAvatarPath);
                     continue;
                 }
 
@@ -679,7 +679,7 @@ public class ChatListViewModel : ViewModelBase
                 }
 
                 // Update the chat item on the UI thread
-                RxApp.MainThreadScheduler.Schedule(() => chatItem.LocalAvatarPath = localPath);
+                RxSchedulers.MainThreadScheduler.Schedule(() => chatItem.LocalAvatarPath = localPath);
 
                 _logger.LogInformation("Avatar cached for {PubKey}: {Path}", otherPubKey[..16], localPath);
             }
@@ -738,7 +738,7 @@ public class ChatListViewModel : ViewModelBase
             foreach (var c in merged)
                 users[c.PublicKeyHex] = await _storageService.GetUserByPublicKeyAsync(c.PublicKeyHex);
 
-            RxApp.MainThreadScheduler.Schedule(() =>
+            RxSchedulers.MainThreadScheduler.Schedule(() =>
             {
                 var existing = Following.ToDictionary(f => f.PublicKeyHex, StringComparer.OrdinalIgnoreCase);
                 Following.Clear();
@@ -818,7 +818,7 @@ public class ChatListViewModel : ViewModelBase
                     user.LastUpdatedAt = DateTime.UtcNow;
                     await _storageService.SaveUserAsync(user);
 
-                    RxApp.MainThreadScheduler.Schedule(() =>
+                    RxSchedulers.MainThreadScheduler.Schedule(() =>
                     {
                         var vm = Following.FirstOrDefault(f => string.Equals(f.PublicKeyHex, pubKey, StringComparison.OrdinalIgnoreCase));
                         if (vm != null)
@@ -864,7 +864,7 @@ public class ChatListViewModel : ViewModelBase
                     var localPath = await DownloadAvatarToCacheAsync(chat.AvatarUrl, cacheKey);
                     if (localPath != null)
                     {
-                        RxApp.MainThreadScheduler.Schedule(() => chatItem.LocalAvatarPath = localPath);
+                        RxSchedulers.MainThreadScheduler.Schedule(() => chatItem.LocalAvatarPath = localPath);
                         continue;
                     }
                 }
@@ -880,7 +880,7 @@ public class ChatListViewModel : ViewModelBase
                     var user = await _storageService.GetUserByPublicKeyAsync(pubKey);
                     if (user?.LocalAvatarPath is { } cached && File.Exists(cached))
                     {
-                        RxApp.MainThreadScheduler.Schedule(() => chatItem.LocalAvatarPath = cached);
+                        RxSchedulers.MainThreadScheduler.Schedule(() => chatItem.LocalAvatarPath = cached);
                         break;
                     }
 
@@ -899,7 +899,7 @@ public class ChatListViewModel : ViewModelBase
                         await _storageService.SaveUserAsync(user);
                     }
 
-                    RxApp.MainThreadScheduler.Schedule(() => chatItem.LocalAvatarPath = localPath);
+                    RxSchedulers.MainThreadScheduler.Schedule(() => chatItem.LocalAvatarPath = localPath);
                     break;
                 }
             }
@@ -977,7 +977,7 @@ public class ChatListViewModel : ViewModelBase
         NewChatError = null;
 
         // Auto-trigger key package lookup when a participant is added
-        RxApp.MainThreadScheduler.Schedule(() =>
+        RxSchedulers.MainThreadScheduler.Schedule(() =>
             LookupKeyPackagesCommand.Execute().Subscribe());
     }
 
@@ -1806,23 +1806,23 @@ public class ChatListViewModel : ViewModelBase
     }
 }
 
-public class ChatItemViewModel : ViewModelBase
+public partial class ChatItemViewModel : ViewModelBase
 {
     public string Id { get; }
 
-    [Reactive] public string Name { get; set; } = string.Empty;
-    [Reactive] public string? AvatarUrl { get; set; }
-    [Reactive] public string? LocalAvatarPath { get; set; }
-    [Reactive] public string? LastMessagePreview { get; set; }
-    [Reactive] public DateTime LastActivityAt { get; set; }
-    [Reactive] public int UnreadCount { get; set; }
+    [Reactive] public partial string Name { get; set; } = string.Empty;
+    [Reactive] public partial string? AvatarUrl { get; set; }
+    [Reactive] public partial string? LocalAvatarPath { get; set; }
+    [Reactive] public partial string? LastMessagePreview { get; set; }
+    [Reactive] public partial DateTime LastActivityAt { get; set; }
+    [Reactive] public partial int UnreadCount { get; set; }
     public bool HasUnread => UnreadCount > 0;
-    [Reactive] public bool IsPinned { get; set; }
-    [Reactive] public bool IsMuted { get; set; }
-    [Reactive] public bool IsGroup { get; set; }
-    [Reactive] public bool IsBot { get; set; }
-    [Reactive] public bool IsVisible { get; set; } = true;
-    [Reactive] public bool NeedsRepair { get; set; }
+    [Reactive] public partial bool IsPinned { get; set; }
+    [Reactive] public partial bool IsMuted { get; set; }
+    [Reactive] public partial bool IsGroup { get; set; }
+    [Reactive] public partial bool IsBot { get; set; }
+    [Reactive] public partial bool IsVisible { get; set; } = true;
+    [Reactive] public partial bool NeedsRepair { get; set; }
 
     public Chat Chat { get; private set; }
 
@@ -1850,14 +1850,14 @@ public class ChatItemViewModel : ViewModelBase
     }
 }
 
-public class FollowContactViewModel : ViewModelBase
+public partial class FollowContactViewModel : ViewModelBase
 {
     public string PublicKeyHex { get; }
     public string Npub { get; }
-    [Reactive] public string? DisplayName { get; set; }
-    [Reactive] public string? Petname { get; set; }
-    [Reactive] public string? LocalAvatarPath { get; set; }
-    [Reactive] public bool IsVisible { get; set; } = true;
+    [Reactive] public partial string? DisplayName { get; set; }
+    [Reactive] public partial string? Petname { get; set; }
+    [Reactive] public partial string? LocalAvatarPath { get; set; }
+    [Reactive] public partial bool IsVisible { get; set; } = true;
 
     public string ShownName => !string.IsNullOrWhiteSpace(Petname) ? Petname!
         : !string.IsNullOrWhiteSpace(DisplayName) ? DisplayName!
@@ -1885,10 +1885,10 @@ public class FollowContactViewModel : ViewModelBase
     }
 }
 
-public class RelayCheckItem : ViewModelBase
+public partial class RelayCheckItem : ViewModelBase
 {
     public string Url { get; }
-    [Reactive] public bool IsChecked { get; set; }
+    [Reactive] public partial bool IsChecked { get; set; }
 
     public RelayCheckItem(string url, bool isChecked = false)
     {
@@ -1897,7 +1897,7 @@ public class RelayCheckItem : ViewModelBase
     }
 }
 
-public class PendingInviteItemViewModel : ViewModelBase
+public partial class PendingInviteItemViewModel : ViewModelBase
 {
     public string Id { get; }
     public string NostrEventId { get; }
@@ -1908,8 +1908,8 @@ public class PendingInviteItemViewModel : ViewModelBase
     public string SenderInitial { get; }
     public string TimeAgo { get; }
 
-    [Reactive] public bool IsAccepting { get; set; }
-    [Reactive] public bool IsDeclining { get; set; }
+    [Reactive] public partial bool IsAccepting { get; set; }
+    [Reactive] public partial bool IsDeclining { get; set; }
 
     private ObservableAsPropertyHelper<bool>? _isProcessing;
     public bool IsProcessing => _isProcessing?.Value ?? false;
@@ -1941,7 +1941,7 @@ public class PendingInviteItemViewModel : ViewModelBase
     }
 }
 
-public class KeyPackageItemViewModel : ViewModelBase
+public partial class KeyPackageItemViewModel : ViewModelBase
 {
     /// <summary>The underlying KeyPackage model.</summary>
     public KeyPackage KeyPackage { get; }
@@ -1994,11 +1994,11 @@ public class KeyPackageItemViewModel : ViewModelBase
     }
 }
 
-public class RelaySelectionItemViewModel : ViewModelBase
+public partial class RelaySelectionItemViewModel : ViewModelBase
 {
     public string Url { get; }
     public string DisplayUrl => Url.Replace("wss://", "").Replace("ws://", "").TrimEnd('/');
-    [Reactive] public bool IsSelected { get; set; }
+    [Reactive] public partial bool IsSelected { get; set; }
 
     public RelaySelectionItemViewModel(string url, bool isSelected = true)
     {

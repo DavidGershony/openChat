@@ -3,7 +3,7 @@ using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using Microsoft.Extensions.Logging;
 using ReactiveUI;
-using ReactiveUI.Fody.Helpers;
+using ReactiveUI.SourceGenerators;
 using Scramble.Core.Crypto;
 using Scramble.Core.Logging;
 using Scramble.Core.Models;
@@ -12,7 +12,7 @@ using Scramble.Presentation.Services;
 
 namespace Scramble.Presentation.ViewModels;
 
-public class LoginViewModel : ViewModelBase
+public partial class LoginViewModel : ViewModelBase
 {
     private readonly ILogger<LoginViewModel> _logger;
     private readonly INostrService _nostrService;
@@ -23,34 +23,34 @@ public class LoginViewModel : ViewModelBase
     /// </summary>
     public IExternalSigner? ExternalSigner { get; }
 
-    [Reactive] public string PrivateKeyInput { get; set; } = string.Empty;
-    [Reactive] public string BunkerUrl { get; set; } = string.Empty;
-    [Reactive] public string? ErrorMessage { get; set; }
-    [Reactive] public bool IsLoading { get; set; }
-    [Reactive] public User? LoggedInUser { get; set; }
+    [Reactive] public partial string PrivateKeyInput { get; set; } = string.Empty;
+    [Reactive] public partial string BunkerUrl { get; set; } = string.Empty;
+    [Reactive] public partial string? ErrorMessage { get; set; }
+    [Reactive] public partial bool IsLoading { get; set; }
+    [Reactive] public partial User? LoggedInUser { get; set; }
 
     /// <summary>
     /// True when the login screen was opened via "Add Account" (shows a Cancel button).
     /// Set by ShellViewModel.
     /// </summary>
-    [Reactive] public bool IsAddAccountMode { get; set; }
+    [Reactive] public partial bool IsAddAccountMode { get; set; }
 
     // Generated key display
-    [Reactive] public string? GeneratedNsec { get; set; }
-    [Reactive] public string? GeneratedNpub { get; set; }
-    [Reactive] public bool ShowGeneratedKeys { get; set; }
+    [Reactive] public partial string? GeneratedNsec { get; set; }
+    [Reactive] public partial string? GeneratedNpub { get; set; }
+    [Reactive] public partial bool ShowGeneratedKeys { get; set; }
 
     // External signer
-    [Reactive] public bool ShowExternalSigner { get; set; }
-    [Reactive] public bool IsExternalSignerConnecting { get; set; }
-    [Reactive] public string ExternalSignerStatus { get; set; } = string.Empty;
-    [Reactive] public string? NostrConnectUri { get; set; }
+    [Reactive] public partial bool ShowExternalSigner { get; set; }
+    [Reactive] public partial bool IsExternalSignerConnecting { get; set; }
+    [Reactive] public partial string ExternalSignerStatus { get; set; } = string.Empty;
+    [Reactive] public partial string? NostrConnectUri { get; set; }
     /// <summary>QR code as PNG bytes (platform-neutral). Views convert to their image type.</summary>
-    [Reactive] public byte[]? NostrConnectQrPngBytes { get; set; }
-    [Reactive] public string SignerRelayInput { get; set; } = "wss://nos.lol";
+    [Reactive] public partial byte[]? NostrConnectQrPngBytes { get; set; }
+    [Reactive] public partial string SignerRelayInput { get; set; } = "wss://nos.lol";
 
     // Login method selection
-    [Reactive] public LoginMethod SelectedLoginMethod { get; set; } = LoginMethod.PrivateKey;
+    [Reactive] public partial LoginMethod SelectedLoginMethod { get; set; } = LoginMethod.PrivateKey;
 
     public ReactiveCommand<Unit, Unit> GenerateNewKeyCommand { get; }
     public ReactiveCommand<Unit, Unit> ImportKeyCommand { get; }
@@ -121,7 +121,7 @@ public class LoginViewModel : ViewModelBase
         if (ExternalSigner != null)
         {
             ExternalSigner.Status
-                .ObserveOn(RxApp.MainThreadScheduler)
+                .ObserveOn(RxSchedulers.MainThreadScheduler)
                 .Subscribe(async status =>
                 {
                     ExternalSignerStatus = status.State switch
@@ -305,8 +305,31 @@ public class LoginViewModel : ViewModelBase
             // ResolveSigningPubKeyAsync calls get_public_key AND updates the service's
             // own PublicKeyHex so downstream consumers stay in sync.
             var resolved = await ExternalSigner!.ResolveSigningPubKeyAsync();
-            if (!string.IsNullOrEmpty(resolved))
-                publicKeyHex = resolved;
+
+            // If we couldn't resolve the signing pubkey via get_public_key, refuse
+            // to log in rather than silently using the transport key. Using the
+            // transport key as the user identity is the bug that produced the
+            // wrong-npub / empty-chats symptom on bunker:// connections.
+            if (string.IsNullOrEmpty(resolved))
+            {
+                _logger.LogError("Could not resolve signing pubkey from signer (get_public_key returned null/invalid). Aborting login to avoid storing the transport key as the user identity.");
+                ErrorMessage = "Failed to obtain your public key from the signer. Please check the signer app and try again.";
+                await ExternalSigner!.DisconnectAsync();
+                return;
+            }
+
+            // Sanity check: if the resolved signing key equals the bunker's transport
+            // key AND the transport key happens to be 64 hex chars (i.e. it's a real
+            // signing-class key, not a different kind of envelope), that's still
+            // technically valid — some signers use the same key for both. We don't
+            // hard-fail here, but we do log it for diagnostics.
+            var transportKey = ExternalSigner!.RemotePubKey;
+            if (!string.IsNullOrEmpty(transportKey) && string.Equals(resolved, transportKey, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogInformation("Resolved signing pubkey equals transport pubkey {Pub} — signer uses one key for both roles", resolved[..Math.Min(16, resolved.Length)]);
+            }
+
+            publicKeyHex = resolved;
 
             // Derive npub directly from publicKeyHex so User.PublicKeyHex and
             // User.Npub stay in lockstep. Never read ExternalSigner.Npub here —

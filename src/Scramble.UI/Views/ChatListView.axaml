@@ -165,7 +165,7 @@
                                     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6"
                                                 VerticalAlignment="Center">
                                         <Button Classes="primary" Padding="8,4"
-                                                Command="{Binding #ChatListBox.DataContext.AcceptInviteCommand}"
+                                                Command="{Binding #ChatListBox.((vm:ChatListViewModel)DataContext).AcceptInviteCommand}"
                                                 CommandParameter="{Binding}"
                                                 IsEnabled="{Binding !IsProcessing}"
                                                 ToolTip.Tip="Accept invite">
@@ -179,7 +179,7 @@
                                             </Panel>
                                         </Button>
                                         <Button Classes="secondary" Padding="8,4"
-                                                Command="{Binding #ChatListBox.DataContext.DeclineInviteCommand}"
+                                                Command="{Binding #ChatListBox.((vm:ChatListViewModel)DataContext).DeclineInviteCommand}"
                                                 CommandParameter="{Binding}"
                                                 IsEnabled="{Binding !IsProcessing}"
                                                 ToolTip.Tip="Decline invite">
@@ -252,7 +252,7 @@
                         <Grid.ContextMenu>
                             <ContextMenu>
                                 <MenuItem Header="Archive"
-                                          Command="{Binding #ChatListBox.DataContext.ArchiveChatCommand}"
+                                          Command="{Binding #ChatListBox.((vm:ChatListViewModel)DataContext).ArchiveChatCommand}"
                                           CommandParameter="{Binding}">
                                     <MenuItem.Icon>
                                         <PathIcon Data="M20.54 5.23l-1.39-1.68C18.88 3.21 18.47 3 18 3H6c-.47 0-.88.21-1.16.55L3.46 5.23C3.17 5.57 3 6.02 3 6.5V19c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6.5c0-.48-.17-.93-.46-1.27zM12 17.5L6.5 12H10v-2h4v2h3.5L12 17.5zM5.12 5l.81-1h12l.94 1H5.12z"
@@ -260,14 +260,14 @@
                                     </MenuItem.Icon>
                                 </MenuItem>
                                 <MenuItem Header="Rename"
-                                          Command="{Binding #ChatListBox.DataContext.RenameChatCommand}"
+                                          Command="{Binding #ChatListBox.((vm:ChatListViewModel)DataContext).RenameChatCommand}"
                                           CommandParameter="{Binding}">
                                     <MenuItem.Icon>
                                         <PathIcon Data="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.9959.9959 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"
                                                   Width="16" Height="16" />
                                     </MenuItem.Icon>
                                 </MenuItem>
-                                <MenuItem Command="{Binding #ChatListBox.DataContext.ToggleMuteCommand}"
+                                <MenuItem Command="{Binding #ChatListBox.((vm:ChatListViewModel)DataContext).ToggleMuteCommand}"
                                           CommandParameter="{Binding}">
                                     <MenuItem.Header>
                                         <Panel>
@@ -283,7 +283,7 @@
                                 <Separator />
                                 <MenuItem Header="Reset Group"
                                           IsVisible="{Binding IsGroup}"
-                                          Command="{Binding #ChatListBox.DataContext.ResetGroupCommand}"
+                                          Command="{Binding #ChatListBox.((vm:ChatListViewModel)DataContext).ResetGroupCommand}"
                                           CommandParameter="{Binding}">
                                     <MenuItem.Icon>
                                         <PathIcon Data="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"
@@ -291,7 +291,7 @@
                                     </MenuItem.Icon>
                                 </MenuItem>
                                 <MenuItem Header="Delete"
-                                          Command="{Binding #ChatListBox.DataContext.DeleteChatCommand}"
+                                          Command="{Binding #ChatListBox.((vm:ChatListViewModel)DataContext).DeleteChatCommand}"
                                           CommandParameter="{Binding}">
                                     <MenuItem.Icon>
                                         <PathIcon Data="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
@@ -445,12 +445,12 @@
                             <Grid.ContextMenu>
                                 <ContextMenu>
                                     <MenuItem Header="Archive"
-                                              Command="{Binding #AgentListBox.DataContext.ArchiveChatCommand}"
+                                              Command="{Binding #AgentListBox.((vm:ChatListViewModel)DataContext).ArchiveChatCommand}"
                                               CommandParameter="{Binding}" />
                                     <MenuItem Header="Rename"
-                                              Command="{Binding #AgentListBox.DataContext.RenameChatCommand}"
+                                              Command="{Binding #AgentListBox.((vm:ChatListViewModel)DataContext).RenameChatCommand}"
                                               CommandParameter="{Binding}" />
-                                    <MenuItem Command="{Binding #AgentListBox.DataContext.ToggleMuteCommand}"
+                                    <MenuItem Command="{Binding #AgentListBox.((vm:ChatListViewModel)DataContext).ToggleMuteCommand}"
                                               CommandParameter="{Binding}">
                                         <MenuItem.Header>
                                             <Panel>
@@ -461,7 +461,7 @@
                                     </MenuItem>
                                     <Separator />
                                     <MenuItem Header="Delete"
-                                              Command="{Binding #AgentListBox.DataContext.DeleteChatCommand}"
+                                              Command="{Binding #AgentListBox.((vm:ChatListViewModel)DataContext).DeleteChatCommand}"
                                               CommandParameter="{Binding}" />
                                 </ContextMenu>
                             </Grid.ContextMenu>
@@ -470,11 +470,11 @@
                                     Background="Transparent"
                                     Margin="0,0,12,0" VerticalAlignment="Center">
                                 <Panel>
-                                    <PathIcon Width="24" Height="24" IsVisible="{Binding !HasAvatar}"
+                                    <PathIcon Width="24" Height="24" IsVisible="{Binding LocalAvatarPath, Converter={x:Static StringConverters.IsNullOrEmpty}}"
                                               Foreground="{DynamicResource TextMutedBrush}"
                                               Data="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
                                     <Border CornerRadius="24" ClipToBounds="True"
-                                            IsVisible="{Binding HasAvatar}">
+                                            IsVisible="{Binding LocalAvatarPath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
                                         <Image Width="48" Height="48"
                                                Source="{Binding LocalAvatarPath}"
                                                Stretch="UniformToFill" />
@@ -483,7 +483,7 @@
                             </Border>
                             <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                 <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14" />
-                                <TextBlock Text="{Binding LastMessage}" FontSize="12"
+                                <TextBlock Text="{Binding LastMessagePreview}" FontSize="12"
                                            Foreground="{DynamicResource TextMutedBrush}"
                                            TextTrimming="CharacterEllipsis" MaxLines="1" />
                             </StackPanel>
@@ -505,10 +505,10 @@
                             <Grid.ContextMenu>
                                 <ContextMenu>
                                     <MenuItem Header="Unarchive"
-                                              Command="{Binding #ArchivedListBox.DataContext.UnarchiveChatCommand}"
+                                              Command="{Binding #ArchivedListBox.((vm:ChatListViewModel)DataContext).UnarchiveChatCommand}"
                                               CommandParameter="{Binding}" />
                                     <MenuItem Header="Delete"
-                                              Command="{Binding #ArchivedListBox.DataContext.DeleteChatCommand}"
+                                              Command="{Binding #ArchivedListBox.((vm:ChatListViewModel)DataContext).DeleteChatCommand}"
                                               CommandParameter="{Binding}" />
                                 </ContextMenu>
                             </Grid.ContextMenu>

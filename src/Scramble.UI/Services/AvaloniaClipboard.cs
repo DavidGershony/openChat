@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Input.Platform;
 using Scramble.Presentation.Services;
 
 namespace Scramble.UI.Services;
@@ -25,7 +26,7 @@ public class AvaloniaClipboard : IPlatformClipboard
             var clipboard = desktop.MainWindow?.Clipboard;
             if (clipboard != null)
             {
-                return await clipboard.GetTextAsync();
+                return await clipboard.TryGetTextAsync();
             }
         }
         return null;

@@ -15,7 +15,7 @@
         MinWidth="800" MinHeight="600"
         WindowStartupLocation="CenterScreen"
         ExtendClientAreaToDecorationsHint="True"
-        ExtendClientAreaChromeHints="NoChrome"
+        WindowDecorations="None"
         ExtendClientAreaTitleBarHeightHint="38"
         TransparencyLevelHint="Transparent"
         Background="Transparent">
@@ -649,7 +649,7 @@
                                                         Background="Transparent" BorderThickness="0"
                                                         Padding="8,6"
                                                         IsVisible="{Binding IsVisible}"
-                                                        Command="{Binding #FollowingList.DataContext.AddContactToChatCommand}"
+                                                         Command="{Binding #FollowingList.((vm:ChatListViewModel)DataContext).AddContactToChatCommand}"
                                                         CommandParameter="{Binding PublicKeyHex}">
                                                     <Grid ColumnDefinitions="Auto,*">
                                                         <Border Grid.Column="0" Width="28" Height="28" CornerRadius="14"

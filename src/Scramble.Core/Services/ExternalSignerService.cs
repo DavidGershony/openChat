@@ -148,10 +148,18 @@ public class ExternalSignerService : IExternalSigner, IDisposable
 
             if (response == "ack")
             {
+                // Mark connected BEFORE awaiting get_public_key. The unmatched-response
+                // branch in ProcessDecryptedNip46Message uses `!IsConnected` as the
+                // signal to interpret a stray response as a nostrconnect connect-ack;
+                // if IsConnected were still false during this await window, a duplicate
+                // relay fanout of the connect ack would mis-route through
+                // HandleIncomingConnect and overwrite PublicKeyHex with the bunker's
+                // transport pubkey — exactly the bug that produced the wrong npub.
+                IsConnected = true;
+
                 // Get public key from signer
                 _logger.LogInformation("Connection approved, fetching public key from signer");
                 PublicKeyHex = await GetPublicKeyAsync();
-                IsConnected = true;
                 _logger.LogInformation("Successfully connected to external signer. Public key: {PubKey}", PublicKeyHex[..16] + "...");
                 _status.OnNext(new ExternalSignerStatus
                 {
@@ -220,8 +228,11 @@ public class ExternalSignerService : IExternalSigner, IDisposable
                 return false;
             }
 
-            // Temporarily use remotePubKey until we can fetch the real signing key
-            PublicKeyHex = remotePubKey;
+            // Do NOT seed PublicKeyHex with remotePubKey — remotePubKey is the
+            // NIP-46 transport key (the bunker key) and is NOT necessarily the
+            // user's signing key. If get_public_key fails below we MUST fail the
+            // restore rather than silently use the wrong key as the user's identity.
+            PublicKeyHex = null;
 
             // Connect WebSockets to all relays
             _subscriptionSince = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 5;
@@ -232,21 +243,36 @@ public class ExternalSignerService : IExternalSigner, IDisposable
 
             // Fetch the actual signing pubkey — remotePubKey is the NIP-46 communication key,
             // which may differ from the key Amber uses to sign events.
+            string? signingPubKey = null;
             try
             {
-                var signingPubKey = await GetPublicKeyAsync();
-                if (!string.IsNullOrEmpty(signingPubKey) && signingPubKey != remotePubKey)
-                {
-                    _logger.LogInformation("NIP-46 signing pubkey differs from remote pubkey: signing={SigningKey}, remote={RemoteKey}",
-                        signingPubKey[..Math.Min(16, signingPubKey.Length)] + "...",
-                        remotePubKey[..Math.Min(16, remotePubKey.Length)] + "...");
-                    PublicKeyHex = signingPubKey;
-                }
+                signingPubKey = await GetPublicKeyAsync();
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to fetch signing pubkey from signer during restore, using remotePubKey as fallback");
+                _logger.LogError(ex, "Failed to fetch signing pubkey from signer during restore");
             }
+
+            if (string.IsNullOrEmpty(signingPubKey) || signingPubKey.Length != 64)
+            {
+                _logger.LogError("Signer did not return a valid signing pubkey during restore (got '{Value}'); aborting restore to avoid using transport key as user identity",
+                    signingPubKey);
+                IsConnected = false;
+                _status.OnNext(new ExternalSignerStatus
+                {
+                    State = ExternalSignerState.Error,
+                    Error = "Signer did not return a valid public key"
+                });
+                return false;
+            }
+
+            if (signingPubKey != remotePubKey)
+            {
+                _logger.LogInformation("NIP-46 signing pubkey differs from remote pubkey: signing={SigningKey}, remote={RemoteKey}",
+                    signingPubKey[..Math.Min(16, signingPubKey.Length)] + "...",
+                    remotePubKey[..Math.Min(16, remotePubKey.Length)] + "...");
+            }
+            PublicKeyHex = signingPubKey;
 
             _logger.LogInformation("NIP-46 session restored on {Count} relays. Ready to send requests.", _relayConnections.Count);
             _status.OnNext(new ExternalSignerStatus
@@ -773,10 +799,15 @@ public class ExternalSignerService : IExternalSigner, IDisposable
                     tcs.TrySetResult(response.Result ?? "");
                 }
             }
-            else if (!IsConnected && response?.Result != null)
+            else if (!IsConnected && response?.Result != null && _pendingRequests.Count == 0)
             {
-                // Unmatched response while not connected — this is Amber's connect ack
-                // (nostrconnect:// flow: Amber sends a response with the secret as result)
+                // Unmatched response while not connected AND nothing pending — this is
+                // Amber's connect ack for the nostrconnect:// flow (Amber sends a
+                // response with the secret as result). For the bunker:// flow there is
+                // ALWAYS a pending request at this point (the connect or get_public_key
+                // request we just sent), so the pending-count guard prevents the bunker
+                // reply from being mis-routed here and clobbering PublicKeyHex with the
+                // bunker's transport pubkey.
                 _logger.LogInformation("NIP-46 treating unmatched response as connect ack from {Sender}", senderPubKey[..16]);
                 HandleIncomingConnect(senderPubKey, nip46Doc.RootElement, response?.Id);
             }
@@ -797,29 +828,42 @@ public class ExternalSignerService : IExternalSigner, IDisposable
     private void HandleIncomingConnect(string senderPubKey, JsonElement root, string? reqId)
     {
         _remotePubKey = senderPubKey;
-        PublicKeyHex = senderPubKey;
+
+        // Do NOT default PublicKeyHex to senderPubKey. The sender pubkey is the
+        // NIP-46 *transport* key (the bunker key), not the user's signing pubkey.
+        // For Amber and other signers these can be different, and using the
+        // transport key as the user identity caused a wrong-npub bug where the
+        // chat list was filtered against the bunker pubkey and showed empty.
+        // Only set PublicKeyHex from an explicit signing-key payload below; if
+        // none is present, leave the previous value (caller will resolve it via
+        // a follow-up get_public_key).
+        string? signingPubKey = null;
 
         // Try to extract the actual signer pubkey from params[0] if available
         if (root.TryGetProperty("params", out var paramsProp) && paramsProp.ValueKind == JsonValueKind.Array && paramsProp.GetArrayLength() > 0)
         {
-            var signerPubKey = paramsProp[0].GetString();
-            if (!string.IsNullOrEmpty(signerPubKey) && signerPubKey.Length == 64)
-                PublicKeyHex = signerPubKey;
+            var p0 = paramsProp[0].GetString();
+            if (!string.IsNullOrEmpty(p0) && p0.Length == 64)
+                signingPubKey = p0;
         }
         // Or from result field (some signers put pubkey there)
         else if (root.TryGetProperty("result", out var resultProp))
         {
             var resultVal = resultProp.GetString();
             if (!string.IsNullOrEmpty(resultVal) && resultVal.Length == 64)
-                PublicKeyHex = resultVal;
+                signingPubKey = resultVal;
         }
+
+        if (signingPubKey != null)
+            PublicKeyHex = signingPubKey;
 
         IsConnected = true;
 
         if (reqId != null)
             _ = SendNip46ResponseAsync(reqId, "ack", senderPubKey);
 
-        _logger.LogInformation("NIP-46 signer connected via nostrconnect. PubKey: {PubKey}", PublicKeyHex[..16]);
+        var pubKeyForLog = PublicKeyHex != null && PublicKeyHex.Length >= 16 ? PublicKeyHex[..16] : (PublicKeyHex ?? "(unresolved — pending get_public_key)");
+        _logger.LogInformation("NIP-46 signer connected via nostrconnect. PubKey: {PubKey}", pubKeyForLog);
         _status.OnNext(new ExternalSignerStatus
         {
             State = ExternalSignerState.Connected,

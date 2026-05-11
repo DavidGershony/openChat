@@ -24,7 +24,7 @@ public partial class MainWindow : Window
             if (DataContext is ShellViewModel shell)
             {
                 shell.WhenAnyValue(x => x.IsLoggedIn)
-                    .ObserveOn(RxApp.MainThreadScheduler)
+                    .ObserveOn(RxSchedulers.MainThreadScheduler)
                     .Subscribe(isLoggedIn =>
                     {
                         var mainGrid = this.FindControl<Grid>("MainGrid");
@@ -42,7 +42,7 @@ public partial class MainWindow : Window
                     .Where(vm => vm != null)
                     .Select(vm => vm!.WhenAnyValue(v => v.ShowMyProfileDialog))
                     .Switch()
-                    .ObserveOn(RxApp.MainThreadScheduler)
+                    .ObserveOn(RxSchedulers.MainThreadScheduler)
                     .Subscribe(show =>
                     {
                         if (profileOverlay != null) profileOverlay.IsVisible = show;
@@ -51,7 +51,7 @@ public partial class MainWindow : Window
                 // Hide profile dialog when MainViewModel is cleared (logout/switch)
                 shell.WhenAnyValue(x => x.MainViewModel)
                     .Where(vm => vm == null)
-                    .ObserveOn(RxApp.MainThreadScheduler)
+                    .ObserveOn(RxSchedulers.MainThreadScheduler)
                     .Subscribe(_ =>
                     {
                         if (profileOverlay != null) profileOverlay.IsVisible = false;
