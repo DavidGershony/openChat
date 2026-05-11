@@ -17,6 +17,7 @@ using Scramble.Presentation.ViewModels;
 using ReactiveUI;
 using System.Linq;
 using System.Reactive.Disposables;
+using System.Reactive.Disposables.Fluent;
 using System.Reactive.Linq;
 using System.Threading.Tasks;
 
@@ -84,7 +85,7 @@ public class MainActivity : AppCompatActivity, IActivatableView
 
         // Observe login state and switch fragments
         _shellViewModel.WhenAnyValue(x => x.IsLoggedIn)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(isLoggedIn =>
             {
                 if (isLoggedIn && _shellViewModel.MainViewModel != null)
@@ -114,7 +115,7 @@ public class MainActivity : AppCompatActivity, IActivatableView
         // share intent is pending — the share flow already targets a specific
         // account, so popping the picker would just be in the way.
         _shellViewModel.WhenAnyValue(x => x.ShowAccountSwitcher)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Where(show => show)
             .Subscribe(_ =>
             {
@@ -423,7 +424,7 @@ public class MainActivity : AppCompatActivity, IActivatableView
         var settingsVm = mainVm.SettingsViewModel;
         settingsVm.WhenAnyValue(x => x.NotificationModeBackground)
             .Take(1)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(isBackground =>
             {
                 if (isBackground)

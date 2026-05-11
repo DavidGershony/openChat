@@ -15,6 +15,7 @@ using Scramble.Presentation.ViewModels;
 using ReactiveUI;
 using System.Collections.Specialized;
 using System.Reactive.Disposables;
+using System.Reactive.Disposables.Fluent;
 using System.Reactive.Linq;
 using Fragment = AndroidX.Fragment.App.Fragment;
 
@@ -150,7 +151,7 @@ public class NewChatFragment : Fragment
 
         // Show sending overlay while creating
         ViewModel.CreateChatCommand.IsExecuting
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(creating =>
             {
                 formSection.Visibility = creating ? ViewStates.Gone : ViewStates.Visible;
@@ -161,7 +162,7 @@ public class NewChatFragment : Fragment
             .DisposeWith(_disposables);
 
         ViewModel.WhenAnyValue(x => x.CreateProgress)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(progress =>
             {
                 sendingStatusText.Text = progress ?? "Creating chat...";
@@ -176,7 +177,7 @@ public class NewChatFragment : Fragment
 
         // Show red border on invalid npub
         ViewModel.WhenAnyValue(x => x.IsParticipantInputInvalid)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(invalid =>
             {
                 participantLayout.Error = invalid ? "Invalid npub / nprofile" : null;
@@ -185,7 +186,7 @@ public class NewChatFragment : Fragment
             .DisposeWith(_disposables);
 
         ViewModel.WhenAnyValue(x => x.NewChatError)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(error =>
             {
                 errorText.Text = error ?? "";
@@ -194,7 +195,7 @@ public class NewChatFragment : Fragment
             .DisposeWith(_disposables);
 
         ViewModel.WhenAnyValue(x => x.KeyPackageStatus)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(status =>
             {
                 statusText.Text = status ?? "";
@@ -203,7 +204,7 @@ public class NewChatFragment : Fragment
             .DisposeWith(_disposables);
 
         ViewModel.WhenAnyValue(x => x.IsLookingUpKeyPackages)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(loading =>
             {
                 lookupButton.Enabled = !loading;
@@ -212,7 +213,7 @@ public class NewChatFragment : Fragment
             .DisposeWith(_disposables);
 
         ViewModel.CreateChatCommand.CanExecute
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(canCreate => createButton.Enabled = canCreate)
             .DisposeWith(_disposables);
 
@@ -233,7 +234,7 @@ public class NewChatFragment : Fragment
         }
 
         ViewModel.WhenAnyValue(x => x.ShowNewChatDialog)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Where(show => !show)
             .Subscribe(_ => ParentFragmentManager.PopBackStack())
             .DisposeWith(_disposables);

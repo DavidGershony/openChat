@@ -9,6 +9,7 @@ using Google.Android.Material.TextField;
 using Scramble.Presentation.ViewModels;
 using ReactiveUI;
 using System.Reactive.Disposables;
+using System.Reactive.Disposables.Fluent;
 using System.Reactive.Linq;
 using Fragment = AndroidX.Fragment.App.Fragment;
 
@@ -134,7 +135,7 @@ public class LoginFragment : Fragment
 
         // Bind ViewModel to views
         ViewModel.WhenAnyValue(x => x.SelectedLoginMethod)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(method =>
             {
                 importKeySection.Visibility = method == LoginMethod.PrivateKey ? ViewStates.Visible : ViewStates.Gone;
@@ -144,7 +145,7 @@ public class LoginFragment : Fragment
             .DisposeWith(_disposables);
 
         ViewModel.WhenAnyValue(x => x.ErrorMessage)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(error =>
             {
                 errorMessage.Text = error ?? string.Empty;
@@ -153,7 +154,7 @@ public class LoginFragment : Fragment
             .DisposeWith(_disposables);
 
         ViewModel.WhenAnyValue(x => x.ShowGeneratedKeys)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(show =>
             {
                 generatedKeysLayout.Visibility = show ? ViewStates.Visible : ViewStates.Gone;
@@ -161,17 +162,17 @@ public class LoginFragment : Fragment
             .DisposeWith(_disposables);
 
         ViewModel.WhenAnyValue(x => x.GeneratedNpub)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(npub => generatedNpub.Text = npub ?? string.Empty)
             .DisposeWith(_disposables);
 
         ViewModel.WhenAnyValue(x => x.GeneratedNsec)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(nsec => generatedNsec.Text = nsec ?? string.Empty)
             .DisposeWith(_disposables);
 
         ViewModel.WhenAnyValue(x => x.IsLoading)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(loading =>
             {
                 importKeyButton.Enabled = !loading;
@@ -184,7 +185,7 @@ public class LoginFragment : Fragment
 
         // External signer bindings
         ViewModel.WhenAnyValue(x => x.NostrConnectQrPngBytes)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(bytes =>
             {
                 if (bytes != null && bytes.Length > 0)
@@ -201,7 +202,7 @@ public class LoginFragment : Fragment
             .DisposeWith(_disposables);
 
         ViewModel.WhenAnyValue(x => x.NostrConnectUri)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(uri =>
             {
                 connectUriText.Text = string.IsNullOrEmpty(uri) ? "" : "Tap to open in Amber (or scan QR above)";
@@ -214,7 +215,7 @@ public class LoginFragment : Fragment
         // It only drives the spinner — the Connect button stays enabled so the user
         // can fall back to pasting a bunker URL instead of waiting for a scan.
         ViewModel.WhenAnyValue(x => x.IsExternalSignerConnecting)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(connecting =>
             {
                 signerProgress.Visibility = connecting ? ViewStates.Visible : ViewStates.Gone;
@@ -222,7 +223,7 @@ public class LoginFragment : Fragment
             .DisposeWith(_disposables);
 
         ViewModel.WhenAnyValue(x => x.ExternalSignerStatus)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(status =>
             {
                 signerStatus.Text = status ?? "";
@@ -237,7 +238,7 @@ public class LoginFragment : Fragment
         };
 
         ViewModel.WhenAnyValue(x => x.IsAddAccountMode)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(isAdding =>
             {
                 cancelAddAccountButton.Visibility = isAdding ? ViewStates.Visible : ViewStates.Gone;
