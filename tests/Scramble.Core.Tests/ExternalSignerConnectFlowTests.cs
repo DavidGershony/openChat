@@ -31,7 +31,12 @@ public class ExternalSignerConnectFlowTests
         signer.ProcessDecryptedNip46Message(amberResponse, FakeSenderPubKey);
 
         Assert.True(signer.IsConnected);
-        Assert.Equal(FakeSenderPubKey, signer.PublicKeyHex);
+        // Post-074f018: PublicKeyHex is deliberately NOT defaulted to senderPubKey
+        // (the NIP-46 transport key), since for Amber the transport key and the
+        // user's signing pubkey differ. The caller resolves the signing key via
+        // a follow-up get_public_key. The 'result' here is the bunker secret
+        // (32 hex chars), not a pubkey, so signingPubKey extraction returns null.
+        Assert.Null(signer.PublicKeyHex);
     }
 
     [Fact]
@@ -47,7 +52,11 @@ public class ExternalSignerConnectFlowTests
         Assert.NotNull(lastStatus);
         Assert.True(lastStatus!.IsConnected);
         Assert.Equal(ExternalSignerState.Connected, lastStatus.State);
-        Assert.Equal(FakeSenderPubKey, lastStatus.PublicKeyHex);
+        // Post-074f018: the Connected status carries PublicKeyHex = null when
+        // the connect ack's `result` is the bunker secret (not a 64-hex pubkey).
+        // LoginViewModel falls back to get_public_key to resolve the user's
+        // real signing key — see HandleSignerConnectedAsync for the resolution.
+        Assert.Null(lastStatus.PublicKeyHex);
     }
 
     [Fact]
