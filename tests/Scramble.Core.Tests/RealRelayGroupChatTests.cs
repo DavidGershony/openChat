@@ -10,8 +10,6 @@ using Scramble.Core.Services;
 using Xunit;
 using Scramble.Core.Configuration;
 using Scramble.Core.Tests.TestHelpers;
-using Xunit.Abstractions;
-
 namespace Scramble.Core.Tests;
 
 /// <summary>
@@ -48,7 +46,7 @@ public class RealRelayGroupChatTests : IAsyncLifetime
         _logger = LoggingConfiguration.CreateLogger<RealRelayGroupChatTests>();
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _relayAvailable = await IsRelayReachableAsync();
         if (!_relayAvailable)
@@ -68,7 +66,7 @@ public class RealRelayGroupChatTests : IAsyncLifetime
             _userA.PubKey[..16], _userB.PubKey[..16]);
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         await DisposeUserAsync(_userA);
         await DisposeUserAsync(_userB);

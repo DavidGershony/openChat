@@ -8,8 +8,6 @@ using Scramble.Core.Services;
 using Scramble.Diagnostics.TestHelpers;
 using MarmotCs.Protocol.Crypto;
 using Xunit;
-using Xunit.Abstractions;
-
 namespace Scramble.Diagnostics;
 
 /// <summary>
@@ -24,19 +22,19 @@ public class ExporterSecretComparisonTests : IAsyncLifetime
 
     public ExporterSecretComparisonTests(ITestOutputHelper output) => _output = output;
 
-    public Task InitializeAsync()
+    public ValueTask InitializeAsync()
     {
         ProfileConfiguration.SetAllowLocalRelays(true);
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
-    public Task DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         SqliteConnection.ClearAllPools();
         GC.Collect();
         GC.WaitForPendingFinalizers();
         foreach (var p in _dbPaths) try { if (File.Exists(p)) File.Delete(p); } catch { }
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     private async Task<(User user, StorageService storage, IMlsService mls)> CreateUser(string name, string backend)

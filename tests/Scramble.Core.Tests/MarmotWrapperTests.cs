@@ -14,7 +14,7 @@ public class MarmotWrapperTests : IAsyncLifetime
     private string _privateKey = null!;
     private string _publicKey = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         var nostrService = new NostrService();
         (_privateKey, _publicKey, _, _) = nostrService.GenerateKeyPair();
@@ -23,10 +23,10 @@ public class MarmotWrapperTests : IAsyncLifetime
         await _wrapper.InitializeAsync(_privateKey, _publicKey);
     }
 
-    public Task DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         _wrapper.Dispose();
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     [Fact]

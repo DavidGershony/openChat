@@ -2,8 +2,6 @@ using System.Security.Cryptography;
 using MarmotCs.Protocol.Crypto;
 using MarmotCs.Protocol.Mip03;
 using Xunit;
-using Xunit.Abstractions;
-
 namespace Scramble.Core.Tests;
 
 /// <summary>

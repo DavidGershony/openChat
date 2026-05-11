@@ -8,8 +8,6 @@ using Scramble.Core.Marmot;
 using Scramble.Core.Services;
 using Xunit;
 using Scramble.Core.Tests.TestHelpers;
-using Xunit.Abstractions;
-
 namespace Scramble.Core.Tests;
 
 /// <summary>
@@ -47,7 +45,7 @@ public class Mip00InteropTests : IAsyncLifetime
         return File.Exists(dllPath);
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         if (!NativeDllAvailable())
             return;
@@ -68,7 +66,7 @@ public class Mip00InteropTests : IAsyncLifetime
         await _managedMls.InitializeAsync(_managedPrivKey, _managedPubKey);
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         _rustClient?.Dispose();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();

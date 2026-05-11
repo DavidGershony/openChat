@@ -27,7 +27,7 @@ public class NativeMarmotIntegrationTests : IAsyncLifetime
         return File.Exists(dllPath);
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         if (!NativeDllAvailable())
             return; // Tests will be skipped via Skip
@@ -43,11 +43,11 @@ public class NativeMarmotIntegrationTests : IAsyncLifetime
         await _clientB.InitializeAsync(_privKeyB, _pubKeyB);
     }
 
-    public Task DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         _clientA?.Dispose();
         _clientB?.Dispose();
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     [Fact]

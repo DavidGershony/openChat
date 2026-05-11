@@ -26,7 +26,7 @@ public class RelayIntegrationTests : IAsyncLifetime
     private string _pubKeyB = null!;
     private string _privKeyB = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         ProfileConfiguration.SetAllowLocalRelays(true);
         _nostrServiceA = new NostrService();
@@ -49,7 +49,7 @@ public class RelayIntegrationTests : IAsyncLifetime
         await Task.Delay(1000);
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         await _nostrServiceA.DisconnectAsync();
         await _nostrServiceB.DisconnectAsync();

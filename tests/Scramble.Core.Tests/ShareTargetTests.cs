@@ -26,12 +26,12 @@ public class ShareTargetTests : IAsyncLifetime
         _testRootDir = Path.Combine(Path.GetTempPath(), $"scramble_share_root_{Guid.NewGuid()}");
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await _storageService.InitializeAsync();
     }
 
-    public Task DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         SqliteConnection.ClearAllPools();
         GC.Collect();
@@ -40,7 +40,7 @@ public class ShareTargetTests : IAsyncLifetime
         try { if (File.Exists(_testDbPath)) File.Delete(_testDbPath); } catch (IOException) { }
         try { if (Directory.Exists(_testRootDir)) Directory.Delete(_testRootDir, true); } catch (IOException) { }
 
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     // ───────────────────────────────────────────────

@@ -3,8 +3,6 @@ using System.Text;
 using Scramble.Core.Crypto;
 using Scramble.Core.Services;
 using Xunit;
-using Xunit.Abstractions;
-
 namespace Scramble.Core.Tests;
 
 /// <summary>

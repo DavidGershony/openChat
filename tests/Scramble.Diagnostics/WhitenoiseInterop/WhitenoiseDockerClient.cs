@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
-using Xunit.Abstractions;
-
+using Xunit;
 namespace Scramble.Diagnostics.WhitenoiseInterop;
 
 /// <summary>

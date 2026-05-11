@@ -5,8 +5,6 @@ using MarmotCs.Protocol.Nip59;
 using NBitcoin.Secp256k1;
 using Scramble.Core.Services;
 using Xunit;
-using Xunit.Abstractions;
-
 namespace Scramble.Core.Tests;
 
 /// <summary>

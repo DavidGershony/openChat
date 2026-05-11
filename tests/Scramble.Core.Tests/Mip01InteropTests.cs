@@ -10,7 +10,6 @@ using Scramble.Core.Models;
 using Scramble.Core.Services;
 using Xunit;
 using Scramble.Core.Tests.TestHelpers;
-using Xunit.Abstractions;
 using Extension = DotnetMls.Types.Extension;
 using KeyPackage = Scramble.Core.Models.KeyPackage;
 
@@ -56,7 +55,7 @@ public class Mip01InteropTests : IAsyncLifetime
         return File.Exists(dllPath);
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         if (!NativeDllAvailable())
             return;
@@ -85,7 +84,7 @@ public class Mip01InteropTests : IAsyncLifetime
         await _managedMlsB.InitializeAsync(_managedPrivKeyB, _managedPubKeyB);
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         _rustClient?.Dispose();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();

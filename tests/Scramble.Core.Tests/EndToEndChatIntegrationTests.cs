@@ -47,10 +47,10 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
     private IMlsService _mlsServiceB => _userB.MlsService;
     private MessageService _messageServiceB => _userB.MessageService;
 
-    public Task InitializeAsync()
+    public ValueTask InitializeAsync()
     {
         ProfileConfiguration.SetAllowLocalRelays(true);
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     private async Task SetupUsers(string backend)
@@ -59,7 +59,7 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
         _userB = await SetupUser("B", backend);
     }
 
-    public Task DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         _userA?.MessageService?.Dispose();
         _userB?.MessageService?.Dispose();
@@ -70,7 +70,7 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
 
         if (_userA != null) TryDeleteFile(_userA.DbPath);
         if (_userB != null) TryDeleteFile(_userB.DbPath);
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     // ═══════════════════════════════════════════════════════════════════

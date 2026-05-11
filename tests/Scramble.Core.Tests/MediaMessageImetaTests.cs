@@ -3,8 +3,6 @@ using Scramble.Core.Configuration;
 using Scramble.Core.Services;
 using Scramble.Core.Tests.TestHelpers;
 using Xunit;
-using Xunit.Abstractions;
-
 namespace Scramble.Core.Tests;
 
 /// <summary>

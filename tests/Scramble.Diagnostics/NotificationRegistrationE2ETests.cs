@@ -7,8 +7,6 @@ using MarmotCs.Protocol.Nip44;
 using Scramble.Core.Configuration;
 using Scramble.Core.Services;
 using Xunit;
-using Xunit.Abstractions;
-
 namespace Scramble.Diagnostics;
 
 /// <summary>
@@ -36,7 +34,7 @@ public class NotificationRegistrationE2ETests : IAsyncLifetime
         _output = output;
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         ProfileConfiguration.SetAllowLocalRelays(true);
 
@@ -61,7 +59,7 @@ public class NotificationRegistrationE2ETests : IAsyncLifetime
         _output.WriteLine($"Server pubkey: {_serverPubKeyHex[..16]}...");
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         try { await _clientNostr.DisconnectAsync(); } catch { }
         (_clientNostr as IDisposable)?.Dispose();

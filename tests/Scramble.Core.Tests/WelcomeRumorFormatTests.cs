@@ -6,8 +6,6 @@ using Scramble.Core.Configuration;
 using Scramble.Core.Models;
 using Scramble.Core.Services;
 using Xunit;
-using Xunit.Abstractions;
-
 namespace Scramble.Core.Tests;
 
 /// <summary>
@@ -40,7 +38,7 @@ public class WelcomeRumorFormatTests : IAsyncLifetime
         ProfileConfiguration.SetAllowLocalRelays(true);
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _nostrServiceA = new NostrService();
         _nostrServiceB = new NostrService();
@@ -73,7 +71,7 @@ public class WelcomeRumorFormatTests : IAsyncLifetime
         await Task.Delay(500);
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         await _nostrServiceA.DisconnectAsync();
         await _nostrServiceB.DisconnectAsync();

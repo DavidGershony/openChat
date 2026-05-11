@@ -17,12 +17,12 @@ public class StorageServiceTests : IAsyncLifetime
         _storageService = new StorageService(_testDbPath, new MockSecureStorage());
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await _storageService.InitializeAsync();
     }
 
-    public Task DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         // Clear SQLite connection pool to release file handles
         SqliteConnection.ClearAllPools();
@@ -42,7 +42,7 @@ public class StorageServiceTests : IAsyncLifetime
         {
             // Ignore if file is still locked - it's in temp folder anyway
         }
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     [Fact]

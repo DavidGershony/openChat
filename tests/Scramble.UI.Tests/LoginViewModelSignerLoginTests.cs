@@ -103,6 +103,12 @@ public class LoginViewModelSignerLoginTests
         var signerPubKey = new string('a', 64);
         var signer = new MockExternalSignerBuilder().Build(); // no signing pubkey set
         signer.Mock.Setup(s => s.GetPublicKeyAsync()).ReturnsAsync(signerPubKey);
+        // HandleSignerConnectedAsync calls ResolveSigningPubKeyAsync to get the
+        // user's real identity. The mock builder only wires this when a pubkey
+        // is configured up-front; this test sets the pubkey *after* Build(), so
+        // we also wire Resolve here. Without this, the VM treats the resolve as
+        // a failure and aborts login (LoggedInUser stays null).
+        signer.Mock.Setup(s => s.ResolveSigningPubKeyAsync()).ReturnsAsync(signerPubKey);
 
         var vm = CreateLoginViewModel(signer.Object);
 

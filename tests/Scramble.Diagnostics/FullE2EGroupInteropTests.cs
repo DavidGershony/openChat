@@ -7,8 +7,6 @@ using Scramble.Core.Services;
 using Scramble.Diagnostics.TestHelpers;
 using Scramble.Diagnostics.WhitenoiseInterop;
 using Xunit;
-using Xunit.Abstractions;
-
 namespace Scramble.Diagnostics;
 
 /// <summary>
@@ -41,7 +39,7 @@ public class FullE2EGroupInteropTests : IAsyncLifetime
         _output = output;
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         ProfileConfiguration.SetAllowLocalRelays(true);
         _wnClient = new WhitenoiseDockerClient(_output);
@@ -56,7 +54,7 @@ public class FullE2EGroupInteropTests : IAsyncLifetime
         }
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         if (_wnClient != null)
             await _wnClient.DisposeAsync();
