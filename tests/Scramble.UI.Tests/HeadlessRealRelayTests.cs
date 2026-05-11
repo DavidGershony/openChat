@@ -74,7 +74,7 @@ public class HeadlessRealRelayTests : IAsyncLifetime
     [AvaloniaFact]
     public async Task TwoUserChat_ViaRealRelay_ViewModelLevel()
     {
-        Skip.IfNot(_relayAvailable, "Relay not available at " + RelayUrl);
+        Assert.SkipUnless(_relayAvailable, "Relay not available at " + RelayUrl);
 
         var userA = await CreateUserContextAsync("A");
         var userB = await CreateUserContextAsync("B");
@@ -123,7 +123,7 @@ public class HeadlessRealRelayTests : IAsyncLifetime
     [AvaloniaFact]
     public async Task ThreeUserChat_ViaRealRelay_ViewModelLevel()
     {
-        Skip.IfNot(_relayAvailable, "Relay not available at " + RelayUrl);
+        Assert.SkipUnless(_relayAvailable, "Relay not available at " + RelayUrl);
 
         var userA = await CreateUserContextAsync("A");
         var userB = await CreateUserContextAsync("B");
@@ -223,7 +223,7 @@ public class HeadlessRealRelayTests : IAsyncLifetime
     [AvaloniaFact]
     public async Task CloseAndReopen_MessagesStillFlow_ViaRealRelay()
     {
-        Skip.IfNot(_relayAvailable, "Relay not available at " + RelayUrl);
+        Assert.SkipUnless(_relayAvailable, "Relay not available at " + RelayUrl);
 
         var userA = await CreateUserContextAsync("A");
         var userB = await CreateUserContextAsync("B");

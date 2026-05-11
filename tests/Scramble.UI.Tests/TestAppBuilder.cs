@@ -1,6 +1,6 @@
 using Avalonia;
 using Avalonia.Headless;
-using Avalonia.ReactiveUI;
+using ReactiveUI.Avalonia;
 using Xunit;
 
 [assembly: AvaloniaTestApplication(typeof(Scramble.UI.Tests.TestAppBuilder))]

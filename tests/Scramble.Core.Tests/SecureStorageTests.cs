@@ -135,10 +135,10 @@ public class SecureStorageTests : IDisposable
     // Windows DPAPI tests (only run on Windows)
     // ===================================================================
 
-    [SkippableFact]
+    [Fact]
     public void DesktopSecureStorage_ProtectUnprotect_RoundTrips()
     {
-        Skip.IfNot(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "DPAPI only available on Windows");
+        Assert.SkipUnless(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "DPAPI only available on Windows");
 
         var storage = new Scramble.UI.Services.DesktopSecureStorage();
         var original = Encoding.UTF8.GetBytes("nostr-private-key-e1f21901bb0990cd36430316");
@@ -149,10 +149,10 @@ public class SecureStorageTests : IDisposable
         Assert.Equal(original, decrypted);
     }
 
-    [SkippableFact]
+    [Fact]
     public void DesktopSecureStorage_ProtectedData_DiffersFromPlaintext()
     {
-        Skip.IfNot(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "DPAPI only available on Windows");
+        Assert.SkipUnless(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "DPAPI only available on Windows");
 
         var storage = new Scramble.UI.Services.DesktopSecureStorage();
         var original = Encoding.UTF8.GetBytes("secret-signing-key-material");
@@ -168,10 +168,10 @@ public class SecureStorageTests : IDisposable
         Assert.Equal(0x00, encrypted[3]);
     }
 
-    [SkippableFact]
+    [Fact]
     public void DesktopSecureStorage_UnprotectPlaintext_ReturnsAsIs()
     {
-        Skip.IfNot(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "DPAPI only available on Windows");
+        Assert.SkipUnless(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "DPAPI only available on Windows");
 
         var storage = new Scramble.UI.Services.DesktopSecureStorage();
         var plaintext = Encoding.UTF8.GetBytes("unencrypted-legacy-data");
@@ -181,10 +181,10 @@ public class SecureStorageTests : IDisposable
         Assert.Equal(plaintext, result);
     }
 
-    [SkippableFact]
+    [Fact]
     public void DesktopSecureStorage_LargeBlob_RoundTrips()
     {
-        Skip.IfNot(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "DPAPI only available on Windows");
+        Assert.SkipUnless(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "DPAPI only available on Windows");
 
         var storage = new Scramble.UI.Services.DesktopSecureStorage();
         // Simulate MLS state blob (~1500 bytes typical)

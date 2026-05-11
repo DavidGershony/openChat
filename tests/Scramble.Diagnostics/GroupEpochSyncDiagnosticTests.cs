@@ -308,27 +308,27 @@ public class GroupEpochSyncDiagnosticTests : IAsyncLifetime
         await Run3UserEpochSyncTest("managed", "managed", "managed");
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task EpochSync_3Users_AllRust()
     {
-        Skip.IfNot(File.Exists(Path.Combine(AppContext.BaseDirectory, "scramble_native.dll")),
+        Assert.SkipUnless(File.Exists(Path.Combine(AppContext.BaseDirectory, "scramble_native.dll")),
             "Rust native DLL not found — skip rust backend tests");
         await Run3UserEpochSyncTest("rust", "rust", "rust");
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task EpochSync_3Users_MixedManagedRust()
     {
-        Skip.IfNot(File.Exists(Path.Combine(AppContext.BaseDirectory, "scramble_native.dll")),
+        Assert.SkipUnless(File.Exists(Path.Combine(AppContext.BaseDirectory, "scramble_native.dll")),
             "Rust native DLL not found — skip rust backend tests");
         // Alice=managed, Bob=rust, Charlie=managed — simulates OC managed ↔ OC rust interop
         await Run3UserEpochSyncTest("managed", "rust", "managed");
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task EpochSync_3Users_RustCreatorManagedMembers()
     {
-        Skip.IfNot(File.Exists(Path.Combine(AppContext.BaseDirectory, "scramble_native.dll")),
+        Assert.SkipUnless(File.Exists(Path.Combine(AppContext.BaseDirectory, "scramble_native.dll")),
             "Rust native DLL not found — skip rust backend tests");
         await Run3UserEpochSyncTest("rust", "managed", "managed");
     }

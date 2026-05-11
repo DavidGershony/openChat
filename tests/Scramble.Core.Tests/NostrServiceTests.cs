@@ -108,10 +108,10 @@ public class NostrServiceTests
         Assert.Equal(npub, importedNpub);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ConnectAsync_ShouldUpdateConnectionStatus()
     {
-        Skip.IfNot(IsLocalRelayAvailable(), "Requires local relay on wss://test.thedude.cloud");
+        Assert.SkipUnless(IsLocalRelayAvailable(), "Requires local relay on wss://test.thedude.cloud");
 
         // Arrange
         var statusUpdates = new List<NostrConnectionStatus>();
@@ -126,10 +126,10 @@ public class NostrServiceTests
         Assert.True(statusUpdates[0].IsConnected);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task DisconnectAsync_ShouldUpdateConnectionStatus()
     {
-        Skip.IfNot(IsLocalRelayAvailable(), "Requires local relay on wss://test.thedude.cloud");
+        Assert.SkipUnless(IsLocalRelayAvailable(), "Requires local relay on wss://test.thedude.cloud");
 
         // Arrange
         await _nostrService.ConnectAsync(LocalRelayUrl);

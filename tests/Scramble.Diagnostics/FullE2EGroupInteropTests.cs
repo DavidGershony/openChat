@@ -430,7 +430,7 @@ public class FullE2EGroupInteropTests : IAsyncLifetime
     [Fact]
     public async Task E2E_3Users_2OC_1WN_FullFlow()
     {
-        Skip.If(_wnClient == null, "Whitenoise Docker not running");
+        Assert.SkipWhen(_wnClient == null, "Whitenoise Docker not running");
 
         _output.WriteLine("═══════════════════════════════════════════════════════════");
         _output.WriteLine("  FULL E2E: 2 Scramble + 1 Whitenoise via relay");

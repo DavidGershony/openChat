@@ -84,10 +84,10 @@ public class ExporterSecretComparisonTests : IAsyncLifetime
     /// </summary>
 
 
-    [SkippableFact]
+    [Fact]
     public async Task CompareExporterSecrets_ManagedVsRust_SameGroup()
     {
-        Skip.IfNot(File.Exists(Path.Combine(AppContext.BaseDirectory, "scramble_native.dll")),
+        Assert.SkipUnless(File.Exists(Path.Combine(AppContext.BaseDirectory, "scramble_native.dll")),
             "Rust native DLL not found");
 
         _output.WriteLine("═══════════════════════════════════════════════════════════");
@@ -233,10 +233,10 @@ public class ExporterSecretComparisonTests : IAsyncLifetime
     /// 10-user stress test: 5 managed (Scramble) + 5 rust (WhiteNoise/OpenMLS) in one group.
     /// Every member sends a message, every other member decrypts it.
     /// </summary>
-    [SkippableFact]
+    [Fact]
     public async Task TenUser_5Managed5Rust_AllDecryptAll()
     {
-        Skip.IfNot(File.Exists(Path.Combine(AppContext.BaseDirectory, "scramble_native.dll")),
+        Assert.SkipUnless(File.Exists(Path.Combine(AppContext.BaseDirectory, "scramble_native.dll")),
             "Rust native DLL not found");
 
         _output.WriteLine("═══════════════════════════════════════════════════════════");

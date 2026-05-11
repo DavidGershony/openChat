@@ -11,16 +11,16 @@ public class NativeDllConsistencyTests
     /// Detects stale DLLs by comparing the Desktop copy against the Rust build output.
     /// If you rebuild the Rust lib but forget to copy it to the Desktop project, this fails.
     /// </summary>
-    [SkippableFact]
+    [Fact]
     public void DesktopDll_MatchesRustBuildOutput_WhenBothExist()
     {
         var repoRoot = FindRepoRoot();
-        Skip.If(repoRoot == null, "Could not determine repository root");
+        Assert.SkipWhen(repoRoot == null, "Could not determine repository root");
 
         var desktopDll = Path.Combine(repoRoot!, "src", "Scramble.Desktop", "scramble_native.dll");
         var rustDll = Path.Combine(repoRoot!, "src", "Scramble.Native", "target", "release", "scramble_native.dll");
 
-        Skip.IfNot(File.Exists(desktopDll) && File.Exists(rustDll),
+        Assert.SkipUnless(File.Exists(desktopDll) && File.Exists(rustDll),
             "Both DLL files must exist to compare (Desktop and Rust build output)");
 
         var desktopInfo = new FileInfo(desktopDll);
