@@ -4,7 +4,6 @@ using Scramble.Core.Models;
 using Scramble.Core.Services;
 using Scramble.Diagnostics.TestHelpers;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace Scramble.Diagnostics.RelayHarness;
 
@@ -36,7 +35,7 @@ public class PublishFailureTests : IAsyncLifetime
         _output = output;
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         ProfileConfiguration.SetAllowLocalRelays(true);
         _relay = new FaultyRelay();
@@ -44,7 +43,7 @@ public class PublishFailureTests : IAsyncLifetime
         _output.WriteLine($"FaultyRelay listening at {_relay.WsUrl}");
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         foreach (var ms in _messageServices) ms.Dispose();
         foreach (var ns in _nostrServices)
