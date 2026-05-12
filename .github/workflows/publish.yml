@@ -95,13 +95,7 @@ jobs:
             framework: net10.0-android
             artifact_name: Scramble-avalonia.apk
 
-    # Use windows-latest because the .NET 10 Android workload on Linux/macOS hosts
-    # depends on Microsoft.NETCore.App.Runtime.Mono.linux-x64 / .osx-x64 runtime packs
-    # that aren't yet published to nuget.org (latest there is 9.0.0-preview.7). On
-    # Windows, the host Mono pack is bundled with the SDK install so NuGet restore
-    # doesn't need to fetch it. Revisit once Microsoft publishes the .NET 10 Mono
-    # runtime packs to nuget.org.
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -118,7 +112,6 @@ jobs:
 
       - name: Extract version from tag
         id: version
-        shell: bash
         run: |
           VERSION=${GITHUB_EVENT_NAME:+${GITHUB_REF_NAME#v}}
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
@@ -132,11 +125,7 @@ jobs:
           echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_OUTPUT"
 
       - name: Decode keystore
-        shell: bash
-        # Use a relative path: on Windows runners ${{ github.workspace }} expands to
-        # `D:\a\Scramble\Scramble` and Git Bash mangles the backslashes (`\a` becomes
-        # bell, etc.), producing `D:aScrambleScramble/...`. Relative paths sidestep this.
-        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > scramble-release.keystore
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > ${{ github.workspace }}/scramble-release.keystore
 
       - name: Build Android APK (${{ matrix.head }})
         env:
@@ -157,7 +146,6 @@ jobs:
 
       - name: Find and rename APK (${{ matrix.head }})
         id: apk
-        shell: bash
         run: |
           # Always pick the signed APK explicitly. dotnet publish produces both
           # `<id>.apk` (unsigned) and `<id>-Signed.apk`, and find without sorting
