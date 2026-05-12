@@ -439,13 +439,21 @@ public class ManagedMlsService : IMlsService
                 _logger.LogInformation("ProcessWelcome: matched stored KeyPackage {Index}/{Total}",
                     i + 1, _storedKeyPackages.Count);
 
-                // Retain the KeyPackage — MIP-00 mandates last_resort (0x000a) extension,
-                // meaning the init key is kept so multiple senders can use the same KP.
-                // The KP should be rotated (new KP published, old key material deleted)
-                // after a successful accept, but NOT removed immediately.
-                _logger.LogInformation("ProcessWelcome: KeyPackage retained (last_resort per MIP-00), rotation recommended");
+                // MIP-00 §"Rotating KeyPackages": SHOULD rotate after successfully joining.
+                // MIP-02 §"Processing Requirements" step 5: publish fresh kind:30443 under same d-tag.
+                // MIP-02 §"Processing Requirements" step 6: securely delete init_key.
+                //
+                // We zeroize the consumed KeyPackage's init_key now and remove it from the
+                // stored list. The rotation (fresh KP publish) is handled by MessageService's
+                // AutoPublishKeyPackageIfNeededAsync after AcceptInvite completes.
+                _logger.LogInformation("ProcessWelcome: matched KeyPackage {Index}/{Total}, zeroizing consumed init_key (MIP-02 step 6)",
+                    i + 1, _storedKeyPackages.Count);
+                CryptographicOperations.ZeroMemory(kp.InitPrivateKey);
+                CryptographicOperations.ZeroMemory(kp.HpkePrivateKey);
+                _storedKeyPackages.RemoveAt(i);
 
                 await PersistGroupStateAsync(preview.GroupId);
+                await SaveServiceStateAsync();
 
                 return new MlsGroupInfo
                 {

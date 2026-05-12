@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Reactive;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
@@ -27,6 +28,11 @@ public class MessageService : IMessageService, IDisposable
     private User? _currentUser;
     private IDisposable? _eventSubscription;
     private bool _disposed;
+
+    // MIP-02 §"Self-Update Timing": MUST perform self-update within 24h of joining.
+    // Tracks groupIdHex -> joinTime for groups that haven't self-updated yet.
+    private readonly ConcurrentDictionary<string, DateTime> _pendingSelfUpdates = new();
+    private Timer? _selfUpdateTimer;
 
     public IObservable<Message> NewMessages => _newMessages.AsObservable();
     public IObservable<(string MessageId, MessageStatus Status)> MessageStatusUpdates => _messageStatusUpdates.AsObservable();
@@ -67,6 +73,11 @@ public class MessageService : IMessageService, IDisposable
             // (e.g., if InitializeAsync is called more than once)
             _eventSubscription?.Dispose();
             _eventSubscription = _nostrService.Events.Subscribe(OnNostrEventReceived);
+
+            // MIP-02 §"Self-Update Timing": start periodic check for groups needing self-update
+            _selfUpdateTimer?.Dispose();
+            _selfUpdateTimer = new Timer(OnSelfUpdateTimerTick, null,
+                TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(30));
 
             _logger.LogInformation("MessageService initialized for {PubKey}",
                 _currentUser.PublicKeyHex[..Math.Min(16, _currentUser.PublicKeyHex.Length)]);
@@ -1700,6 +1711,10 @@ public class MessageService : IMessageService, IDisposable
         await _storageService.DeletePendingInviteAsync(inviteId);
         _chatUpdates.OnNext(chat);
 
+        // MIP-02 §"Self-Update Timing": schedule self-update within 24h of joining
+        _pendingSelfUpdates[groupIdHex] = DateTime.UtcNow;
+        _logger.LogInformation("AcceptInvite: scheduled MIP-02 self-update for group {GroupId}", groupIdHex[..Math.Min(16, groupIdHex.Length)]);
+
         // Mark the consumed KeyPackage as used so future senders don't reuse it
         if (!string.IsNullOrEmpty(invite.KeyPackageEventId))
         {
@@ -1753,6 +1768,58 @@ public class MessageService : IMessageService, IDisposable
         {
             _logger.LogWarning(ex, "AutoPublishKP: failed to auto-publish new KeyPackage");
         }
+    }
+
+    // ====== MIP-02 Self-Update Scheduler ======
+
+    private async void OnSelfUpdateTimerTick(object? state)
+    {
+        if (_currentUser == null || _pendingSelfUpdates.IsEmpty) return;
+
+        foreach (var (groupIdHex, joinTime) in _pendingSelfUpdates.ToArray())
+        {
+            var elapsed = DateTime.UtcNow - joinTime;
+            // MIP-02 §"Self-Update Timing": MUST within 24h. We trigger after 5 minutes
+            // to give time for catch-up on outstanding commits (RECOMMENDED order),
+            // and retry periodically if it fails.
+            if (elapsed < TimeSpan.FromMinutes(5)) continue;
+
+            try
+            {
+                var groupId = Convert.FromHexString(groupIdHex);
+                await PerformSelfUpdateAsync(groupId);
+                _pendingSelfUpdates.TryRemove(groupIdHex, out _);
+                _logger.LogInformation("MIP-02 self-update completed for group {GroupId} ({Elapsed} after join)",
+                    groupIdHex[..Math.Min(16, groupIdHex.Length)], elapsed);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "MIP-02 self-update failed for group {GroupId}, will retry",
+                    groupIdHex[..Math.Min(16, groupIdHex.Length)]);
+
+                // If past 24h, log an error (MUST violation) but keep retrying
+                if (elapsed > TimeSpan.FromHours(24))
+                {
+                    _logger.LogError("MIP-02 VIOLATION: self-update for group {GroupId} not completed within 24h of join ({Elapsed})",
+                        groupIdHex[..Math.Min(16, groupIdHex.Length)], elapsed);
+                }
+            }
+        }
+    }
+
+    private async Task PerformSelfUpdateAsync(byte[] groupId)
+    {
+        if (_currentUser == null) return;
+
+        var commitData = await _mlsService.UpdateKeysAsync(groupId);
+        var nostrGroupId = _mlsService.GetNostrGroupId(groupId);
+        var groupIdHex = Convert.ToHexString(groupId).ToLowerInvariant();
+        var commitGroupId = nostrGroupId != null
+            ? Convert.ToHexString(nostrGroupId).ToLowerInvariant()
+            : groupIdHex;
+
+        await _nostrService.PublishGroupMessageAsync(commitData, commitGroupId, _currentUser.PrivateKeyHex);
+        _logger.LogInformation("PerformSelfUpdate: published self-update commit for group {GroupId}", groupIdHex[..Math.Min(16, groupIdHex.Length)]);
     }
 
     public async Task DeclineInviteAsync(string inviteId)
@@ -2371,6 +2438,7 @@ public class MessageService : IMessageService, IDisposable
     {
         if (_disposed) return;
 
+        _selfUpdateTimer?.Dispose();
         _eventSubscription?.Dispose();
         _newMessages.Dispose();
         _messageStatusUpdates.Dispose();
