@@ -51,7 +51,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '9.0.x'
+          dotnet-version: '10.0.x'
 
       - name: Publish Desktop (single file)
         run: dotnet publish src/Scramble.Desktop/Scramble.Desktop.csproj --configuration Release --runtime ${{ matrix.rid }} --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DesktopOnly=true --output ./publish
@@ -71,7 +71,30 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: ./publish/${{ matrix.artifact_name }}
 
+  # Two Android APK builds shipped side-by-side in the same release:
+  #   * Scramble-native.apk    — original Android Fragments UI (src/Scramble.Android),
+  #                              package id app.scramble.chat. Canonical per CLAUDE.md.
+  #   * Scramble-avalonia.apk  — Avalonia mobile head (src/Scramble.Mobile.Android),
+  #                              package id app.scramble.chat.avalonia. Parallel
+  #                              candidate; installs alongside the native build so
+  #                              users can pick one or run both for comparison.
+  # Both jobs reuse a single matrix entry per head so we only maintain one set of
+  # signing / version-extraction steps. Both use the same keystore secret — same
+  # publisher signs both APKs, which is the correct semantics.
   build-android:
+    strategy:
+      fail-fast: false  # one head's failure shouldn't kill the other's APK build
+      matrix:
+        include:
+          - head: native
+            project: src/Scramble.Android/Scramble.Android.csproj
+            framework: net10.0-android
+            artifact_name: Scramble-native.apk
+          - head: avalonia
+            project: src/Scramble.Mobile.Android/Scramble.Mobile.Android.csproj
+            framework: net10.0-android
+            artifact_name: Scramble-avalonia.apk
+
     runs-on: ubuntu-latest
 
     steps:
@@ -82,7 +105,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '9.0.x'
+          dotnet-version: '10.0.x'
 
       - name: Install Android workload
         run: dotnet workload install android
@@ -104,13 +127,13 @@ jobs:
       - name: Decode keystore
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > ${{ github.workspace }}/scramble-release.keystore
 
-      - name: Build Android APK
+      - name: Build Android APK (${{ matrix.head }})
         env:
           ANDROID_SIGNING_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: >
-          dotnet publish src/Scramble.Android/Scramble.Android.csproj
+          dotnet publish ${{ matrix.project }}
           --configuration Release
-          --framework net9.0-android
+          --framework ${{ matrix.framework }}
           -p:ApplicationDisplayVersion=${{ steps.version.outputs.VERSION }}
           -p:ApplicationVersion=${{ steps.version.outputs.VERSION_CODE }}
           -p:AndroidSigningKeyStore=${{ github.workspace }}/scramble-release.keystore
@@ -119,9 +142,9 @@ jobs:
           -p:AndroidSigningStorePass=env:ANDROID_SIGNING_PASSWORD
           -p:AndroidUseApkSigner=true
           -p:AndroidPackageFormat=apk
-          --output ./publish/android
+          --output ./publish/android-${{ matrix.head }}
 
-      - name: Find and rename APK
+      - name: Find and rename APK (${{ matrix.head }})
         id: apk
         run: |
           # Always pick the signed APK explicitly. dotnet publish produces both
@@ -129,21 +152,21 @@ jobs:
           # returns them in filesystem order — picking the unsigned one ships an
           # uninstallable APK (this happened in v0.6.49). Fail loudly if signing
           # didn't produce a signed artifact instead of silently shipping the wrong file.
-          APK=$(find ./publish/android -name '*-Signed.apk' | head -1)
+          APK=$(find ./publish/android-${{ matrix.head }} -name '*-Signed.apk' | head -1)
           if [ -z "$APK" ]; then
-            echo "ERROR: No signed APK (*-Signed.apk) found. Signing step may have failed." >&2
-            echo "Contents of ./publish/android:" >&2
-            ls -la ./publish/android >&2
+            echo "ERROR: No signed APK (*-Signed.apk) found for ${{ matrix.head }} head. Signing step may have failed." >&2
+            echo "Contents of ./publish/android-${{ matrix.head }}:" >&2
+            ls -la ./publish/android-${{ matrix.head }} >&2
             exit 1
           fi
           echo "Using signed APK: $APK"
-          mv "$APK" ./publish/android/Scramble.apk
-          echo "APK_PATH=./publish/android/Scramble.apk" >> "$GITHUB_OUTPUT"
+          mv "$APK" ./publish/android-${{ matrix.head }}/${{ matrix.artifact_name }}
+          echo "APK_PATH=./publish/android-${{ matrix.head }}/${{ matrix.artifact_name }}" >> "$GITHUB_OUTPUT"
 
-      - name: Upload Android artifact
+      - name: Upload Android artifact (${{ matrix.head }})
         uses: actions/upload-artifact@v4
         with:
-          name: Scramble.apk
+          name: ${{ matrix.artifact_name }}
           path: ${{ steps.apk.outputs.APK_PATH }}
 
   release:
@@ -163,8 +186,14 @@ jobs:
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           generate_release_notes: true
+          # Two Android APKs are published side-by-side:
+          #   Scramble-native.apk   — original Android Fragments head (canonical)
+          #   Scramble-avalonia.apk — Avalonia mobile head (parallel candidate)
+          # They install as separate apps (different package ids) so users can try
+          # both without uninstalling either.
           files: |
             ./artifacts/Scramble-win-x64.exe/Scramble-win-x64.exe
             ./artifacts/Scramble-linux-x64/Scramble-linux-x64
             ./artifacts/Scramble-macos-arm64/Scramble-macos-arm64
-            ./artifacts/Scramble.apk/Scramble.apk
+            ./artifacts/Scramble-native.apk/Scramble-native.apk
+            ./artifacts/Scramble-avalonia.apk/Scramble-avalonia.apk
