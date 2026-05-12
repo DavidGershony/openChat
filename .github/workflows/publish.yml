@@ -133,7 +133,10 @@ jobs:
 
       - name: Decode keystore
         shell: bash
-        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > ${{ github.workspace }}/scramble-release.keystore
+        # Use a relative path: on Windows runners ${{ github.workspace }} expands to
+        # `D:\a\Scramble\Scramble` and Git Bash mangles the backslashes (`\a` becomes
+        # bell, etc.), producing `D:aScrambleScramble/...`. Relative paths sidestep this.
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > scramble-release.keystore
 
       - name: Build Android APK (${{ matrix.head }})
         env:
