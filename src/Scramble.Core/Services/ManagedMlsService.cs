@@ -592,7 +592,8 @@ public class ManagedMlsService : IMlsService
         return eventJson;
     }
 
-    public async Task<MlsDecryptedMessage> DecryptMessageAsync(byte[] groupId, byte[] ciphertext)
+    public async Task<MlsDecryptedMessage> DecryptMessageAsync(byte[] groupId, byte[] ciphertext,
+        string? nostrEventId = null, DateTimeOffset? nostrCreatedAt = null)
     {
         EnsureInitialized();
 
@@ -638,9 +639,9 @@ public class ManagedMlsService : IMlsService
             mlsBytes = payloadBytes;
         }
 
-        // Use a synthetic event ID for deduplication
-        var eventId = Guid.NewGuid().ToString("N");
-        var result = await _mdk!.ProcessMessageAsync(groupId, mlsBytes, eventId);
+        // Use real Nostr event ID for deduplication and MIP-03 tiebreaker, or synthetic if not available
+        var eventId = nostrEventId ?? Guid.NewGuid().ToString("N");
+        var result = await _mdk!.ProcessMessageAsync(groupId, mlsBytes, eventId, nostrCreatedAt);
         await PersistGroupStateAsync(groupId);
 
         if (result is ApplicationMessageResult appMsg)

@@ -98,7 +98,12 @@ public interface IMlsService
     /// <summary>
     /// Decrypt a message from a group.
     /// </summary>
-    Task<MlsDecryptedMessage> DecryptMessageAsync(byte[] groupId, byte[] ciphertext);
+    /// <param name="groupId">The MLS group identifier.</param>
+    /// <param name="ciphertext">The encrypted message bytes.</param>
+    /// <param name="nostrEventId">Optional Nostr event ID for MIP-03 tiebreaker resolution.</param>
+    /// <param name="nostrCreatedAt">Optional Nostr event created_at for MIP-03 tiebreaker resolution.</param>
+    Task<MlsDecryptedMessage> DecryptMessageAsync(byte[] groupId, byte[] ciphertext,
+        string? nostrEventId = null, DateTimeOffset? nostrCreatedAt = null);
 
     /// <summary>
     /// Process a commit message (member changes, key updates).

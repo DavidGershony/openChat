@@ -1380,10 +1380,26 @@ public class MessageService : IMessageService, IDisposable
             encryptedData.Length, chat.Name,
             Convert.ToHexString(encryptedData[..Math.Min(4, encryptedData.Length)]).ToLowerInvariant());
 
+        // Pass Nostr event metadata for MIP-03 tiebreaker resolution
+        var eventCreatedAt = nostrEvent.CreatedAt != default
+            ? (DateTimeOffset?)new DateTimeOffset(nostrEvent.CreatedAt, TimeSpan.Zero)
+            : null;
+
         MlsDecryptedMessage decrypted;
         try
         {
-            decrypted = await _mlsService.DecryptMessageAsync(chat.MlsGroupId!, encryptedData);
+            decrypted = await _mlsService.DecryptMessageAsync(
+                chat.MlsGroupId!, encryptedData, nostrEvent.EventId, eventCreatedAt);
+        }
+        catch (MarmotCs.Core.Errors.RaceLostException raceLost)
+        {
+            // MIP-03 tiebreaker: our staged commit lost the race against this incoming commit.
+            // The incoming commit was applied, our pending was cleared. Log and let the caller
+            // retry their operation at the new epoch.
+            _logger.LogWarning(
+                "HandleGroupMessage: MIP-03 race lost — incoming commit {WinnerId} won for group {GroupId}, new epoch {NewEpoch}",
+                raceLost.WinnerEventId, groupIdHex[..Math.Min(16, groupIdHex.Length)], raceLost.NewEpoch);
+            return;
         }
         catch (Exception ex) when (IsExpectedPreJoinCommitFailure(ex))
         {
@@ -2053,7 +2069,11 @@ public class MessageService : IMessageService, IDisposable
             try
             {
                 // Use MlsGroupId for decrypt, NOT the NostrGroupId from the h-tag
-                decrypted = await _mlsService.DecryptMessageAsync(chat.MlsGroupId!, encryptedData);
+                var olderCreatedAt = nostrEvent.CreatedAt != default
+                    ? (DateTimeOffset?)new DateTimeOffset(nostrEvent.CreatedAt, TimeSpan.Zero)
+                    : null;
+                decrypted = await _mlsService.DecryptMessageAsync(
+                    chat.MlsGroupId!, encryptedData, nostrEvent.EventId, olderCreatedAt);
             }
             catch (Exception ex)
             {

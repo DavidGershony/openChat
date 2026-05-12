@@ -214,7 +214,8 @@ public class MlsService : IMlsService
         throw new NotSupportedException("Reactions are not yet supported with the Rust MLS backend");
     }
 
-    public async Task<MlsDecryptedMessage> DecryptMessageAsync(byte[] groupId, byte[] ciphertext)
+    public async Task<MlsDecryptedMessage> DecryptMessageAsync(byte[] groupId, byte[] ciphertext,
+        string? nostrEventId = null, DateTimeOffset? nostrCreatedAt = null)
     {
         EnsureInitialized();
 
