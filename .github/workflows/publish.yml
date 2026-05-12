@@ -108,7 +108,17 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Install Android workload
-        run: dotnet workload install android
+        # Pin to workload set 10.0.203.1 (verified locally — produces a working
+        # signed APK end-to-end). Without the pin, the runner installs whichever
+        # workload set is bundled with the floating SDK install, which has been
+        # newer manifest 36.1.2 / set 10.0.200.x — that one references
+        # Microsoft.NETCore.App.Runtime.Mono.{linux,win}-x64 v10.0.x runtime
+        # packs that aren't on any public NuGet feed (NU1102 in v0.6.58 runs).
+        # Workload sets are published to nuget.org under
+        # Microsoft.NET.Workloads.10.0.200; verify a version exists there before
+        # bumping. Kept scoped to this job (not global.json) so the desktop
+        # builds don't have to install the android workload they don't use.
+        run: dotnet workload install android --version 10.0.203.1
 
       - name: Extract version from tag
         id: version
