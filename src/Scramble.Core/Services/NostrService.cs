@@ -1174,9 +1174,7 @@ public class NostrService : INostrService, IDisposable
 
         if (!LastPublishOkResult.accepted)
         {
-            throw new InvalidOperationException(
-                $"KeyPackage publish rejected by all relays: {LastPublishOkResult.reason}. " +
-                "The event was sent but no relay confirmed acceptance.");
+            throw new PublishUnconfirmedException(eventId, 30443, LastPublishOkResult.reason);
         }
 
         return eventId;
@@ -1254,10 +1252,20 @@ public class NostrService : INostrService, IDisposable
 
         // Publish the kind 1059 gift wrap to all relays (skip bot-only — MLS welcomes don't belong there)
         var eventBytes = Encoding.UTF8.GetBytes(giftWrapMessage.EventMessage);
+        var targetRelays = new List<(string url, NostrRelayConnection conn)>();
         foreach (var (relayUrl, connection) in _relayConnections)
         {
             if (IsBotOnlyRelay(relayUrl)) continue;
             if (connection.IsConnected)
+                targetRelays.Add((relayUrl, connection));
+        }
+
+        if (targetRelays.Count > 0)
+        {
+            var tracker = new PublishOkTracker(targetRelays.Count);
+            _pendingOkTrackers[giftWrapMessage.EventId] = tracker;
+
+            foreach (var (relayUrl, connection) in targetRelays)
             {
                 try
                 {
@@ -1268,6 +1276,23 @@ public class NostrService : INostrService, IDisposable
                 {
                     _logger.LogWarning(ex, "Failed to send gift-wrapped Welcome to {RelayUrl}", relayUrl);
                 }
+            }
+
+            // Wait for first accept or all rejections (5s timeout)
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            cts.Token.Register(() =>
+            {
+                tracker.OnTimeout();
+                _pendingOkTrackers.TryRemove(giftWrapMessage.EventId, out _);
+            });
+
+            var okResult = await tracker.Task;
+            _pendingOkTrackers.TryRemove(giftWrapMessage.EventId, out _);
+            LastPublishOkResult = okResult;
+
+            if (!okResult.accepted)
+            {
+                throw new PublishUnconfirmedException(giftWrapMessage.EventId, 1059, okResult.reason);
             }
         }
 
@@ -1654,6 +1679,12 @@ public class NostrService : INostrService, IDisposable
         };
 
         var eventId = await PublishEventAsync(445, Convert.ToBase64String(commitData), tags, privateKeyHex);
+
+        if (!LastPublishOkResult.accepted)
+        {
+            throw new PublishUnconfirmedException(eventId, 445, LastPublishOkResult.reason);
+        }
+
         _logger.LogInformation("PublishCommitAsync: published event {EventId}", eventId);
         return eventId;
     }
@@ -1667,6 +1698,12 @@ public class NostrService : INostrService, IDisposable
             new() { "encoding", "base64" }
         };
         var eventId = await PublishEventAsync(445, Convert.ToBase64String(encryptedData), tags, privateKeyHex);
+
+        if (!LastPublishOkResult.accepted)
+        {
+            throw new PublishUnconfirmedException(eventId, 445, LastPublishOkResult.reason);
+        }
+
         return eventId;
     }
 

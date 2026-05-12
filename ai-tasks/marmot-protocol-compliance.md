@@ -658,3 +658,131 @@ mark it accordingly rather than re-listing it as open work.
   §"Disappearing Messages") — separate feature; audit now, fix later
 - **Catch-up message ingestion at relay reconnect** — orthogonal to
   publish-then-merge; separate work
+
+## Phase 8 — Compliance test catalog roll-up
+
+Completed on branch `fix/marmot-protocol-compliance`. Every **Violated** or
+**Missing** row in the audit table is accounted for below — either by a landed
+test, a code fix, or an explicit out-of-scope marker.
+
+### Violated rows — all fixed with tests
+
+| Audit row | Status after batch | Test(s) |
+|---|---|---|
+| MIP-02 §"Timing Requirements" — Welcome before commit confirmed | **Fixed** (Phase 4) | `RelayHarness/PublishFailureTests` (inverted): `AddMember_OkDropped_ThrowsPublishUnconfirmed_AndLocalStateUnchanged`, `AddMember_RelayBlackholesEvents_ThrowsAndRollsBack_NoStateDivergence` |
+| MIP-03 §sending step 2 — commit applied before relay confirms | **Fixed** (Phases 1+3+4) | `Compliance/Mip03/PublishUnconfirmedExceptionTests` (4 tests) + `RelayHarness/PublishFailureTests` (2 tests) |
+| MIP-03 §sending step 3 — local state advanced before relay OK | **Fixed** (Phase 1+4) | `StagedCommitTests` (9 tests): `StageAddMembers_DoesNotAdvanceEpoch_UntilMerge`, etc. |
+| MIP-03 §sending step 4 — Welcome sent before commit confirmed | **Fixed** (Phase 4) | Covered by inverted `PublishFailureTests` |
+| MIP-03 §"Application Messages" — inner sender not verified | **Fixed** (Phase 4) | Code fix in `ManagedMlsService.DecryptMessageAsync` — rejects mismatched MLS sender vs rumor pubkey |
+| MIP-01 §"Required MLS Extensions" — `required_capabilities` missing `self_remove` | **Deferred** — explicitly tracked as "Fix D" in `csharp-mls-fixes-plan.md`, pending SelfRemove implementation | (future work; tracked) |
+
+### Missing rows — fixed or explicitly deferred
+
+| Audit row | Status after batch | Test(s) |
+|---|---|---|
+| MIP-03 §tiebreaker — no receiving-side race resolution | **Fixed** (Phase 2+5) | `TiebreakerTests` (7 tests): `OursWins_DiscardIncoming`, `IncomingWins_ClearsPending_ProcessesIncoming`, etc. |
+| MIP-03 §fork recovery — no retained previous group states | **Partial** — `EpochSnapshotManager` provides rollback within a single commit attempt; full multi-epoch state retention is future work | (future work; tracked) |
+| MIP-03 §nonce tracking — no duplicate outbound nonce detection | **Fixed** (Phase 3) | `NonceUniquenessTests` (6 tests) + `RngFailureAbortTests` (2 tests) |
+| MIP-00 §"Rotating KeyPackages" — no rotation after Welcome | **Fixed** (Phase 6) | `AutoPublishKeyPackageIfNeededAsync` publishes fresh KP under same `d`-tag slot after Welcome consumes a KP |
+| MIP-00 §"init_key Lifecycle" — never deleted | **Fixed** (Phase 6) | `ProcessWelcomeAsync` now zeroizes consumed init_key + HPKE key immediately |
+| MIP-00 §"Secure Deletion" — only on logout | **Fixed** (Phase 6) | Per-Welcome zeroization added; logout zeroization unchanged |
+| MIP-00 §"Signing Key Rotation" — no self-update scheduler | **Fixed** (Phase 6) | `OnSelfUpdateTimerTick` scheduler fires 5min after join, retries every 30min, logs VIOLATION after 24h |
+| MIP-02 §step 5 — Rotate KeyPackage after Welcome | **Fixed** (Phase 6) | Same as MIP-00 rotation row above |
+| MIP-02 §step 6 — Securely delete init_key after Welcome | **Fixed** (Phase 6) | Same as MIP-00 init_key row above |
+| MIP-02 §"Self-Update Timing" MUST — within 24h | **Fixed** (Phase 6) | Timer-based scheduler with 24h violation logging |
+| MIP-02 §"Self-Update Timing" SHOULD — catch-up first | **Partial** — scheduler delays 5min to allow catch-up but doesn't explicitly verify all commits ingested | (refinement; tracked) |
+| MIP-03 §"Disappearing Messages" (2 rows) | **Out of scope** — separate feature | (out of scope; tracked) |
+| MIP-03 §SelfRemove | **Out of scope** — future work | (future work; tracked) |
+| MIP-03 §admin verification | **Unknown** — relies on lower MLS layer | (Phase 0.5; tracked) |
+
+### Regression guard tests (OK rows with new tests)
+
+| Audit row | Test |
+|---|---|
+| MIP-03 §"Initial Group Creation" — epoch-0 MUST NOT be sent | `Compliance/Mip03/InitialGroupCreationTests.CreateGroup_DoesNotPublish_KindFourFourFive` |
+| MIP-03 §"Encryption Details" — constants | `Mip03ConstantsTests` (10 tests): exporter label/context/length, output format, nonce size, round-trip, wrong-key, edge cases |
+
+### Test inventory
+
+| Location | Tests | Phase |
+|---|---|---|
+| `marmot-cs/tests/MarmotCs.Core.Tests/StagedCommitTests.cs` | 9 | Phase 1 |
+| `marmot-cs/tests/MarmotCs.Core.Tests/TiebreakerTests.cs` | 7 | Phase 2 |
+| `marmot-cs/tests/MarmotCs.Protocol.Tests/NonceUniquenessTests.cs` | 8 | Phase 3 |
+| `marmot-cs/tests/MarmotCs.Core.Tests/Mip03ConstantsTests.cs` | 10 | Phase 7 |
+| `tests/Scramble.Diagnostics/Compliance/Mip03/PublishUnconfirmedExceptionTests.cs` | 4 | Phase 3 |
+| `tests/Scramble.Diagnostics/Compliance/Mip03/InitialGroupCreationTests.cs` | 1 | Phase 7 |
+| `tests/Scramble.Diagnostics/RelayHarness/PublishFailureTests.cs` | 2 (inverted) | Phase 4 |
+| **Total new tests** | **41** | |
+
+Plus 25 pre-existing marmot-cs tests (all still passing).
+
+## Phase 9 — Ship summary
+
+### What shipped (branch `fix/marmot-protocol-compliance`)
+
+**9 commits** across `dotnet-mls`, `marmot-cs`, `Scramble.Core`, and `Scramble.Diagnostics`.
+
+#### dotnet-mls
+- `MlsGroup.HasPendingCommit` property
+
+#### marmot-cs (Mdk)
+- Staged commit API: `StageAddMembersAsync`, `StageRemoveMembersAsync`, `StageSelfUpdateAsync`
+- `MergeStagedCommitAsync` — apply pending commit after relay confirmation
+- `HasPendingCommit` — caller introspection
+- `ProcessIncomingCommitAsync` — MIP-03 tiebreaker for incoming commit races
+- `RaceLostException`, `RaceWonResult` — tiebreaker outcomes
+- Pending commit metadata tracking (`PendingCommitMetadata`)
+- `[Obsolete]` markers on `AddMembersAsync`, `RemoveMembersAsync`, `SelfUpdateAsync`
+- `ClearPendingCommit` — now cleans up pending HPKE keys and metadata
+
+#### marmot-cs (Protocol)
+- `DuplicateNonceException` — MIP-03 nonce uniqueness enforcement
+- Per-key outbound nonce tracking in `GroupEventEncryption`
+- `ResetNonceTracker()` for epoch rotation
+
+#### Scramble.Core
+- `PublishUnconfirmedException` — typed exception for relay non-confirmation
+- `NostrService.PublishCommitAsync` — throws on no-OK
+- `NostrService.PublishGroupMessageAsync` — throws on no-OK
+- `NostrService.PublishWelcomeAsync` — added OK tracking (was fire-and-forget)
+- `MessageService.AddMemberAsync` — rewritten: stage → publish → OK → merge → welcome
+- `MessageService.RemoveMemberAsync` — same staged pattern
+- `ManagedMlsService.StageAddMemberAsync`, `StageRemoveMemberAsync`, `MergeStagedAsync`, `ClearStagedAsync`
+- `ManagedMlsService.DecryptMessageAsync` — passes Nostr event metadata for tiebreaker
+- `ManagedMlsService.DecryptMessageAsync` — MIP-03 inner sender verification (spoofing prevention)
+- `ManagedMlsService.ProcessWelcomeAsync` — init_key secure deletion after Welcome
+- `MessageService` self-update scheduler (timer-based, 24h MUST)
+- `IMlsService` — new staged commit API surface
+- `MlsService` (Rust backend) — `NotSupportedException` stubs
+
+#### Test infrastructure
+- Fixed xunit v3 compat in `FaultyRelaySanityTests`, `PublishFailureTests`
+
+### What was punted
+
+| Item | Reason | Tracking |
+|---|---|---|
+| SelfRemove (MIP-03 §SelfRemove) | Feature not implemented anywhere | future work |
+| Disappearing messages (MIP-01/03 §"Disappearing Messages") | Separate feature | out of scope |
+| `required_capabilities` with `self_remove` (MIP-01 Fix D) | Pending SelfRemove | `csharp-mls-fixes-plan.md` |
+| Full multi-epoch fork recovery | `EpochSnapshotManager` covers single-commit rollback | future work |
+| `PerformSelfUpdateAsync` staged commit migration | TODO in code | `MessageService.cs` TODO comment |
+| KeyPackage selection policy (MIP-00) | Likely violated but low-priority | Phase 0.5 follow-up |
+| Phase 0.5 reads (19 "Unknown" rows) | Need focused code reads | tracked in audit table |
+| Catch-up commit ingestion at relay reconnect | Orthogonal to publish-then-merge | separate work |
+
+### Conventions for future work
+
+1. **Always use the staged commit path** for any operation that publishes a commit:
+   `Stage*Async` → `Publish*Async` (wait for OK) → `MergeStagedCommitAsync` → publish Welcome.
+   The old auto-merge methods are `[Obsolete]`.
+
+2. **Pass Nostr event metadata** (`eventId`, `createdAt`) through `DecryptMessageAsync` for
+   MIP-03 tiebreaker resolution on incoming commits.
+
+3. **Compliance tests** go in `tests/Scramble.Diagnostics/Compliance/Mip{NN}/` with
+   `[Trait("Category", "MIP-Compliance")]` and `[Trait("MIP", "MIP-NN")]`.
+
+4. **marmot-cs unit tests** for MDK-level behavior go in
+   `marmot-cs/tests/MarmotCs.Core.Tests/` or `MarmotCs.Protocol.Tests/`.
