@@ -11,12 +11,11 @@ using Scramble.Core.Configuration;
 using Scramble.Core.Logging;
 using Scramble.UI.Views;
 using Scramble.UI.Services;
-using Scramble.Presentation.Services;
 using Scramble.Presentation.ViewModels;
 using Scramble.Core.Services;
-using ReactiveUI;
+using Scramble.Apple.Services;
 
-namespace Scramble.Desktop;
+namespace Scramble.Apple;
 
 public partial class App : Application
 {
@@ -34,16 +33,12 @@ public partial class App : Application
 
     public override void Initialize()
     {
-        // Initialize logging first, before anything else
         var appVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown";
         LoggingConfiguration.Initialize(logDirectory: ProfileConfiguration.LogDirectory, appVersion: appVersion);
         _logger = LoggingConfiguration.CreateLogger("App");
 
-        // Set up global exception handlers
         AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
-
-        // RxUI exception handler is now configured in Program.BuildAvaloniaApp via ReactiveUIBuilder.WithExceptionHandler
 
         _logger.LogInformation("Global exception handlers registered");
 
@@ -60,50 +55,20 @@ public partial class App : Application
             {
                 _logger?.LogDebug("Creating profile-independent services...");
 
-                // Profile-independent services (survive across logins)
-                ISecureStorage secureStorage;
-                if (OperatingSystem.IsWindows())
-                    secureStorage = new DesktopSecureStorage();
-                else if (OperatingSystem.IsLinux())
-                    secureStorage = new LinuxSecureStorage();
-                else
-                {
-                    // macOS fallback — uses file-backed AES-GCM key (LinuxSecureStorage).
-                    // For proper Keychain-backed storage, use the Scramble.Apple project instead.
-                    _logger?.LogWarning(
-                        "Running on macOS via Scramble.Desktop uses file-backed key storage. " +
-                        "For Keychain-backed secure storage, use the Scramble.Apple app head instead.");
-                    secureStorage = new LinuxSecureStorage();
-                }
+                ISecureStorage secureStorage = new AppleSecureStorage();
                 var nostrService = new NostrService();
                 var clipboard = new AvaloniaClipboard();
                 var qrCodeGenerator = new AvaloniaQrCodeGenerator();
                 var launcher = new AvaloniaLauncher();
 
-                // Audio and upload services (profile-independent, set as static on ChatViewModel)
-                var audioRecording = new DesktopAudioRecordingService();
-                var audioPlayback = new DesktopAudioPlaybackService();
-                var blossomUpload = new BlossomUploadService();
-                ChatViewModel.AudioRecordingService = audioRecording;
-                ChatViewModel.AudioPlaybackService = audioPlayback;
-                ChatViewModel.MediaUploadService = blossomUpload;
-
-                // File picker (needs desktop.MainWindow, set after window creation)
-                // Will be set below after MainWindow is created.
-
                 _logger?.LogDebug("Creating ShellViewModel...");
                 var shellViewModel = new ShellViewModel(nostrService, secureStorage, clipboard, qrCodeGenerator, launcher);
 
-                // MLS service factory — platform-specific backend selection
-                shellViewModel.MlsServiceFactory = storage =>
-                    ProfileConfiguration.ActiveMdkBackend == MdkBackend.Managed
-                        ? new ManagedMlsService(storage)
-                        : new MlsService(storage);
-                _logger?.LogInformation("Using {Backend} MLS backend", ProfileConfiguration.ActiveMdkBackend);
+                // MLS service factory — only Managed (pure-C#) backend on macOS for now
+                shellViewModel.MlsServiceFactory = storage => new ManagedMlsService(storage);
+                _logger?.LogInformation("Using Managed MLS backend");
 
                 _logger?.LogDebug("Creating MainWindow...");
-                // Set platform notification service
-                NotificationOrchestrator.NotificationService = new DesktopNotificationService();
 
                 desktop.MainWindow = new MainWindow
                 {
@@ -115,10 +80,10 @@ public partial class App : Application
                 desktop.MainWindow.Activated += (_, _) => NotificationOrchestrator.IsAppInForeground = true;
                 desktop.MainWindow.Deactivated += (_, _) => NotificationOrchestrator.IsAppInForeground = false;
 
-                // File picker for image/media attach (needs MainWindow reference)
+                // File picker for image/media attach
                 ChatViewModel.FilePickerFunc = async () =>
                 {
-                    var topLevel = Avalonia.Controls.TopLevel.GetTopLevel(desktop.MainWindow);
+                    var topLevel = TopLevel.GetTopLevel(desktop.MainWindow);
                     if (topLevel == null) return null;
 
                     var files = await topLevel.StorageProvider.OpenFilePickerAsync(
@@ -166,7 +131,6 @@ public partial class App : Application
 
                 _logger?.LogInformation("MainWindow created successfully (Profile: {Profile})", ProfileConfiguration.ProfileName);
 
-                // Handle application shutdown
                 desktop.ShutdownRequested += (_, _) =>
                 {
                     _logger?.LogInformation("Application shutdown requested");
@@ -195,7 +159,6 @@ public partial class App : Application
             var resources = Resources as Avalonia.Controls.ResourceDictionary;
             if (resources == null) return;
 
-            // Remove old color dictionary
             var existing = resources.MergedDictionaries
                 .OfType<Avalonia.Markup.Xaml.Styling.ResourceInclude>()
                 .FirstOrDefault(r => r.Source?.ToString().Contains("/Themes/") == true);
@@ -203,7 +166,6 @@ public partial class App : Application
             if (existing != null)
                 resources.MergedDictionaries.Remove(existing);
 
-            // Add new color dictionary
             var newTheme = new Avalonia.Markup.Xaml.Styling.ResourceInclude(uri) { Source = uri };
             resources.MergedDictionaries.Add(newTheme);
 
@@ -225,7 +187,7 @@ public partial class App : Application
     private static void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
     {
         _logger?.LogError(e.Exception, "Unobserved task exception");
-        e.SetObserved(); // Prevent crash
+        e.SetObserved();
     }
 
     private static void OnRxException(Exception ex)

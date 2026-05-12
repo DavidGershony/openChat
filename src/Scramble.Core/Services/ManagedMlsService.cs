@@ -136,7 +136,10 @@ public class ManagedMlsService : IMlsService
             var connStr = baseDbPath == ":memory:"
                 ? "Data Source=:memory:"
                 : $"Data Source={baseDbPath}";
-            var secureStorage = _storageService?.SecureStorage ?? new NoOpSecureStorage();
+            var secureStorage = _storageService?.SecureStorage
+                ?? throw new InvalidOperationException(
+                    "SecureStorage is required for MLS data protection. " +
+                    "Ensure a platform-specific ISecureStorage implementation is registered.");
             _storageProvider = new EncryptedSqliteStorageProvider(connStr, secureStorage, tablePrefix: "mls_");
 
             _mdk = new MdkBuilder<EncryptedSqliteStorageProvider>()

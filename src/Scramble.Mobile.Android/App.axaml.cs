@@ -33,7 +33,7 @@ public partial class App : Avalonia.Application
             // Profile-independent services. NostrService is cross-platform (Core);
             // clipboard / QR / launcher come from Scramble.UI's Avalonia implementations
             // which are framework-only and work fine on Android.
-            ISecureStorage secureStorage = new PassThroughSecureStorage();
+            ISecureStorage secureStorage = new MobileAndroidSecureStorage();
             var nostrService = new NostrService();
             var clipboard = new AvaloniaClipboard();
             var qrCodeGenerator = new AvaloniaQrCodeGenerator();

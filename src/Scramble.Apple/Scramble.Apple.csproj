@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Avalonia app head for Apple platforms. Hosts the shared Avalonia UI (Scramble.UI)
+    on macOS as a desktop app, and in future on iOS as a mobile app.
+    Provides AppleSecureStorage backed by the native Keychain (Security framework).
+
+    Requires the macOS workload: dotnet workload install macos
+    iOS support will be added when the ios workload is installed.
+  -->
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-macos</TargetFramework>
+    <!-- iOS target will be added when ios workload is installed -->
+    <!-- <TargetFrameworks>net10.0-macos;net10.0-ios</TargetFrameworks> -->
+    <SupportedOSPlatformVersion>10.15</SupportedOSPlatformVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Scramble.Apple</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.0.3" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.0.3" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.3" />
+    <PackageReference Include="ReactiveUI.Avalonia" Version="12.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Scramble.Core\Scramble.Core.csproj" />
+    <ProjectReference Include="..\Scramble.Presentation\Scramble.Presentation.csproj" />
+    <ProjectReference Include="..\Scramble.UI\Scramble.UI.csproj" />
+  </ItemGroup>
+
+</Project>
