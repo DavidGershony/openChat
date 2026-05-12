@@ -113,6 +113,12 @@ public partial class MainViewModel : ViewModelBase
             }
         });
 
+        // Wire SettingsView's on-screen back arrow to navigate back to chats.
+        // SettingsView is a UserControl reused across desktop and mobile shells,
+        // so the back command must live on the view model rather than relying on
+        // a $parent[Window] visual-tree walk (which only works on desktop).
+        SettingsViewModel.BackCommand = ShowChatsCommand;
+
         LogoutCommand = ReactiveCommand.CreateFromTask(LogoutAsync);
 
         ShowMyProfileCommand = ReactiveCommand.CreateFromTask(async () =>

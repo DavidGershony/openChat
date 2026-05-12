@@ -105,6 +105,15 @@ public partial class SettingsViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> GeneratePushTopicCommand { get; }
     public ReactiveCommand<Unit, Unit> SubscribeInNtfyCommand { get; }
 
+    /// <summary>
+    /// Command invoked when the user taps the back arrow in the settings header.
+    /// Assigned by the parent (<see cref="MainViewModel"/>) after construction so
+    /// SettingsView does not have to reach across the visual tree to find the
+    /// shell-level navigation command. Shell-agnostic: works in both desktop
+    /// (Window-hosted) and mobile (single-view) layouts.
+    /// </summary>
+    [Reactive] public partial ReactiveCommand<Unit, Unit>? BackCommand { get; set; }
+
     public SettingsViewModel(INostrService nostrService, IStorageService storageService, IMlsService mlsService, IMessageService messageService, IPlatformLauncher launcher)
     {
         _logger = LoggingConfiguration.CreateLogger<SettingsViewModel>();

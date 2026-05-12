@@ -36,9 +36,14 @@
 
             <!-- Main content -->
             <Grid Grid.Row="0">
-                <!-- Chat list (default view) -->
-                <views:ChatListView DataContext="{Binding ChatListViewModel}"
-                                    IsVisible="{Binding !$parent[Grid].DataContext.ChatViewModel.HasChat}" />
+                <!-- Chat list (default view).
+                     Outer Panel hides the list whenever the settings overlay is open (CurrentView != null);
+                     inner IsVisible additionally hides it when an active chat is open.
+                     This stops the list's focusable controls from cycling under TAB when the overlay is shown. -->
+                <Panel IsVisible="{Binding CurrentView, Converter={x:Static ObjectConverters.IsNull}}">
+                    <views:ChatListView DataContext="{Binding ChatListViewModel}"
+                                        IsVisible="{Binding !$parent[Grid].DataContext.ChatViewModel.HasChat}" />
+                </Panel>
 
                 <!-- Active chat overlay -->
                 <views:ChatView DataContext="{Binding ChatViewModel}"
@@ -49,9 +54,11 @@
                                     IsVisible="{Binding $parent[Grid].DataContext.CurrentView, Converter={x:Static ObjectConverters.IsNotNull}}" />
             </Grid>
 
-            <!-- Bottom action bar -->
+            <!-- Bottom action bar. Hidden while the settings overlay is open so its buttons
+                 don't capture focus underneath the overlay. -->
             <Border Grid.Row="1" Padding="12,8"
-                    Background="{DynamicResource BackgroundLightBrush}">
+                    Background="{DynamicResource BackgroundLightBrush}"
+                    IsVisible="{Binding CurrentView, Converter={x:Static ObjectConverters.IsNull}}">
                 <Grid ColumnDefinitions="*,8,*">
                     <Button Grid.Column="0" Classes="secondary"
                             HorizontalAlignment="Stretch"
@@ -75,5 +82,14 @@
              LoginViewModel so IsVisible must reach back to ShellViewModel. -->
         <views:LoginView DataContext="{Binding LoginViewModel}"
                          IsVisible="{Binding #Root.DataContext.IsLoggedIn, Converter={x:Static BoolConverters.Not}}" />
+
+        <!-- New Chat dialog overlay. Mirrors the desktop overlay at MainWindow.axaml; both shells
+             render the same NewChatDialogView UserControl. Placed at outer Grid scope so the dim
+             backdrop covers the bottom action bar as well. -->
+        <ContentControl DataContext="{Binding #Root.DataContext.MainViewModel.ChatListViewModel}"
+                        x:DataType="vm:ChatListViewModel"
+                        IsVisible="{Binding ShowNewChatDialog, FallbackValue=False}">
+            <views:NewChatDialogView />
+        </ContentControl>
     </Grid>
 </UserControl>
