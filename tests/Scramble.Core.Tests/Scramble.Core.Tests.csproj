@@ -26,6 +26,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Scramble.Core\Scramble.Core.csproj" />
     <ProjectReference Include="..\..\src\Scramble.UI\Scramble.UI.csproj" />
+    <!-- Desktop secure storage (DPAPI) lives here as of the Avalonia 12 / Android multi-target split.
+         WinExe output; ReferenceOutputAssembly=true still surfaces the type assembly to consumers. -->
+    <ProjectReference Include="..\..\src\Scramble.Desktop\Scramble.Desktop.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -140,7 +140,7 @@ public class SecureStorageTests : IDisposable
     {
         Assert.SkipUnless(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "DPAPI only available on Windows");
 
-        var storage = new Scramble.UI.Services.DesktopSecureStorage();
+        var storage = new Scramble.Desktop.DesktopSecureStorage();
         var original = Encoding.UTF8.GetBytes("nostr-private-key-e1f21901bb0990cd36430316");
 
         var encrypted = storage.Protect(original);
@@ -154,7 +154,7 @@ public class SecureStorageTests : IDisposable
     {
         Assert.SkipUnless(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "DPAPI only available on Windows");
 
-        var storage = new Scramble.UI.Services.DesktopSecureStorage();
+        var storage = new Scramble.Desktop.DesktopSecureStorage();
         var original = Encoding.UTF8.GetBytes("secret-signing-key-material");
 
         var encrypted = storage.Protect(original);
@@ -173,7 +173,7 @@ public class SecureStorageTests : IDisposable
     {
         Assert.SkipUnless(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "DPAPI only available on Windows");
 
-        var storage = new Scramble.UI.Services.DesktopSecureStorage();
+        var storage = new Scramble.Desktop.DesktopSecureStorage();
         var plaintext = Encoding.UTF8.GetBytes("unencrypted-legacy-data");
 
         var result = storage.Unprotect(plaintext);
@@ -186,7 +186,7 @@ public class SecureStorageTests : IDisposable
     {
         Assert.SkipUnless(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "DPAPI only available on Windows");
 
-        var storage = new Scramble.UI.Services.DesktopSecureStorage();
+        var storage = new Scramble.Desktop.DesktopSecureStorage();
         // Simulate MLS state blob (~1500 bytes typical)
         var original = new byte[2000];
         new Random(42).NextBytes(original);
