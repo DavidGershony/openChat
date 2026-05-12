@@ -635,6 +635,15 @@ public class MessageService : IMessageService, IDisposable
         if (exactMatch != null)
             return exactMatch;
 
+        // GetAllChatsAsync does not populate Chat.LastMessage; the relay-match and time-fallback
+        // predicates below depend on it, so hydrate from the last-message snapshot before evaluating.
+        if (botChats.Count > 0)
+        {
+            var lastMessages = await _storageService.GetLastMessagePerChatAsync();
+            foreach (var c in botChats)
+                c.LastMessage = lastMessages.GetValueOrDefault(c.Id);
+        }
+
         // 2. Relay + recency match: response came from a relay we recognise for a specific bot chat
         //    that is currently waiting for a reply (last message was from the current user).
         if (!string.IsNullOrEmpty(responseRelayUrl))

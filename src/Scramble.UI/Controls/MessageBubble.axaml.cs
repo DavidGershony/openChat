@@ -53,7 +53,7 @@ public partial class MessageBubble : UserControl
 
     private async void OnCopyClick(object? sender, RoutedEventArgs e)
     {
-        if (sender is not Button btn || btn.Tag is not MessageViewModel msgVm || string.IsNullOrWhiteSpace(msgVm.Content))
+        if (sender is not Avalonia.Controls.Button btn || btn.Tag is not MessageViewModel msgVm || string.IsNullOrWhiteSpace(msgVm.Content))
             return;
 
         var topLevel = TopLevel.GetTopLevel(this);
