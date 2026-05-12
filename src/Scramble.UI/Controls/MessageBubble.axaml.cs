@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
+using Avalonia.Input.Platform;
 using Scramble.Presentation.ViewModels;
 
 namespace Scramble.UI.Controls;
