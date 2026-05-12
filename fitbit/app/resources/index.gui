@@ -1,0 +1,103 @@
+<svg class="app-root">
+  <!-- Chat List Screen -->
+  <svg id="chat-list-screen" class="screen">
+    <!-- Header -->
+    <rect x="0" y="0" width="100%" height="48" class="header-bg" />
+    <text x="50%" y="32" class="header-title" text-anchor="middle">OpenChat</text>
+
+    <!-- Unread badge in header -->
+    <rect id="total-unread-bg" x="78%" y="10" width="28" height="28" class="unread-badge-bg" display="none" />
+    <text id="total-unread-text" x="82%" y="30" class="unread-badge-text" text-anchor="middle" display="none">0</text>
+
+    <!-- Chat list -->
+    <use id="chat-list" href="#tile-list" x="0" y="48" width="100%" height="100%-48">
+      <var id="reorder-enabled" value="0" />
+      <var id="separator-height-bottom" value="1" />
+      <var id="peek-enabled" value="1" />
+
+      <!-- Chat item template -->
+      <use id="chat-item" href="#tile-list-item" class="chat-item">
+        <rect width="100%" height="100%" class="chat-item-bg" />
+
+        <!-- Chat name -->
+        <text id="chat-name" x="12" y="28" class="chat-name-text">Chat Name</text>
+
+        <!-- Last message preview -->
+        <text id="chat-preview" x="12" y="50" class="chat-preview-text">Last message...</text>
+
+        <!-- Timestamp -->
+        <text id="chat-time" x="88%" y="28" class="chat-time-text" text-anchor="end">12:00</text>
+
+        <!-- Unread count badge -->
+        <rect id="unread-bg" x="82%" y="36" width="26" height="22" class="unread-badge-bg" display="none" />
+        <text id="unread-text" x="86%" y="52" class="unread-badge-text" text-anchor="middle" display="none">0</text>
+      </use>
+    </use>
+
+    <!-- Empty state -->
+    <text id="empty-state" x="50%" y="50%" class="empty-text" text-anchor="middle" display="none">No chats yet</text>
+
+    <!-- Loading indicator -->
+    <text id="loading-text" x="50%" y="50%" class="loading-text" text-anchor="middle">Loading...</text>
+  </svg>
+
+  <!-- Message List Screen -->
+  <svg id="message-list-screen" class="screen" display="none">
+    <!-- Header with back button -->
+    <rect x="0" y="0" width="100%" height="48" class="header-bg" />
+    <text id="msg-back-btn" x="12" y="32" class="back-btn">&#x2190;</text>
+    <text id="msg-chat-name" x="40" y="32" class="header-title">Chat</text>
+
+    <!-- Messages -->
+    <use id="message-list" href="#tile-list" x="0" y="48" width="100%" height="100%-96">
+      <var id="reorder-enabled" value="0" />
+      <var id="separator-height-bottom" value="2" />
+      <var id="peek-enabled" value="1" />
+
+      <!-- Message item template -->
+      <use id="message-item" href="#tile-list-item" class="message-item">
+        <rect width="100%" height="100%" class="message-bg" />
+
+        <!-- Sender name -->
+        <text id="msg-sender" x="8" y="18" class="msg-sender-text">Sender</text>
+
+        <!-- Message content (wraps to 2 lines max) -->
+        <textarea id="msg-content" x="8" y="24" width="95%" class="msg-content-text">Message text</textarea>
+
+        <!-- Timestamp -->
+        <text id="msg-time" x="92%" y="18" class="msg-time-text" text-anchor="end">12:00</text>
+      </use>
+    </use>
+
+    <!-- Reply button at bottom -->
+    <rect x="0" y="100%-48" width="100%" height="48" class="reply-bar-bg" />
+    <text id="reply-btn" x="50%" y="100%-20" class="reply-btn-text" text-anchor="middle">Reply</text>
+  </svg>
+
+  <!-- Quick Reply Screen -->
+  <svg id="reply-screen" class="screen" display="none">
+    <!-- Header -->
+    <rect x="0" y="0" width="100%" height="48" class="header-bg" />
+    <text id="reply-back-btn" x="12" y="32" class="back-btn">&#x2190;</text>
+    <text x="40" y="32" class="header-title">Quick Reply</text>
+
+    <!-- Reply options list -->
+    <use id="reply-list" href="#tile-list" x="0" y="48" width="100%" height="100%-48">
+      <var id="reorder-enabled" value="0" />
+      <var id="separator-height-bottom" value="1" />
+
+      <!-- Reply option template -->
+      <use id="reply-item" href="#tile-list-item" class="reply-item">
+        <rect width="100%" height="100%" class="reply-item-bg" />
+        <text id="reply-text" x="50%" y="50%+6" class="reply-item-text" text-anchor="middle">OK</text>
+      </use>
+    </use>
+  </svg>
+
+  <!-- Notification toast -->
+  <svg id="notification-toast" display="none">
+    <rect x="5%" y="4" width="90%" height="56" class="toast-bg" />
+    <text id="toast-sender" x="10%" y="24" class="toast-sender">Sender</text>
+    <text id="toast-content" x="10%" y="44" class="toast-content">Message</text>
+  </svg>
+</svg>

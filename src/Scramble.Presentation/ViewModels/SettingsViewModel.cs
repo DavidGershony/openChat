@@ -80,6 +80,13 @@ public partial class SettingsViewModel : ViewModelBase
     public string MarmotCsVersion { get; } = GetPackageVersion("MarmotCs.Core");
     public string DotnetMlsVersion { get; } = GetPackageVersion("DotnetMls");
 
+    // Watch pairing
+    [Reactive] public bool IsWatchPaired { get; set; }
+    [Reactive] public string? PairingCode { get; set; }
+    [Reactive] public int PairingCountdown { get; set; }
+    [Reactive] public bool IsPairingCodeVisible { get; set; }
+    [Reactive] public string? WatchPairingStatus { get; set; }
+
     // Theme selection
     [Reactive] public partial int SelectedThemeIndex { get; set; } = 4;
     public static string[] AvailableThemeNames { get; set; } = Array.Empty<string>();
@@ -113,6 +120,26 @@ public partial class SettingsViewModel : ViewModelBase
     /// (Window-hosted) and mobile (single-view) layouts.
     /// </summary>
     [Reactive] public partial ReactiveCommand<Unit, Unit>? BackCommand { get; set; }
+
+    // Watch pairing commands — delegates are set by the platform (Android) since the bridge is platform-specific
+    public ReactiveCommand<Unit, Unit> GeneratePairingCodeCommand { get; }
+    public ReactiveCommand<Unit, Unit> UnpairWatchCommand { get; }
+
+    /// <summary>
+    /// Platform sets this to generate a pairing code from the bridge auth service.
+    /// Returns the 6-digit code string.
+    /// </summary>
+    public static Func<string>? OnGeneratePairingCode { get; set; }
+
+    /// <summary>
+    /// Platform sets this to unpair the watch via the bridge auth service.
+    /// </summary>
+    public static Func<Task>? OnUnpairWatch { get; set; }
+
+    /// <summary>
+    /// Platform sets this to check if the watch is currently paired.
+    /// </summary>
+    public static Func<bool>? OnCheckWatchPaired { get; set; }
 
     public SettingsViewModel(INostrService nostrService, IStorageService storageService, IMlsService mlsService, IMessageService messageService, IPlatformLauncher launcher)
     {
@@ -179,6 +206,10 @@ public partial class SettingsViewModel : ViewModelBase
         VerifyNotificationsCommand = ReactiveCommand.CreateFromTask(VerifyNotificationsAsync);
         GeneratePushTopicCommand = ReactiveCommand.Create(GeneratePushTopic);
         SubscribeInNtfyCommand = ReactiveCommand.Create(SubscribeInNtfy);
+
+        // Watch pairing commands
+        GeneratePairingCodeCommand = ReactiveCommand.CreateFromTask(GeneratePairingCodeAsync);
+        UnpairWatchCommand = ReactiveCommand.CreateFromTask(UnpairWatchAsync);
 
         // Add default relays (will be replaced by saved relays in LoadSettingsAsync)
         foreach (var relay in NostrConstants.DefaultRelays)
@@ -323,6 +354,9 @@ public partial class SettingsViewModel : ViewModelBase
             _logger.LogInformation("Loaded theme index {Index} from profile", themeIndex);
             SelectedThemeIndex = themeIndex;
         }
+
+        // Load watch pairing status
+        IsWatchPaired = OnCheckWatchPaired?.Invoke() == true;
 
         // Load MIP-04 setting
         var mip04Setting = await _storageService.GetSettingAsync("mip04_enabled");
@@ -708,6 +742,74 @@ public partial class SettingsViewModel : ViewModelBase
         {
             NotificationRegistrationStatus = $"Failed: {ex.Message}";
             _logger.LogError(ex, "Failed to register for notifications");
+        }
+    }
+
+    private async Task GeneratePairingCodeAsync()
+    {
+        if (OnGeneratePairingCode == null)
+        {
+            WatchPairingStatus = "Watch bridge not available";
+            return;
+        }
+
+        try
+        {
+            var code = OnGeneratePairingCode();
+            PairingCode = code;
+            IsPairingCodeVisible = true;
+            PairingCountdown = 60;
+            WatchPairingStatus = "Enter this code in the Fitbit app settings";
+
+            _logger.LogInformation("Pairing code generated, countdown started");
+
+            // Countdown timer
+            while (PairingCountdown > 0)
+            {
+                await Task.Delay(1000);
+                PairingCountdown--;
+
+                // Check if pairing completed during countdown
+                if (OnCheckWatchPaired?.Invoke() == true)
+                {
+                    IsWatchPaired = true;
+                    IsPairingCodeVisible = false;
+                    PairingCode = null;
+                    WatchPairingStatus = "Watch paired successfully";
+                    _logger.LogInformation("Watch paired during countdown");
+                    return;
+                }
+            }
+
+            // Code expired
+            IsPairingCodeVisible = false;
+            PairingCode = null;
+            WatchPairingStatus = "Pairing code expired. Try again.";
+            _logger.LogInformation("Pairing code expired");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to generate pairing code");
+            WatchPairingStatus = $"Error: {ex.Message}";
+            IsPairingCodeVisible = false;
+        }
+    }
+
+    private async Task UnpairWatchAsync()
+    {
+        try
+        {
+            if (OnUnpairWatch != null)
+                await OnUnpairWatch();
+
+            IsWatchPaired = false;
+            WatchPairingStatus = "Watch unpaired";
+            _logger.LogInformation("Watch unpaired via settings");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to unpair watch");
+            WatchPairingStatus = $"Unpair failed: {ex.Message}";
         }
     }
 
