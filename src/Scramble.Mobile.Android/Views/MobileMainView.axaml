@@ -1,0 +1,79 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Scramble.Presentation.ViewModels"
+             xmlns:views="using:Scramble.UI.Views"
+             x:Class="Scramble.MobileAndroid.Views.MobileMainView"
+             x:Name="Root"
+             x:DataType="vm:ShellViewModel">
+
+    <!--
+        Mobile shell for the Avalonia Android head.
+
+        This intentionally mirrors the *body* of Scramble.UI/Views/MainWindow.axaml
+        (Login vs. logged-in content) but omits desktop chrome (custom title bar,
+        window controls) and the fixed two-column sidebar+content layout that
+        doesn't fit on a phone.
+
+        Logged-in layout: single column showing the ChatListView. Tapping a chat
+        navigates by toggling MainViewModel.ChatViewModel.HasChat — the existing
+        ChatView control then overlays. Settings and dialogs follow the same
+        IsVisible pattern as desktop.
+
+        The DataContext is ShellViewModel (set by App.OnFrameworkInitializationCompleted).
+    -->
+
+    <Grid Background="{DynamicResource BackgroundDarkBrush}">
+
+        <!-- Logged-in view (only when IsLoggedIn).
+             IsVisible binds against the outer ShellViewModel BEFORE DataContext is
+             reassigned to MainViewModel for descendants — use a relative binding so
+             the compiled-bindings type checker doesn't look up IsLoggedIn on
+             MainViewModel. -->
+        <Grid IsVisible="{Binding #Root.DataContext.IsLoggedIn}"
+              DataContext="{Binding MainViewModel}"
+              x:DataType="vm:MainViewModel"
+              RowDefinitions="*,Auto">
+
+            <!-- Main content -->
+            <Grid Grid.Row="0">
+                <!-- Chat list (default view) -->
+                <views:ChatListView DataContext="{Binding ChatListViewModel}"
+                                    IsVisible="{Binding !$parent[Grid].DataContext.ChatViewModel.HasChat}" />
+
+                <!-- Active chat overlay -->
+                <views:ChatView DataContext="{Binding ChatViewModel}"
+                                IsVisible="{Binding HasChat}" />
+
+                <!-- Settings overlay (when CurrentView is set) -->
+                <views:SettingsView DataContext="{Binding SettingsViewModel}"
+                                    IsVisible="{Binding $parent[Grid].DataContext.CurrentView, Converter={x:Static ObjectConverters.IsNotNull}}" />
+            </Grid>
+
+            <!-- Bottom action bar -->
+            <Border Grid.Row="1" Padding="12,8"
+                    Background="{DynamicResource BackgroundLightBrush}">
+                <Grid ColumnDefinitions="*,8,*">
+                    <Button Grid.Column="0" Classes="secondary"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"
+                            Command="{Binding ChatListViewModel.NewChatCommand}"
+                            Padding="8,6">
+                        <TextBlock Text="New Chat" FontSize="13" />
+                    </Button>
+                    <Button Grid.Column="2" Classes="secondary"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"
+                            Command="{Binding ShowSettingsCommand}"
+                            Padding="8,6">
+                        <TextBlock Text="Settings" FontSize="13" />
+                    </Button>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- Login view (only when not logged in). DataContext is reassigned to
+             LoginViewModel so IsVisible must reach back to ShellViewModel. -->
+        <views:LoginView DataContext="{Binding LoginViewModel}"
+                         IsVisible="{Binding #Root.DataContext.IsLoggedIn, Converter={x:Static BoolConverters.Not}}" />
+    </Grid>
+</UserControl>

@@ -1,14 +1,26 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Scramble.Core.Configuration;
+using Scramble.Core.Services;
+using Scramble.MobileAndroid.Services;
+using Scramble.MobileAndroid.Views;
+using Scramble.Presentation.ViewModels;
+using Scramble.UI.Services;
 
 namespace Scramble.MobileAndroid;
 
 /// <summary>
-/// Minimal Avalonia Application for the Android head. Loads the same FluentTheme + NostrTheme styles
-/// as Scramble.Desktop so the shared Avalonia views (Scramble.UI) render identically. Service
-/// composition (secure storage, audio, notifications, MLS backend, etc.) is intentionally deferred
-/// to a follow-up task: this head currently exists to prove the Avalonia stack compiles for Android.
+/// Avalonia Application for the Android head. Composes the shared ShellViewModel
+/// (login + chat) with platform services and hosts the unified Avalonia UI from
+/// Scramble.UI. The intent is to share UI/code 1:1 with desktop so this head can
+/// be evaluated as a possible replacement for the native Scramble.Android app.
+///
+/// What's intentionally NOT wired here (yet):
+///   - Real secure storage (uses PassThroughSecureStorage — see that class for context).
+///   - Audio recording/playback, file picker, push notifications, QR scanner.
+///   - Theme switching (defaults to NostrTheme via App.axaml StyleInclude).
+/// Each will be added only when its absence blocks an evaluation milestone.
 /// </summary>
 public partial class App : Avalonia.Application
 {
@@ -18,14 +30,25 @@ public partial class App : Avalonia.Application
     {
         if (ApplicationLifetime is ISingleViewApplicationLifetime singleView)
         {
-            // TODO: wire ShellViewModel + main view here once Android service composition is implemented.
-            // For now the app launches with a blank single-view shell so we can verify the Avalonia
-            // Android pipeline (resource loading, theming, JNI bridge) is healthy.
-            singleView.MainView = new Avalonia.Controls.TextBlock
+            // Profile-independent services. NostrService is cross-platform (Core);
+            // clipboard / QR / launcher come from Scramble.UI's Avalonia implementations
+            // which are framework-only and work fine on Android.
+            ISecureStorage secureStorage = new PassThroughSecureStorage();
+            var nostrService = new NostrService();
+            var clipboard = new AvaloniaClipboard();
+            var qrCodeGenerator = new AvaloniaQrCodeGenerator();
+            var launcher = new AvaloniaLauncher();
+
+            var shellViewModel = new ShellViewModel(
+                nostrService, secureStorage, clipboard, qrCodeGenerator, launcher);
+
+            // MLS service factory — Android cannot load the Rust uniffi backend (MlsService)
+            // without the native libs cross-compiled for ARM; force Managed (pure-C#) here.
+            shellViewModel.MlsServiceFactory = storage => new ManagedMlsService(storage);
+
+            singleView.MainView = new MobileMainView
             {
-                Text = "Scramble (Avalonia Android head) — composition TODO",
-                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
-                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
+                DataContext = shellViewModel
             };
         }
 
