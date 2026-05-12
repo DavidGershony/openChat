@@ -35,27 +35,6 @@ public partial class MainWindow : Window
                         // Update window title with active account name
                         Title = "Scramble" + ProfileConfiguration.WindowTitleSuffix;
                     });
-
-                // Track profile dialog visibility through MainViewModel changes
-                var profileOverlay = this.FindControl<Avalonia.Controls.Border>("ProfileDialogOverlay");
-                shell.WhenAnyValue(x => x.MainViewModel)
-                    .Where(vm => vm != null)
-                    .Select(vm => vm!.WhenAnyValue(v => v.ShowMyProfileDialog))
-                    .Switch()
-                    .ObserveOn(RxSchedulers.MainThreadScheduler)
-                    .Subscribe(show =>
-                    {
-                        if (profileOverlay != null) profileOverlay.IsVisible = show;
-                    });
-
-                // Hide profile dialog when MainViewModel is cleared (logout/switch)
-                shell.WhenAnyValue(x => x.MainViewModel)
-                    .Where(vm => vm == null)
-                    .ObserveOn(RxSchedulers.MainThreadScheduler)
-                    .Subscribe(_ =>
-                    {
-                        if (profileOverlay != null) profileOverlay.IsVisible = false;
-                    });
             }
         };
     }
@@ -78,26 +57,6 @@ public partial class MainWindow : Window
         if (DataContext is ShellViewModel shell)
         {
             shell.ToggleAccountSwitcherCommand.Execute().Subscribe();
-        }
-    }
-
-    private void AccountItem_Click(object? sender, RoutedEventArgs e)
-    {
-        if (sender is Avalonia.Controls.Button btn && btn.Tag is string pubKeyHex && DataContext is ShellViewModel shell)
-        {
-            _ = shell.SwitchAccountAsync(pubKeyHex);
-        }
-    }
-
-    private void ViewProfileFromSwitcher_Click(object? sender, RoutedEventArgs e)
-    {
-        if (DataContext is ShellViewModel shell)
-        {
-            shell.ShowAccountSwitcher = false;
-            if (shell.MainViewModel is { } mainVm)
-            {
-                mainVm.ShowMyProfileCommand.Execute().Subscribe();
-            }
         }
     }
 
