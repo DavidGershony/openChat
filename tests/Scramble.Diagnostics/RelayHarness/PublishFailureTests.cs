@@ -9,17 +9,12 @@ namespace Scramble.Diagnostics.RelayHarness;
 
 /// <summary>
 /// Drives Scramble's <see cref="MessageService.AddMemberAsync"/> against a single
-/// <see cref="FaultyRelay"/> with fault knobs flipped to reproduce the
-/// publish-failure handling gap discovered in NostrService:
+/// <see cref="FaultyRelay"/> with fault knobs to verify MIP-03 compliance:
 ///
-///   PublishEventAsync (NostrService.cs:2972-2993) waits 5s for an OK,
-///   then logs a warning and returns the event id REGARDLESS of whether
-///   the OK actually arrived.
-///
-/// PublishCommitAsync (used by AddMemberAsync) does not check
-/// LastPublishOkResult, so AddMember returns "successfully" even when no
-/// relay confirmed the commit. The dedup marker, Welcome publish, and
-/// participant update all still happen.
+/// After Phase 3+4 fixes, PublishCommitAsync now throws
+/// <see cref="PublishUnconfirmedException"/> when no relay confirms.
+/// AddMemberAsync uses the staged commit API to avoid advancing local state
+/// until relay confirmation, and rolls back on failure.
 /// </summary>
 [Trait("Category", "RelayHarness")]
 public class PublishFailureTests : IAsyncLifetime
@@ -103,7 +98,7 @@ public class PublishFailureTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task AddMember_OkDropped_StillReturnsSuccessfully_AndDedupMarkerIsWritten()
+    public async Task AddMember_OkDropped_ThrowsPublishUnconfirmed_AndLocalStateUnchanged()
     {
         Assert.NotNull(_relay);
 
@@ -152,57 +147,32 @@ public class PublishFailureTests : IAsyncLifetime
         _output.WriteLine("Fault enabled: DropOk = true");
 
         // ── The act ──
+        // MIP-03 compliance: AddMember MUST throw when no relay confirms the commit.
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        Exception? thrown = null;
-        try
-        {
-            await alice.MessageService.AddMemberAsync(chat.Id, bob.PubKeyHex);
-        }
-        catch (Exception ex)
-        {
-            thrown = ex;
-        }
+        var thrown = await Assert.ThrowsAsync<PublishUnconfirmedException>(
+            () => alice.MessageService.AddMemberAsync(chat.Id, bob.PubKeyHex));
         sw.Stop();
-        _output.WriteLine($"AddMember returned in {sw.ElapsedMilliseconds}ms, thrown={thrown?.GetType().Name ?? "<none>"}");
+        _output.WriteLine($"AddMember threw {thrown.GetType().Name} in {sw.ElapsedMilliseconds}ms: {thrown.Message}");
 
         // ── Assertions ──
-        // 1. AddMember does NOT throw — this is the bug. A publish that no
-        //    relay confirmed should not look like success.
-        Assert.Null(thrown);
+        // 1. AddMember threw PublishUnconfirmedException — MIP-03 §"Commit Message Race Conditions" step 2.
+        Assert.Equal(445, thrown.Kind);
 
-        // 2. The OK timeout is at least 5s (NostrService.cs:2973), so the call
-        //    has to have waited for it (twice — commit and welcome).
-        Assert.True(sw.ElapsedMilliseconds >= 5000,
-            $"expected at least 5s wall time for OK timeout, got {sw.ElapsedMilliseconds}ms");
-
-        // 3. NostrService recorded the publish as NOT accepted.
-        Assert.False(alice.NostrService.LastPublishOkResult.accepted,
-            "expected LastPublishOkResult.accepted to be false (no relay sent OK)");
-
-        // 4. Despite the publish failure, the dedup marker for the commit was
-        //    persisted (MessageService.cs:711-724 ran). This is what proves
-        //    the post-publish code path executed as if everything was fine.
+        // 2. The dedup marker was NOT written — local state should not have changed.
         var messages = await alice.Storage.GetMessagesForChatAsync(chat.Id);
         var commitMarker = messages.FirstOrDefault(m => m.Type == MessageType.System && m.Content == "[commit]");
-        Assert.NotNull(commitMarker);
-        _output.WriteLine($"Dedup marker written: event={commitMarker!.NostrEventId?[..16]}...");
+        Assert.Null(commitMarker);
+        _output.WriteLine("COMPLIANCE: no dedup marker written (commit not confirmed).");
 
-        // 5. The participants list was updated as if Bob successfully joined.
+        // 3. The participants list was NOT updated — Bob did not join.
         var aliceChat = await alice.Storage.GetChatAsync(chat.Id);
         Assert.NotNull(aliceChat);
-        Assert.Contains(bob.PubKeyHex, aliceChat!.ParticipantPublicKeys);
-
-        // 6. The relay actually has the events stored — the wire-level publish
-        //    succeeded, only the OK ack was missing.
-        Assert.True(_relay.StoredEventCount >= 1,
-            $"expected the relay to have stored at least the commit event, got {_relay.StoredEventCount}");
-
-        _output.WriteLine($"Relay has {_relay.StoredEventCount} stored event(s) — wire publish landed; only OK was missing.");
-        _output.WriteLine("BUG REPRODUCED: AddMember returned 'successfully' despite no relay confirmation.");
+        Assert.DoesNotContain(bob.PubKeyHex, aliceChat!.ParticipantPublicKeys);
+        _output.WriteLine("COMPLIANCE: participants not updated (commit not confirmed).");
     }
 
     [Fact]
-    public async Task AddMember_RelayBlackholesEvents_AliceThinksBobJoined_ButBobKnowsNothing()
+    public async Task AddMember_RelayBlackholesEvents_ThrowsAndRollsBack_NoStateDivergence()
     {
         Assert.NotNull(_relay);
 
@@ -253,34 +223,24 @@ public class PublishFailureTests : IAsyncLifetime
         _relay.Faults.BlackholeEvent = true;
         _output.WriteLine("Fault enabled: BlackholeEvent = true");
 
-        await alice.MessageService.AddMemberAsync(chat.Id, bob.PubKeyHex);
-
-        // Give Bob's subscription a moment to drain anything (nothing should land).
-        await Task.Delay(2000);
+        // MIP-03 compliance: AddMember MUST throw when events are blackholed (no OK received).
+        var thrown = await Assert.ThrowsAsync<PublishUnconfirmedException>(
+            () => alice.MessageService.AddMemberAsync(chat.Id, bob.PubKeyHex));
+        _output.WriteLine($"AddMember threw: {thrown.Message}");
 
         // ── Assertions ──
         // 1. Relay accepted no new events under the fault.
         Assert.Equal(relayEventCountBefore, _relay.StoredEventCount);
         _output.WriteLine($"Relay still has {_relay.StoredEventCount} event(s) — commit + welcome both blackholed.");
 
-        // 2. Alice's local view says Bob joined the group.
+        // 2. Alice's local view does NOT show Bob as a member (staged commit was rolled back).
         var aliceChat = await alice.Storage.GetChatAsync(chat.Id);
         Assert.NotNull(aliceChat);
-        Assert.Contains(bob.PubKeyHex, aliceChat!.ParticipantPublicKeys);
-        var pubkeySnippets = string.Join(", ", aliceChat.ParticipantPublicKeys.Select(p => p[..16] + "..."));
-        _output.WriteLine($"Alice's chat.ParticipantPublicKeys = [{pubkeySnippets}]");
+        Assert.DoesNotContain(bob.PubKeyHex, aliceChat!.ParticipantPublicKeys);
+        _output.WriteLine("COMPLIANCE: participants not updated — staged commit rolled back.");
 
-        // 3. Alice's local MLS state advanced (epoch went forward as part of AddMembersAsync).
-        Assert.True(aliceChat.MlsEpoch >= groupInfo.Epoch);
-
-        // 4. Bob has NO knowledge of this group.
-        await bob.MessageService.RescanInvitesAsync();
-        var bobInvites = (await bob.Storage.GetPendingInvitesAsync()).ToList();
-        var bobChats = (await bob.Storage.GetAllChatsAsync()).ToList();
-        _output.WriteLine($"Bob: {bobInvites.Count} pending invite(s), {bobChats.Count} chat(s)");
-        Assert.Empty(bobInvites);
-        Assert.Empty(bobChats);
-
-        _output.WriteLine("BUG REPRODUCED: silent state divergence — Alice's local state says Bob joined; Bob is unaware.");
+        // 3. Alice's local MLS state did NOT advance (staged commit was cleared).
+        Assert.Equal(groupInfo.Epoch, aliceChat.MlsEpoch);
+        _output.WriteLine("COMPLIANCE: epoch unchanged — no silent state divergence.");
     }
 }

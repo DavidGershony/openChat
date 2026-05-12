@@ -669,6 +669,23 @@ public class ManagedMlsService : IMlsService
                 try
                 {
                     using var doc = System.Text.Json.JsonDocument.Parse(plaintext);
+
+                    // MIP-03 §"Application Messages": "clients MUST verify the MLS sender matches
+                    // the inner event's pubkey" — reject messages where inner rumor pubkey doesn't
+                    // match the MLS-authenticated sender identity.
+                    if (doc.RootElement.TryGetProperty("pubkey", out var rumorPubkeyProp))
+                    {
+                        var rumorPubkey = rumorPubkeyProp.GetString();
+                        if (rumorPubkey != null && !string.Equals(rumorPubkey, senderHex, StringComparison.OrdinalIgnoreCase))
+                        {
+                            _logger.LogWarning(
+                                "DecryptMessage: MIP-03 sender verification FAILED — MLS sender {MlsSender} != rumor pubkey {RumorPubkey}. Dropping message.",
+                                senderHex, rumorPubkey);
+                            throw new InvalidOperationException(
+                                $"MIP-03 inner sender verification failed: MLS sender '{senderHex}' does not match rumor pubkey '{rumorPubkey}'. Possible spoofing attempt.");
+                        }
+                    }
+
                     if (doc.RootElement.TryGetProperty("content", out var contentProp))
                     {
                         var extracted = contentProp.GetString();
@@ -872,6 +889,90 @@ public class ManagedMlsService : IMlsService
 
 
         return result.CommitMessageBytes;
+    }
+
+    public async Task<MlsWelcome> StageAddMemberAsync(byte[] groupId, KeyPackage keyPackage)
+    {
+        EnsureInitialized();
+
+        if (string.IsNullOrEmpty(keyPackage.EventJson))
+            throw new InvalidOperationException("KeyPackage is missing the Nostr event JSON required for MLS processing");
+
+        byte[] kpBytes;
+        try
+        {
+            using var doc = JsonDocument.Parse(keyPackage.EventJson);
+            var root = doc.RootElement;
+            var content = root.GetProperty("content").GetString()
+                ?? throw new InvalidOperationException("KeyPackage event has null content");
+            kpBytes = Convert.FromBase64String(content);
+            if (kpBytes.Length == 0)
+                throw new InvalidOperationException("KeyPackage content decoded to empty bytes");
+        }
+        catch (InvalidOperationException) { throw; }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException("Failed to parse KeyPackage event JSON", ex);
+        }
+
+        // Capture pre-commit exporter secret BEFORE staging (MIP-03: encrypt with current epoch's key)
+        var preCommitExporterSecret = _mdk!.GetExporterSecret(groupId);
+
+        // Stage — does NOT advance epoch
+        var result = await _mdk.StageAddMembersAsync(groupId, new[] { kpBytes });
+
+        var rawWelcome = result.WelcomeBytes ?? Array.Empty<byte>();
+        var mlsMessage = WrapWelcomeInMlsMessage(rawWelcome);
+
+        // The commit bytes from Stage* are already in MLSMessage envelope
+        // Encrypt commit with pre-commit exporter secret (MIP-03)
+        var mip03EncryptedBase64 = GroupEventEncryption.Encrypt(result.CommitMessageBytes, preCommitExporterSecret);
+        var mip03Encrypted = Convert.FromBase64String(mip03EncryptedBase64);
+
+        return new MlsWelcome
+        {
+            WelcomeData = mlsMessage,
+            CommitData = mip03Encrypted,
+            RecipientPublicKey = keyPackage.OwnerPublicKey,
+            KeyPackageEventId = keyPackage.NostrEventId
+        };
+    }
+
+    public async Task MergeStagedAsync(byte[] groupId)
+    {
+        EnsureInitialized();
+        await _mdk!.MergeStagedCommitAsync(groupId);
+        await PersistGroupStateAsync(groupId);
+    }
+
+    public Task ClearStagedAsync(byte[] groupId)
+    {
+        EnsureInitialized();
+        _mdk!.ClearPendingCommit(groupId);
+        return Task.CompletedTask;
+    }
+
+    public async Task<byte[]> StageRemoveMemberAsync(byte[] groupId, string memberPublicKey)
+    {
+        EnsureInitialized();
+
+        var members = await _mdk!.GetMembersAsync(groupId);
+        var memberHexUpper = memberPublicKey.ToUpperInvariant();
+        var member = members.FirstOrDefault(m =>
+            m.identityHex.Equals(memberHexUpper, StringComparison.OrdinalIgnoreCase));
+
+        if (member.identityHex == null)
+            throw new InvalidOperationException($"Member {memberPublicKey} not found in group");
+
+        var result = await _mdk.StageRemoveMembersAsync(groupId, new[] { member.leafIndex });
+
+        return result.CommitMessageBytes;
+    }
+
+    public bool HasPendingCommit(byte[] groupId)
+    {
+        EnsureInitialized();
+        return _mdk!.HasPendingCommit(groupId);
     }
 
     public async Task<MlsGroupInfo?> GetGroupInfoAsync(byte[] groupId)

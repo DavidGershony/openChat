@@ -31,8 +31,38 @@ public interface IMlsService
 
     /// <summary>
     /// Add a member to a group using their KeyPackage.
+    /// Auto-merges immediately — prefer <see cref="StageAddMemberAsync"/> for MIP-03 compliance.
     /// </summary>
     Task<MlsWelcome> AddMemberAsync(byte[] groupId, KeyPackage keyPackage);
+
+    /// <summary>
+    /// Stage an add-member commit without advancing local MLS state.
+    /// Returns the same MlsWelcome data but the epoch is NOT advanced until
+    /// <see cref="MergeStagedAsync"/> is called after relay confirmation.
+    /// </summary>
+    Task<MlsWelcome> StageAddMemberAsync(byte[] groupId, KeyPackage keyPackage);
+
+    /// <summary>
+    /// Merge a previously staged commit, advancing local MLS state.
+    /// Call after the relay has confirmed the commit (MIP-03 step 3).
+    /// </summary>
+    Task MergeStagedAsync(byte[] groupId);
+
+    /// <summary>
+    /// Clear a previously staged commit without applying it.
+    /// Call when the commit publish failed.
+    /// </summary>
+    Task ClearStagedAsync(byte[] groupId);
+
+    /// <summary>
+    /// Stage a remove-member commit without advancing local MLS state.
+    /// </summary>
+    Task<byte[]> StageRemoveMemberAsync(byte[] groupId, string memberPublicKey);
+
+    /// <summary>
+    /// Returns true if there is a pending (staged) commit for the group.
+    /// </summary>
+    bool HasPendingCommit(byte[] groupId);
 
     /// <summary>
     /// Process a Welcome message to join a group.

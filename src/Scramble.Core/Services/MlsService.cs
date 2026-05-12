@@ -350,12 +350,31 @@ public class MlsService : IMlsService
 
     public Task<byte[]> EncryptCommitAsync(byte[] groupId, byte[] mip03EncryptedCommitData)
     {
-        // Rust MDK handles commit encryption internally — the commit data passed here
-        // is already in the format expected by Rust peers. Signal that this is raw data
-        // that should be published via the legacy PublishCommitAsync path by returning null.
         _logger.LogDebug("EncryptCommitAsync: Rust backend does not support MIP-03 commit wrapping");
         throw new NotSupportedException("Use PublishCommitAsync for the Rust backend.");
     }
+
+    public Task<MlsWelcome> StageAddMemberAsync(byte[] groupId, KeyPackage keyPackage)
+    {
+        throw new NotSupportedException("Staged commit API is not available with the Rust MDK backend. Use the managed (C#) backend.");
+    }
+
+    public Task MergeStagedAsync(byte[] groupId)
+    {
+        throw new NotSupportedException("Staged commit API is not available with the Rust MDK backend.");
+    }
+
+    public Task ClearStagedAsync(byte[] groupId)
+    {
+        throw new NotSupportedException("Staged commit API is not available with the Rust MDK backend.");
+    }
+
+    public Task<byte[]> StageRemoveMemberAsync(byte[] groupId, string memberPublicKey)
+    {
+        throw new NotSupportedException("Staged commit API is not available with the Rust MDK backend.");
+    }
+
+    public bool HasPendingCommit(byte[] groupId) => false;
 
     private async Task PersistGroupStateAsync(byte[] groupId)
     {

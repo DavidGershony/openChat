@@ -776,59 +776,74 @@ public class MessageService : IMessageService, IDisposable
             keyPackage.NostrEventId?[..Math.Min(16, keyPackage.NostrEventId?.Length ?? 0)] ?? "none",
             keyPackage.Data.Length);
 
-        // Add to MLS group and get Welcome
-        var welcome = await _mlsService.AddMemberAsync(chat.MlsGroupId, keyPackage);
-        _logger.LogInformation("AddMember: MLS add succeeded, welcome={WelcomeLen} bytes, commit={CommitLen} bytes",
-            welcome.WelcomeData.Length, welcome.CommitData?.Length ?? 0);
+        // MIP-03 §"Commit Message Race Conditions" — sending steps 1-4:
+        // 1. Stage the commit (do NOT advance local MLS state yet)
+        var staged = await _mlsService.StageAddMemberAsync(chat.MlsGroupId, keyPackage);
+        _logger.LogInformation("AddMember: staged commit, welcome={WelcomeLen} bytes, commit={CommitLen} bytes",
+            staged.WelcomeData.Length, staged.CommitData?.Length ?? 0);
 
-        // Publish commit event (kind 445) for existing group members to advance their epoch.
-        // Per MIP-03, the commit must be published BEFORE the welcome so existing members
-        // can process it and stay in sync with the group's MLS state.
-        if (_currentUser != null && welcome.CommitData != null && welcome.CommitData.Length > 0)
+        try
         {
-            var nostrGroupId = _mlsService.GetNostrGroupId(chat.MlsGroupId);
-            var commitGroupId = nostrGroupId != null
-                ? Convert.ToHexString(nostrGroupId).ToLowerInvariant()
-                : groupIdHex;
-            var commitEventId = await _nostrService.PublishCommitAsync(
-                welcome.CommitData, commitGroupId, _currentUser.PrivateKeyHex);
-            _logger.LogInformation("AddMember: published kind 445 commit event {EventId} for group {GroupId}",
-                commitEventId, commitGroupId[..Math.Min(16, commitGroupId.Length)]);
-
-            // Mark the commit event as processed so we don't re-process our own relay echo.
-            // Without this, our subscription picks up the commit we just published and
-            // tries to apply it again, corrupting the MLS group state.
-            await _storageService.SaveMessageAsync(new Message
+            // 2. Publish commit and wait for relay confirmation
+            if (_currentUser != null && staged.CommitData != null && staged.CommitData.Length > 0)
             {
-                Id = Guid.NewGuid().ToString(),
-                ChatId = chatId,
-                Content = "[commit]",
-                SenderPublicKey = _currentUser.PublicKeyHex,
-                NostrEventId = commitEventId,
-                Timestamp = DateTime.UtcNow,
-                Type = MessageType.System,
-                Status = MessageStatus.Sent
-            });
-        }
+                var nostrGroupId = _mlsService.GetNostrGroupId(chat.MlsGroupId);
+                var commitGroupId = nostrGroupId != null
+                    ? Convert.ToHexString(nostrGroupId).ToLowerInvariant()
+                    : groupIdHex;
+                var commitEventId = await _nostrService.PublishCommitAsync(
+                    staged.CommitData, commitGroupId, _currentUser.PrivateKeyHex);
+                // ↑ throws PublishUnconfirmedException on no-OK (Phase 3)
+                _logger.LogInformation("AddMember: commit confirmed by relay, event {EventId}", commitEventId);
 
-        // Publish Welcome message (NIP-59 gift wrapped kind 444)
-        if (_currentUser != null)
-        {
-            var welcomeEventId = await _nostrService.PublishWelcomeAsync(
-                welcome.WelcomeData, welcome.RecipientPublicKey, _currentUser.PrivateKeyHex,
-                welcome.KeyPackageEventId);
-            _logger.LogInformation("AddMember: published kind 444 Welcome event {EventId} for {Recipient}",
-                welcomeEventId, welcome.RecipientPublicKey[..Math.Min(16, welcome.RecipientPublicKey.Length)]);
-        }
+                // 3. Only NOW advance local MLS state (MIP-03 step 3)
+                await _mlsService.MergeStagedAsync(chat.MlsGroupId);
+                _logger.LogInformation("AddMember: local MLS state merged to new epoch");
 
-        // Update chat participants
-        if (!chat.ParticipantPublicKeys.Any(p => string.Equals(p, memberPublicKey, StringComparison.OrdinalIgnoreCase)))
+                // Mark commit as processed to prevent re-processing our own relay echo
+                await _storageService.SaveMessageAsync(new Message
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    ChatId = chatId,
+                    Content = "[commit]",
+                    SenderPublicKey = _currentUser.PublicKeyHex,
+                    NostrEventId = commitEventId,
+                    Timestamp = DateTime.UtcNow,
+                    Type = MessageType.System,
+                    Status = MessageStatus.Sent
+                });
+
+                // 4. Only THEN send the Welcome (MIP-02 §"Timing Requirements")
+                var welcomeEventId = await _nostrService.PublishWelcomeAsync(
+                    staged.WelcomeData, staged.RecipientPublicKey, _currentUser.PrivateKeyHex,
+                    staged.KeyPackageEventId);
+                _logger.LogInformation("AddMember: published Welcome event {EventId} for {Recipient}",
+                    welcomeEventId, staged.RecipientPublicKey[..Math.Min(16, staged.RecipientPublicKey.Length)]);
+            }
+
+            // Update chat participants
+            if (!chat.ParticipantPublicKeys.Any(p => string.Equals(p, memberPublicKey, StringComparison.OrdinalIgnoreCase)))
+            {
+                chat.ParticipantPublicKeys.Add(memberPublicKey);
+                await _storageService.SaveChatAsync(chat);
+                _chatUpdates.OnNext(chat);
+                _logger.LogInformation("AddMember: updated participants for group {GroupId}, now {Count} members",
+                    groupIdHex[..Math.Min(16, groupIdHex.Length)], chat.ParticipantPublicKeys.Count);
+            }
+        }
+        catch (PublishUnconfirmedException ex) when (!_mlsService.HasPendingCommit(chat.MlsGroupId))
         {
-            chat.ParticipantPublicKeys.Add(memberPublicKey);
-            await _storageService.SaveChatAsync(chat);
-            _chatUpdates.OnNext(chat);
-            _logger.LogInformation("AddMember: updated participants for group {GroupId}, now {Count} members",
-                groupIdHex[..Math.Min(16, groupIdHex.Length)], chat.ParticipantPublicKeys.Count);
+            // Commit was confirmed but Welcome failed — recoverable state.
+            // Local MLS state already advanced; the member can be re-invited.
+            _logger.LogWarning(ex, "AddMember: Welcome publish failed after commit was confirmed");
+            throw;
+        }
+        catch (PublishUnconfirmedException ex) when (_mlsService.HasPendingCommit(chat.MlsGroupId))
+        {
+            // Commit was NOT confirmed — rollback local MLS state
+            _logger.LogWarning(ex, "AddMember: commit publish failed, rolling back staged commit");
+            await _mlsService.ClearStagedAsync(chat.MlsGroupId);
+            throw;
         }
     }
 
@@ -840,20 +855,30 @@ public class MessageService : IMessageService, IDisposable
         if (chat.MlsGroupId == null)
             throw new InvalidOperationException("Cannot remove member from non-MLS chat");
 
-        // Remove from MLS group
-        var commitData = await _mlsService.RemoveMemberAsync(chat.MlsGroupId, memberPublicKey);
+        // MIP-03 §"Commit Message Race Conditions" — stage, publish, merge
+        var commitData = await _mlsService.StageRemoveMemberAsync(chat.MlsGroupId, memberPublicKey);
 
-        // Publish commit
-        if (_currentUser != null)
+        try
         {
-            var groupIdHex = Convert.ToHexString(chat.MlsGroupId).ToLowerInvariant();
-            await _nostrService.PublishGroupMessageAsync(commitData, groupIdHex, _currentUser.PrivateKeyHex);
-        }
+            if (_currentUser != null)
+            {
+                var groupIdHex = Convert.ToHexString(chat.MlsGroupId).ToLowerInvariant();
+                await _nostrService.PublishGroupMessageAsync(commitData, groupIdHex, _currentUser.PrivateKeyHex);
+                // ↑ throws PublishUnconfirmedException on no-OK
 
-        // Update chat participants
-        chat.ParticipantPublicKeys.Remove(memberPublicKey);
-        await _storageService.SaveChatAsync(chat);
-        _chatUpdates.OnNext(chat);
+                await _mlsService.MergeStagedAsync(chat.MlsGroupId);
+            }
+
+            chat.ParticipantPublicKeys.Remove(memberPublicKey);
+            await _storageService.SaveChatAsync(chat);
+            _chatUpdates.OnNext(chat);
+        }
+        catch (PublishUnconfirmedException ex)
+        {
+            _logger.LogWarning(ex, "RemoveMember: commit publish failed, rolling back");
+            await _mlsService.ClearStagedAsync(chat.MlsGroupId);
+            throw;
+        }
     }
 
     public async Task LeaveGroupAsync(string chatId)
