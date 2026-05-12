@@ -7,8 +7,6 @@ using Scramble.Core.Models;
 using Scramble.Core.Services;
 using Scramble.Diagnostics.TestHelpers;
 using Xunit;
-using Xunit.Abstractions;
-
 namespace Scramble.Diagnostics;
 
 /// <summary>
@@ -26,13 +24,13 @@ public class ExporterSecretDiagnosticTests : IAsyncLifetime
     private readonly List<MessageService> _messageServices = new();
 
     public ExporterSecretDiagnosticTests(ITestOutputHelper output) => _output = output;
-    public Task InitializeAsync()
+    public ValueTask InitializeAsync()
     {
         ProfileConfiguration.SetAllowLocalRelays(true);
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         foreach (var ms in _messageServices) ms.Dispose();
         foreach (var ns in _nostrServices)

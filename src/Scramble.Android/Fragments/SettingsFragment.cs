@@ -19,6 +19,7 @@ using Scramble.Core.Logging;
 using Scramble.Presentation.ViewModels;
 using ReactiveUI;
 using System.Reactive.Disposables;
+using System.Reactive.Disposables.Fluent;
 using System.Reactive.Linq;
 using System.Linq;
 using Fragment = AndroidX.Fragment.App.Fragment;
@@ -135,7 +136,7 @@ public class SettingsFragment : Fragment
             reconnectRelaysButton.Enabled = false;
             reconnectRelaysButton.Text = "Reconnecting...";
             _mainViewModel.ReconnectCommand.Execute()
-                .ObserveOn(RxApp.MainThreadScheduler)
+                .ObserveOn(RxSchedulers.MainThreadScheduler)
                 .Subscribe(
                     _ => { },
                     ex =>
@@ -319,7 +320,7 @@ public class SettingsFragment : Fragment
 
         // Hide profile card when using external signer
         ViewModel.WhenAnyValue(x => x.CanEditProfile)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(canEdit =>
             {
                 profileCard.Visibility = canEdit ? ViewStates.Visible : ViewStates.Gone;
@@ -328,7 +329,7 @@ public class SettingsFragment : Fragment
 
         // Profile fields
         ViewModel.WhenAnyValue(x => x.DisplayName)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(name =>
             {
                 if (displayNameInput.Text != name)
@@ -337,7 +338,7 @@ public class SettingsFragment : Fragment
             .DisposeWith(_disposables);
 
         ViewModel.WhenAnyValue(x => x.Username)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(username =>
             {
                 if (usernameInput.Text != username)
@@ -346,7 +347,7 @@ public class SettingsFragment : Fragment
             .DisposeWith(_disposables);
 
         ViewModel.WhenAnyValue(x => x.About)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(about =>
             {
                 if (aboutInput.Text != about)
@@ -379,7 +380,7 @@ public class SettingsFragment : Fragment
 
         // NIP-65 relay list status
         ViewModel.WhenAnyValue(x => x.PublishRelayListStatus)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(status =>
             {
                 relayListStatus.Text = status ?? "";
@@ -389,7 +390,7 @@ public class SettingsFragment : Fragment
 
         // Audit status (reuses keypackage status display)
         ViewModel.WhenAnyValue(x => x.AuditStatus)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(status =>
             {
                 if (!string.IsNullOrEmpty(status))
@@ -401,7 +402,7 @@ public class SettingsFragment : Fragment
             .DisposeWith(_disposables);
 
         ViewModel.WhenAnyValue(x => x.IsAuditingKeyPackages)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(auditing =>
             {
                 auditButton.Enabled = !auditing;
@@ -411,7 +412,7 @@ public class SettingsFragment : Fragment
 
         // MIP-04 dependency warning
         ViewModel.WhenAnyValue(x => x.Mip04DependencyWarning)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(warning =>
             {
                 mip04Warning.Text = warning ?? "";
@@ -421,7 +422,7 @@ public class SettingsFragment : Fragment
 
         // Blossom server sync
         ViewModel.WhenAnyValue(x => x.BlossomServerUrl)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(url =>
             {
                 if (blossomInput.Text != url)
@@ -431,7 +432,7 @@ public class SettingsFragment : Fragment
 
         // Notification settings sync
         ViewModel.WhenAnyValue(x => x.NotificationServerNpub)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(v =>
             {
                 if (notifServerNpubInput.Text != v)
@@ -440,7 +441,7 @@ public class SettingsFragment : Fragment
             .DisposeWith(_disposables);
 
         ViewModel.WhenAnyValue(x => x.NotificationServerRelay)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(v =>
             {
                 if (notifServerRelayInput.Text != v)
@@ -449,7 +450,7 @@ public class SettingsFragment : Fragment
             .DisposeWith(_disposables);
 
         ViewModel.WhenAnyValue(x => x.NotificationPushUrl)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(v =>
             {
                 if (notifPushUrlInput.Text != v)
@@ -458,7 +459,7 @@ public class SettingsFragment : Fragment
             .DisposeWith(_disposables);
 
         ViewModel.WhenAnyValue(x => x.NotificationRegistrationStatus)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(status =>
             {
                 notifRegistrationStatus.Text = status ?? "";
@@ -467,7 +468,7 @@ public class SettingsFragment : Fragment
             .DisposeWith(_disposables);
 
         ViewModel.RegisterNotificationsCommand.IsExecuting
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(executing =>
             {
                 registerNotifButton.Visibility = executing ? ViewStates.Gone : ViewStates.Visible;
@@ -478,7 +479,7 @@ public class SettingsFragment : Fragment
             .DisposeWith(_disposables);
 
         ViewModel.WhenAnyValue(x => x.NotificationAwaitingVerification)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(awaiting =>
             {
                 notifVerifyLayout.Visibility = awaiting ? ViewStates.Visible : ViewStates.Gone;
@@ -487,7 +488,7 @@ public class SettingsFragment : Fragment
 
         // MIP-04 toggle sync
         ViewModel.WhenAnyValue(x => x.IsMip04Enabled)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(enabled =>
             {
                 if (mip04Toggle.Checked != enabled)
@@ -497,7 +498,7 @@ public class SettingsFragment : Fragment
 
         // Key Package state
         ViewModel.WhenAnyValue(x => x.IsPublishingKeyPackage)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(publishing =>
             {
                 publishButton.Enabled = !publishing;
@@ -507,7 +508,7 @@ public class SettingsFragment : Fragment
             .DisposeWith(_disposables);
 
         ViewModel.WhenAnyValue(x => x.KeyPackageStatus)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(status =>
             {
                 keypackageStatus.Text = status ?? "";
@@ -516,7 +517,7 @@ public class SettingsFragment : Fragment
             .DisposeWith(_disposables);
 
         ViewModel.WhenAnyValue(x => x.KeyPackageSuccess)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(success =>
             {
                 keypackageStatus.SetTextColor(success
@@ -527,7 +528,7 @@ public class SettingsFragment : Fragment
 
         // Log viewer
         ViewModel.WhenAnyValue(x => x.ShowLogViewer)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Where(show => show)
             .Subscribe(_ => ShowLogViewerDialog())
             .DisposeWith(_disposables);
@@ -603,7 +604,7 @@ public class SettingsFragment : Fragment
         };
 
         ViewModel.WhenAnyValue(x => x.LogContent)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(content =>
             {
                 logContent.Text = content ?? "No logs available";
@@ -611,7 +612,7 @@ public class SettingsFragment : Fragment
             .DisposeWith(_disposables);
 
         ViewModel.WhenAnyValue(x => x.ShowLogViewer)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Where(show => !show)
             .Subscribe(_ => { if (dialog.IsShowing) dialog.Dismiss(); })
             .DisposeWith(_disposables);

@@ -27,7 +27,7 @@ public class NativeMarmotIntegrationTests : IAsyncLifetime
         return File.Exists(dllPath);
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         if (!NativeDllAvailable())
             return; // Tests will be skipped via Skip
@@ -43,19 +43,19 @@ public class NativeMarmotIntegrationTests : IAsyncLifetime
         await _clientB.InitializeAsync(_privKeyB, _pubKeyB);
     }
 
-    public Task DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         _clientA?.Dispose();
         _clientB?.Dispose();
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task GenerateKeyPackage_NativeDll_ReturnsValidJsonWithContentAndTags()
     {
         // Catches Bug #1 (stale DLL returning wrong format).
         // A stale DLL might return raw bytes instead of JSON, or JSON with different field names.
-        Skip.IfNot(NativeDllAvailable(), "Native DLL not available");
+        Assert.SkipUnless(NativeDllAvailable(), "Native DLL not available");
         Assert.True(_clientA.IsUsingNativeClient, "Expected native client, got mock fallback");
 
         var result = await _clientA.GenerateKeyPackageAsync();
@@ -75,10 +75,10 @@ public class NativeMarmotIntegrationTests : IAsyncLifetime
         Assert.Contains(result.Tags, t => t.Count >= 2 && t[0] == "mls_ciphersuite");
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task CreateGroup_NativeDll_ReturnsNonEmptyGroupId()
     {
-        Skip.IfNot(NativeDllAvailable(), "Native DLL not available");
+        Assert.SkipUnless(NativeDllAvailable(), "Native DLL not available");
         Assert.True(_clientA.IsUsingNativeClient);
 
         var (groupId, epoch) = await _clientA.CreateGroupAsync("Native Test Group");
@@ -87,13 +87,13 @@ public class NativeMarmotIntegrationTests : IAsyncLifetime
         Assert.True(groupId.Length > 0, "Group ID should be non-empty");
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task AddMember_SameVersion_KeyPackageRoundtrip()
     {
         // Catches Bug #2 (cross-instance MLS incompatibility).
         // Client A creates a group, Client B generates a KeyPackage,
         // Client A adds Client B using B's KeyPackage wrapped in event JSON.
-        Skip.IfNot(NativeDllAvailable(), "Native DLL not available");
+        Assert.SkipUnless(NativeDllAvailable(), "Native DLL not available");
         Assert.True(_clientA.IsUsingNativeClient);
         Assert.True(_clientB.IsUsingNativeClient);
 
@@ -114,11 +114,11 @@ public class NativeMarmotIntegrationTests : IAsyncLifetime
         Assert.True(addResult.WelcomeData!.Length > 0, "WelcomeData should be non-empty");
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task AddMember_WithRandomBytes_ThrowsMarmotException()
     {
         // Verify that incompatible/garbage data is rejected loudly, not silently ignored.
-        Skip.IfNot(NativeDllAvailable(), "Native DLL not available");
+        Assert.SkipUnless(NativeDllAvailable(), "Native DLL not available");
         Assert.True(_clientA.IsUsingNativeClient);
 
         var (groupId, _) = await _clientA.CreateGroupAsync("Rejection Test");
@@ -129,11 +129,11 @@ public class NativeMarmotIntegrationTests : IAsyncLifetime
             _clientA.AddMemberAsync(groupId, randomBytes));
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task FullMlsLifecycle_TwoClients_GroupCreateAddMemberProcessWelcome()
     {
         // Full lifecycle: A creates group, B generates KP, A adds B, B processes Welcome.
-        Skip.IfNot(NativeDllAvailable(), "Native DLL not available");
+        Assert.SkipUnless(NativeDllAvailable(), "Native DLL not available");
         Assert.True(_clientA.IsUsingNativeClient);
         Assert.True(_clientB.IsUsingNativeClient);
 
@@ -160,11 +160,11 @@ public class NativeMarmotIntegrationTests : IAsyncLifetime
         Assert.Equal(groupIdA, groupIdB);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task FullMlsLifecycle_TwoClients_EncryptDecryptRoundtrip()
     {
         // After group setup, A encrypts a message, B decrypts it, and vice versa.
-        Skip.IfNot(NativeDllAvailable(), "Native DLL not available");
+        Assert.SkipUnless(NativeDllAvailable(), "Native DLL not available");
         Assert.True(_clientA.IsUsingNativeClient);
         Assert.True(_clientB.IsUsingNativeClient);
 
@@ -194,12 +194,12 @@ public class NativeMarmotIntegrationTests : IAsyncLifetime
         Assert.Equal("Hello from B!", plaintextB);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task NativeClient_InvalidKeys_DocumentsBehavior()
     {
         // Documents the behavior when invalid (non-secp256k1) keys are provided.
         // The native DLL may accept bad keys at CreateClient but fail later on operations.
-        Skip.IfNot(NativeDllAvailable(), "Native DLL not available");
+        Assert.SkipUnless(NativeDllAvailable(), "Native DLL not available");
 
         var badWrapper = new MarmotWrapper();
         var dummyKey = new string('a', 64);

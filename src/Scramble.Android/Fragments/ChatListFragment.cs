@@ -15,6 +15,7 @@ using Scramble.Presentation.ViewModels;
 using ReactiveUI;
 using System.Reactive;
 using System.Reactive.Disposables;
+using System.Reactive.Disposables.Fluent;
 using System.Reactive.Linq;
 using Fragment = AndroidX.Fragment.App.Fragment;
 
@@ -68,12 +69,12 @@ public class ChatListFragment : Fragment
             chatTabs.SelectTab(agentsTab);
 
         ViewModel.WhenAnyValue(x => x.ArchivedChatsCount)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(count => archivedTab.SetText($"Archived ({count})"))
             .DisposeWith(_disposables);
 
         ViewModel.WhenAnyValue(x => x.AgentChatsCount)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(count => agentsTab.SetText($"Agents (DVM){(count > 0 ? $" ({count})" : "")}"))
             .DisposeWith(_disposables);
 
@@ -100,7 +101,7 @@ public class ChatListFragment : Fragment
 
         // Show profile avatar for all logged-in users (including external signer)
         _mainViewModel.WhenAnyValue(x => x.CurrentUser)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(user =>
             {
                 profileAvatar.Visibility = user != null ? ViewStates.Visible : ViewStates.Gone;
@@ -109,7 +110,7 @@ public class ChatListFragment : Fragment
 
         // Load profile picture into avatar or show default person icon
         _mainViewModel.WhenAnyValue(x => x.MyPictureUrl)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(url =>
             {
                 if (!string.IsNullOrEmpty(url) && Activity != null)
@@ -130,7 +131,7 @@ public class ChatListFragment : Fragment
         // Relay count text next to avatar
         relayText.Text = _mainViewModel.RelayCountText;
         _mainViewModel.WhenAnyValue(x => x.RelayCountText)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(text => relayText.Text = text)
             .DisposeWith(_disposables);
 
@@ -240,11 +241,11 @@ public class ChatListFragment : Fragment
         ViewModel.AgentChats.CollectionChanged += (s, e) => RefreshChatList();
         ViewModel.ArchivedChats.CollectionChanged += (s, e) => RefreshChatList();
         ViewModel.WhenAnyValue(x => x.ShowArchivedSection)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(_ => RefreshChatList())
             .DisposeWith(_disposables);
         ViewModel.WhenAnyValue(x => x.ShowAgentsSection)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(_ => RefreshChatList())
             .DisposeWith(_disposables);
 
@@ -259,7 +260,7 @@ public class ChatListFragment : Fragment
 
         // Pending invite count → show/hide section and badge
         ViewModel.WhenAnyValue(x => x.PendingInviteCount)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(count =>
             {
                 pendingInvitesSection.Visibility = count > 0 ? ViewStates.Visible : ViewStates.Gone;
@@ -269,7 +270,7 @@ public class ChatListFragment : Fragment
 
         // Rescan loading state
         ViewModel.WhenAnyValue(x => x.IsRescanningInvites)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(scanning =>
             {
                 rescanButton.Enabled = !scanning;
@@ -279,7 +280,7 @@ public class ChatListFragment : Fragment
 
         // Skipped invite notice → show/hide and update text
         ViewModel.WhenAnyValue(x => x.SkippedInviteCount)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(count =>
             {
                 skippedNotice.Visibility = count > 0 ? ViewStates.Visible : ViewStates.Gone;
@@ -294,7 +295,7 @@ public class ChatListFragment : Fragment
 
         // Status message → Snackbar
         ViewModel.WhenAnyValue(x => x.StatusMessage)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Where(msg => !string.IsNullOrEmpty(msg))
             .Subscribe(msg =>
             {
@@ -305,7 +306,7 @@ public class ChatListFragment : Fragment
 
         // Loading state
         ViewModel.WhenAnyValue(x => x.IsLoading)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(loading =>
             {
                 loadingIndicator.Visibility = loading ? ViewStates.Visible : ViewStates.Gone;
@@ -314,13 +315,13 @@ public class ChatListFragment : Fragment
 
         // Observe dialog states for auto-dismiss
         ViewModel.WhenAnyValue(x => x.ShowDeleteChatDialog)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Where(show => !show)
             .Subscribe(_ => { /* dialog auto-dismissed by ViewModel */ })
             .DisposeWith(_disposables);
 
         ViewModel.WhenAnyValue(x => x.ShowResetGroupDialog)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Where(show => !show)
             .Subscribe(_ => { /* dialog auto-dismissed by ViewModel */ })
             .DisposeWith(_disposables);
@@ -551,7 +552,7 @@ public class ChatListFragment : Fragment
 
         // Bind QR code
         _mainViewModel.WhenAnyValue(x => x.MyNpubQrPngBytes)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(bytes =>
             {
                 if (bytes != null && bytes.Length > 0)
@@ -569,12 +570,12 @@ public class ChatListFragment : Fragment
 
         // Bind profile properties
         _mainViewModel.WhenAnyValue(x => x.MyNpub)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(npub => npubText.Text = npub ?? "No key available")
             .DisposeWith(_disposables);
 
         _mainViewModel.WhenAnyValue(x => x.MyDisplayName)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(name =>
             {
                 displayNameText.Text = name ?? "";
@@ -583,7 +584,7 @@ public class ChatListFragment : Fragment
             .DisposeWith(_disposables);
 
         _mainViewModel.WhenAnyValue(x => x.MyName)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(name =>
             {
                 usernameText.Text = string.IsNullOrEmpty(name) ? "" : $"@{name}";
@@ -592,7 +593,7 @@ public class ChatListFragment : Fragment
             .DisposeWith(_disposables);
 
         _mainViewModel.WhenAnyValue(x => x.MyAbout)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(about =>
             {
                 aboutText.Text = about ?? "";
@@ -601,7 +602,7 @@ public class ChatListFragment : Fragment
             .DisposeWith(_disposables);
 
         _mainViewModel.WhenAnyValue(x => x.IsLoadingProfile)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(loading =>
             {
                 loadingIndicator.Visibility = loading ? ViewStates.Visible : ViewStates.Gone;
@@ -609,7 +610,7 @@ public class ChatListFragment : Fragment
             .DisposeWith(_disposables);
 
         _mainViewModel.WhenAnyValue(x => x.ShowMyProfileDialog)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Where(show => !show)
             .Subscribe(_ => { if (dialog.IsShowing) dialog.Dismiss(); })
             .DisposeWith(_disposables);

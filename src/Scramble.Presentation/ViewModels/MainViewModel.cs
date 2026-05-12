@@ -4,7 +4,7 @@ using System.Linq;
 using System.Reactive;
 using System.Reactive.Linq;
 using ReactiveUI;
-using ReactiveUI.Fody.Helpers;
+using ReactiveUI.SourceGenerators;
 using Microsoft.Extensions.Logging;
 using Scramble.Core;
 using Scramble.Core.Crypto;
@@ -15,7 +15,7 @@ using Scramble.Presentation.Services;
 
 namespace Scramble.Presentation.ViewModels;
 
-public class MainViewModel : ViewModelBase
+public partial class MainViewModel : ViewModelBase
 {
     private readonly ILogger<MainViewModel> _logger = LoggingConfiguration.CreateLogger<MainViewModel>();
     private readonly IMessageService _messageService;
@@ -26,32 +26,32 @@ public class MainViewModel : ViewModelBase
     private readonly IQrCodeGenerator _qrCodeGenerator;
     private NotificationOrchestrator? _notificationOrchestrator;
 
-    [Reactive] public User? CurrentUser { get; set; }
-    [Reactive] public bool IsLoggedIn { get; set; }
-    [Reactive] public bool IsConnected { get; set; }
+    [Reactive] public partial User? CurrentUser { get; set; }
+    [Reactive] public partial bool IsLoggedIn { get; set; }
+    [Reactive] public partial bool IsConnected { get; set; }
 
-    [Reactive] public ViewModelBase? CurrentView { get; set; }
-    [Reactive] public string HeaderDisplayName { get; set; } = "Scramble";
-    [Reactive] public bool IsHeaderLoading { get; set; }
+    [Reactive] public partial ViewModelBase? CurrentView { get; set; }
+    [Reactive] public partial string HeaderDisplayName { get; set; } = "Scramble";
+    [Reactive] public partial bool IsHeaderLoading { get; set; }
 
     // Relay statuses
     public ObservableCollection<RelayStatusViewModel> RelayStatuses { get; } = new();
-    [Reactive] public bool IsRelayListExpanded { get; set; }
-    [Reactive] public int ConnectedRelayCount { get; set; }
-    [Reactive] public int TotalRelayCount { get; set; }
-    [Reactive] public string RelayCountText { get; set; } = "Relays: 0/0";
+    [Reactive] public partial bool IsRelayListExpanded { get; set; }
+    [Reactive] public partial int ConnectedRelayCount { get; set; }
+    [Reactive] public partial int TotalRelayCount { get; set; }
+    [Reactive] public partial string RelayCountText { get; set; } = "Relays: 0/0";
 
     // My Profile Dialog
-    [Reactive] public bool ShowMyProfileDialog { get; set; }
-    [Reactive] public string? MyNpub { get; set; }
-    [Reactive] public string? MyNsec { get; set; }
-    [Reactive] public string? CopyStatusMessage { get; set; }
-    [Reactive] public string? MyDisplayName { get; set; }
-    [Reactive] public string? MyName { get; set; }
-    [Reactive] public string? MyPictureUrl { get; set; }
-    [Reactive] public string? MyAbout { get; set; }
-    [Reactive] public bool IsLoadingProfile { get; set; }
-    [Reactive] public byte[]? MyNpubQrPngBytes { get; set; }
+    [Reactive] public partial bool ShowMyProfileDialog { get; set; }
+    [Reactive] public partial string? MyNpub { get; set; }
+    [Reactive] public partial string? MyNsec { get; set; }
+    [Reactive] public partial string? CopyStatusMessage { get; set; }
+    [Reactive] public partial string? MyDisplayName { get; set; }
+    [Reactive] public partial string? MyName { get; set; }
+    [Reactive] public partial string? MyPictureUrl { get; set; }
+    [Reactive] public partial string? MyAbout { get; set; }
+    [Reactive] public partial bool IsLoadingProfile { get; set; }
+    [Reactive] public partial byte[]? MyNpubQrPngBytes { get; set; }
 
     private readonly Action? _onLogoutRequested;
 
@@ -113,6 +113,12 @@ public class MainViewModel : ViewModelBase
             }
         });
 
+        // Wire SettingsView's on-screen back arrow to navigate back to chats.
+        // SettingsView is a UserControl reused across desktop and mobile shells,
+        // so the back command must live on the view model rather than relying on
+        // a $parent[Window] visual-tree walk (which only works on desktop).
+        SettingsViewModel.BackCommand = ShowChatsCommand;
+
         LogoutCommand = ReactiveCommand.CreateFromTask(LogoutAsync);
 
         ShowMyProfileCommand = ReactiveCommand.CreateFromTask(async () =>
@@ -125,7 +131,7 @@ public class MainViewModel : ViewModelBase
             MyName = null;
             MyPictureUrl = null;
             MyAbout = null;
-            MyNpubQrPngBytes = _qrCodeGenerator.GeneratePng(MyNpub, 10);
+            MyNpubQrPngBytes = _qrCodeGenerator.GeneratePng(BuildShareableProfilePayload(), 10);
             ShowMyProfileDialog = true;
 
             // Fetch profile metadata from Nostr
@@ -249,7 +255,7 @@ public class MainViewModel : ViewModelBase
 
         // Subscribe to connection status — track per-relay
         _nostrService.ConnectionStatus
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(status =>
             {
                 var existing = RelayStatuses.FirstOrDefault(r => r.Url == status.RelayUrl);
@@ -493,6 +499,45 @@ public class MainViewModel : ViewModelBase
         ConnectedRelayCount = RelayStatuses.Count(r => r.IsConnected);
         TotalRelayCount = RelayStatuses.Count;
         RelayCountText = $"Relays: {ConnectedRelayCount}/{TotalRelayCount}";
+    }
+
+    /// <summary>
+    /// Builds the payload encoded into the user's "share me" QR. Prefers a NIP-21
+    /// <c>nostr:nprofile1...</c> URI carrying the pubkey plus up to 3 connected relay
+    /// hints — this lets a scanning client locate the user's keypackages and metadata
+    /// immediately, instead of guessing relays from a bare npub. Falls back to the bare
+    /// npub if the hex pubkey isn't available (e.g. early in startup).
+    ///
+    /// The <c>nostr:</c> prefix lets generic QR scanners deep-link into any registered
+    /// Nostr handler; Scramble's own scanner strips it on the way in.
+    /// </summary>
+    private string BuildShareableProfilePayload()
+    {
+        var hex = CurrentUser?.PublicKeyHex;
+        if (string.IsNullOrEmpty(hex))
+            return MyNpub ?? string.Empty;
+
+        // Cap at 3 relays to keep the QR scannable. Prefer connected relays so the
+        // hint actually works for the recipient; if none are connected (offline at
+        // the moment of opening the dialog) fall back to all configured relays.
+        var relays = RelayStatuses
+            .Where(r => r.IsConnected)
+            .Select(r => r.Url)
+            .Take(3)
+            .ToList();
+        if (relays.Count == 0)
+            relays = RelayStatuses.Select(r => r.Url).Take(3).ToList();
+
+        try
+        {
+            return "nostr:" + Nip19.EncodeNprofile(hex, relays);
+        }
+        catch
+        {
+            // EncodeNprofile only throws on a malformed hex pubkey; the bare npub is
+            // still useful even without relay hints.
+            return MyNpub ?? string.Empty;
+        }
     }
 
     /// <summary>
@@ -747,12 +792,12 @@ public class MainViewModel : ViewModelBase
     }
 }
 
-public class RelayStatusViewModel : ViewModelBase
+public partial class RelayStatusViewModel : ViewModelBase
 {
-    [Reactive] public string Url { get; set; } = string.Empty;
-    [Reactive] public bool IsConnected { get; set; }
-    [Reactive] public string? Error { get; set; }
-    [Reactive] public bool IsReconnecting { get; set; }
+    [Reactive] public partial string Url { get; set; } = string.Empty;
+    [Reactive] public partial bool IsConnected { get; set; }
+    [Reactive] public partial string? Error { get; set; }
+    [Reactive] public partial bool IsReconnecting { get; set; }
 
     /// <summary>Short display name: strips wss:// and trailing /</summary>
     public string DisplayName => Url.Replace("wss://", "").Replace("ws://", "").TrimEnd('/');

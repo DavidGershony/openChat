@@ -8,8 +8,6 @@ using Scramble.Core.Services;
 using Xunit;
 using Scramble.Core.Configuration;
 using Scramble.Core.Tests.TestHelpers;
-using Xunit.Abstractions;
-
 namespace Scramble.Core.Tests;
 
 /// <summary>
@@ -49,7 +47,7 @@ public class CrossMdkRelayIntegrationTests : IAsyncLifetime
         _output = output;
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         // ── User A (Rust MLS) ──
         _nostrServiceA = new NostrService();
@@ -117,7 +115,7 @@ public class CrossMdkRelayIntegrationTests : IAsyncLifetime
         await Task.Delay(1000);
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         _messageServiceA?.Dispose();
         _messageServiceB?.Dispose();

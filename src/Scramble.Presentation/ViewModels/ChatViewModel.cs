@@ -7,7 +7,7 @@ using System.Reactive.Linq;
 using System.Threading;
 using Microsoft.Extensions.Logging;
 using ReactiveUI;
-using ReactiveUI.Fody.Helpers;
+using ReactiveUI.SourceGenerators;
 using Scramble.Core.Audio;
 using Scramble.Core.Crypto;
 using Scramble.Core.Logging;
@@ -17,7 +17,7 @@ using Scramble.Presentation.Services;
 
 namespace Scramble.Presentation.ViewModels;
 
-public class ChatViewModel : ViewModelBase
+public partial class ChatViewModel : ViewModelBase
 {
     private readonly ILogger<ChatViewModel> _logger;
     private readonly IMessageService _messageService;
@@ -44,59 +44,59 @@ public class ChatViewModel : ViewModelBase
     /// </summary>
     public event EventHandler? ScrollToBottomRequested;
 
-    [Reactive] public string? ChatId { get; private set; }
-    [Reactive] public string ChatName { get; set; } = string.Empty;
-    [Reactive] public string? ChatAvatarUrl { get; set; }
-    [Reactive] public bool IsGroup { get; set; }
-    [Reactive] public int ParticipantCount { get; set; }
-    [Reactive] public string MessageText { get; set; } = string.Empty;
-    [Reactive] public bool IsSending { get; set; }
-    [Reactive] public bool IsLoading { get; set; }
-    [Reactive] public bool HasChat { get; set; }
+    [Reactive] public partial string? ChatId { get; private set; }
+    [Reactive] public partial string ChatName { get; set; } = string.Empty;
+    [Reactive] public partial string? ChatAvatarUrl { get; set; }
+    [Reactive] public partial bool IsGroup { get; set; }
+    [Reactive] public partial int ParticipantCount { get; set; }
+    [Reactive] public partial string MessageText { get; set; } = string.Empty;
+    [Reactive] public partial bool IsSending { get; set; }
+    [Reactive] public partial bool IsLoading { get; set; }
+    [Reactive] public partial bool HasChat { get; set; }
 
     // Metadata panel
-    [Reactive] public bool ShowMetadataPanel { get; set; }
-    [Reactive] public bool IsLoadingMetadata { get; set; }
-    [Reactive] public UserMetadata? ContactMetadata { get; set; }
-    [Reactive] public string? ContactPublicKey { get; set; }
+    [Reactive] public partial bool ShowMetadataPanel { get; set; }
+    [Reactive] public partial bool IsLoadingMetadata { get; set; }
+    [Reactive] public partial UserMetadata? ContactMetadata { get; set; }
+    [Reactive] public partial string? ContactPublicKey { get; set; }
 
     // Computed metadata properties for proper binding updates
-    [Reactive] public string? MetadataDisplayName { get; set; }
-    [Reactive] public string? MetadataName { get; set; }
-    [Reactive] public string? MetadataUsername { get; set; }
-    [Reactive] public string? MetadataAbout { get; set; }
-    [Reactive] public string? MetadataPicture { get; set; }
-    [Reactive] public string? MetadataBanner { get; set; }
-    [Reactive] public string? MetadataWebsite { get; set; }
-    [Reactive] public string? MetadataNip05 { get; set; }
-    [Reactive] public string? MetadataLud16 { get; set; }
-    [Reactive] public string? MetadataNpub { get; set; }
-    [Reactive] public bool HasMetadata { get; set; }
+    [Reactive] public partial string? MetadataDisplayName { get; set; }
+    [Reactive] public partial string? MetadataName { get; set; }
+    [Reactive] public partial string? MetadataUsername { get; set; }
+    [Reactive] public partial string? MetadataAbout { get; set; }
+    [Reactive] public partial string? MetadataPicture { get; set; }
+    [Reactive] public partial string? MetadataBanner { get; set; }
+    [Reactive] public partial string? MetadataWebsite { get; set; }
+    [Reactive] public partial string? MetadataNip05 { get; set; }
+    [Reactive] public partial string? MetadataLud16 { get; set; }
+    [Reactive] public partial string? MetadataNpub { get; set; }
+    [Reactive] public partial bool HasMetadata { get; set; }
 
     // Group member list
     public ObservableCollection<GroupMemberViewModel> GroupMembers { get; } = new();
-    [Reactive] public bool IsLoadingMembers { get; set; }
-    [Reactive] public bool IsCurrentUserAdmin { get; set; }
-    [Reactive] public string EditGroupName { get; set; } = string.Empty;
+    [Reactive] public partial bool IsLoadingMembers { get; set; }
+    [Reactive] public partial bool IsCurrentUserAdmin { get; set; }
+    [Reactive] public partial string EditGroupName { get; set; } = string.Empty;
 
     // Load older messages
-    [Reactive] public bool IsLoadingOlder { get; set; }
-    [Reactive] public bool CanLoadOlder { get; set; } = true;
+    [Reactive] public partial bool IsLoadingOlder { get; set; }
+    [Reactive] public partial bool CanLoadOlder { get; set; } = true;
 
     // Invite to group
-    [Reactive] public bool ShowInviteDialog { get; set; }
-    [Reactive] public string InvitePublicKey { get; set; } = string.Empty;
-    [Reactive] public string? InviteError { get; set; }
-    [Reactive] public string? InviteSuccess { get; set; }
-    [Reactive] public string? GroupInviteLink { get; set; }
+    [Reactive] public partial bool ShowInviteDialog { get; set; }
+    [Reactive] public partial string InvitePublicKey { get; set; } = string.Empty;
+    [Reactive] public partial string? InviteError { get; set; }
+    [Reactive] public partial string? InviteSuccess { get; set; }
+    [Reactive] public partial string? GroupInviteLink { get; set; }
 
     // MIP-04 state (controls attach/mic button visibility)
-    [Reactive] public bool IsMip04Enabled { get; set; }
+    [Reactive] public partial bool IsMip04Enabled { get; set; }
 
     // Voice recording state
-    [Reactive] public bool IsRecording { get; set; }
-    [Reactive] public string RecordingDuration { get; set; } = "0:00";
-    [Reactive] public bool IsSendingVoice { get; set; }
+    [Reactive] public partial bool IsRecording { get; set; }
+    [Reactive] public partial string RecordingDuration { get; set; } = "0:00";
+    [Reactive] public partial bool IsSendingVoice { get; set; }
 
     public ReactiveCommand<Unit, Unit> SendMessageCommand { get; }
     public ReactiveCommand<Unit, Unit> LoadMoreCommand { get; }
@@ -116,16 +116,16 @@ public class ChatViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> SaveGroupNameCommand { get; }
 
     // Reply state
-    [Reactive] public Message? ReplyingToMessage { get; set; }
-    [Reactive] public string? ReplyPreviewText { get; set; }
-    [Reactive] public string? ReplyPreviewSender { get; set; }
+    [Reactive] public partial Message? ReplyingToMessage { get; set; }
+    [Reactive] public partial string? ReplyPreviewText { get; set; }
+    [Reactive] public partial string? ReplyPreviewSender { get; set; }
     public ReactiveCommand<Unit, Unit> CancelReplyCommand { get; }
 
     // Sending image state
-    [Reactive] public bool IsSendingImage { get; set; }
+    [Reactive] public partial bool IsSendingImage { get; set; }
 
     // Upload progress status (shown in chat area during file/voice sends)
-    [Reactive] public string? UploadStatus { get; set; }
+    [Reactive] public partial string? UploadStatus { get; set; }
 
     // Static service references (set by platform startup)
     public static IAudioRecordingService? AudioRecordingService { get; set; }
@@ -350,12 +350,12 @@ public class ChatViewModel : ViewModelBase
 
         // Subscribe to new messages
         _messageSubscription = _messageService.NewMessages
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(OnNewMessage);
 
         // Subscribe to reaction updates
         _reactionSubscription = _messageService.ReactionUpdates
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(OnReactionUpdate);
     }
 
@@ -621,7 +621,7 @@ public class ChatViewModel : ViewModelBase
                         var metadata = await _messageService.FetchAndCacheProfileAsync(pubKeyHex);
                         if (metadata != null)
                         {
-                            RxApp.MainThreadScheduler.Schedule(Unit.Default, (_, _) =>
+                            RxSchedulers.MainThreadScheduler.Schedule(Unit.Default, (_, _) =>
                             {
                                 member.DisplayName = metadata.GetDisplayName();
                                 member.Picture = metadata.Picture;
@@ -1066,7 +1066,7 @@ public class ChatViewModel : ViewModelBase
             _ = Task.Run(async () =>
             {
                 await Task.Delay(5000);
-                RxApp.MainThreadScheduler.Schedule(Unit.Default, (_, __) => { UploadStatus = null; return System.Reactive.Disposables.Disposable.Empty; });
+                RxSchedulers.MainThreadScheduler.Schedule(Unit.Default, (_, __) => { UploadStatus = null; return System.Reactive.Disposables.Disposable.Empty; });
             });
         }
         finally
@@ -1103,7 +1103,7 @@ public class ChatViewModel : ViewModelBase
 
             // Update recording duration every second
             _recordingTimerSubscription = Observable.Interval(TimeSpan.FromSeconds(1))
-                .ObserveOn(RxApp.MainThreadScheduler)
+                .ObserveOn(RxSchedulers.MainThreadScheduler)
                 .Subscribe(_ =>
                 {
                     if (AudioRecordingService?.IsRecording == true)
@@ -1132,7 +1132,7 @@ public class ChatViewModel : ViewModelBase
             _ = Task.Run(async () =>
             {
                 await Task.Delay(3000);
-                RxApp.MainThreadScheduler.Schedule(Unit.Default, (_, __) => { UploadStatus = null; return System.Reactive.Disposables.Disposable.Empty; });
+                RxSchedulers.MainThreadScheduler.Schedule(Unit.Default, (_, __) => { UploadStatus = null; return System.Reactive.Disposables.Disposable.Empty; });
             });
             return;
         }
@@ -1208,7 +1208,7 @@ public class ChatViewModel : ViewModelBase
             _ = Task.Run(async () =>
             {
                 await Task.Delay(5000);
-                RxApp.MainThreadScheduler.Schedule(Unit.Default, (_, __) => { UploadStatus = null; return System.Reactive.Disposables.Disposable.Empty; });
+                RxSchedulers.MainThreadScheduler.Schedule(Unit.Default, (_, __) => { UploadStatus = null; return System.Reactive.Disposables.Disposable.Empty; });
             });
         }
         finally
@@ -1237,7 +1237,7 @@ public class ChatViewModel : ViewModelBase
     }
 }
 
-public class MessageViewModel : ViewModelBase
+public partial class MessageViewModel : ViewModelBase
 {
     private static readonly ILogger<MessageViewModel> _logger = LoggingConfiguration.CreateLogger<MessageViewModel>();
 
@@ -1252,22 +1252,22 @@ public class MessageViewModel : ViewModelBase
     public string Id { get; }
     public string SenderPublicKey { get; }
 
-    [Reactive] public string SenderName { get; set; }
-    [Reactive] public string? SenderAvatarUrl { get; set; }
-    [Reactive] public string Content { get; set; }
-    [Reactive] public DateTime Timestamp { get; set; }
-    [Reactive] public bool IsFromCurrentUser { get; set; }
-    [Reactive] public MessageStatus Status { get; set; }
-    [Reactive] public bool IsFirstInGroup { get; set; }
-    [Reactive] public bool IsLastInGroup { get; set; }
+    [Reactive] public partial string SenderName { get; set; }
+    [Reactive] public partial string? SenderAvatarUrl { get; set; }
+    [Reactive] public partial string Content { get; set; }
+    [Reactive] public partial DateTime Timestamp { get; set; }
+    [Reactive] public partial bool IsFromCurrentUser { get; set; }
+    [Reactive] public partial MessageStatus Status { get; set; }
+    [Reactive] public partial bool IsFirstInGroup { get; set; }
+    [Reactive] public partial bool IsLastInGroup { get; set; }
 
     // Media loading state (MIP-04)
-    [Reactive] public bool IsLoadingMedia { get; set; }
-    [Reactive] public byte[]? DecryptedMediaBytes { get; set; }
-    [Reactive] public bool IsMediaLoaded { get; set; }
-    [Reactive] public string? MediaError { get; set; }
-    [Reactive] public string? MediaSizeDisplay { get; set; }
-    [Reactive] public bool IsMip04Enabled { get; set; }
+    [Reactive] public partial bool IsLoadingMedia { get; set; }
+    [Reactive] public partial byte[]? DecryptedMediaBytes { get; set; }
+    [Reactive] public partial bool IsMediaLoaded { get; set; }
+    [Reactive] public partial string? MediaError { get; set; }
+    [Reactive] public partial string? MediaSizeDisplay { get; set; }
+    [Reactive] public partial bool IsMip04Enabled { get; set; }
 
     /// <summary>
     /// True when this message is an image (MessageType.Image).
@@ -1305,12 +1305,12 @@ public class MessageViewModel : ViewModelBase
     public string? ServerHostname { get; }
 
     // Audio playback state
-    [Reactive] public bool IsPlayingAudio { get; set; }
-    [Reactive] public double AudioProgress { get; set; }
-    [Reactive] public string? AudioDurationText { get; set; }
-    [Reactive] public string? AudioTimeDisplay { get; set; }
-    [Reactive] public bool IsPausedAudio { get; set; }
-    [Reactive] public byte[]? DecodedAudioPcm { get; set; }
+    [Reactive] public partial bool IsPlayingAudio { get; set; }
+    [Reactive] public partial double AudioProgress { get; set; }
+    [Reactive] public partial string? AudioDurationText { get; set; }
+    [Reactive] public partial string? AudioTimeDisplay { get; set; }
+    [Reactive] public partial bool IsPausedAudio { get; set; }
+    [Reactive] public partial byte[]? DecodedAudioPcm { get; set; }
 
     /// <summary>
     /// True when this is a media message and MIP-04 is disabled.
@@ -1328,9 +1328,9 @@ public class MessageViewModel : ViewModelBase
     public bool IsMediaMessage => IsImage || IsAudio || IsFile;
 
     // Reactions
-    [Reactive] public string? ReactionsDisplay { get; set; }
-    [Reactive] public bool HasReactions { get; set; }
-    [Reactive] public bool IsHovering { get; set; }
+    [Reactive] public partial string? ReactionsDisplay { get; set; }
+    [Reactive] public partial bool HasReactions { get; set; }
+    [Reactive] public partial bool IsHovering { get; set; }
 
     // Reply display
     public bool HasReplyTo { get; }
@@ -1702,7 +1702,7 @@ public class MessageViewModel : ViewModelBase
         _audioProgressTimer?.Dispose();
         _audioProgressTimer = System.Reactive.Linq.Observable
             .Interval(TimeSpan.FromMilliseconds(100))
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(_ =>
             {
                 if (playback.IsPlaying && playback.Duration.TotalSeconds > 0)
@@ -1782,14 +1782,14 @@ public class MessageViewModel : ViewModelBase
     }
 }
 
-public class GroupMemberViewModel : ViewModelBase
+public partial class GroupMemberViewModel : ViewModelBase
 {
     public string PublicKeyHex { get; set; } = string.Empty;
-    [Reactive] public string DisplayName { get; set; } = string.Empty;
-    [Reactive] public string? Picture { get; set; }
-    [Reactive] public string? Npub { get; set; }
-    [Reactive] public bool IsAdmin { get; set; }
-    [Reactive] public bool IsCurrentUser { get; set; }
+    [Reactive] public partial string DisplayName { get; set; } = string.Empty;
+    [Reactive] public partial string? Picture { get; set; }
+    [Reactive] public partial string? Npub { get; set; }
+    [Reactive] public partial bool IsAdmin { get; set; }
+    [Reactive] public partial bool IsCurrentUser { get; set; }
 
     /// <summary>Short display: first initial for avatar placeholder.</summary>
     public string Initial => !string.IsNullOrEmpty(DisplayName) ? DisplayName[..1].ToUpperInvariant() : "?";

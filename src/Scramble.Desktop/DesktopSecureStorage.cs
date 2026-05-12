@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 using Scramble.Core.Logging;
 using Scramble.Core.Services;
 
-namespace Scramble.UI.Services;
+namespace Scramble.Desktop;
 
 /// <summary>
 /// Windows DPAPI-based secure storage. Encrypts data tied to the current Windows user account.

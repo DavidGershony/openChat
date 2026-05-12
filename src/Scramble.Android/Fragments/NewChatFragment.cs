@@ -1,16 +1,21 @@
+using Android.Content;
 using Android.OS;
 using Android.Views;
 using Android.Widget;
+using AndroidX.Activity.Result;
+using AndroidX.Activity.Result.Contract;
 using AndroidX.RecyclerView.Widget;
 using Google.Android.Material.AppBar;
 using Google.Android.Material.Button;
 using Google.Android.Material.Chip;
 using Google.Android.Material.TextField;
+using Scramble.Android.Activities;
 using Scramble.Android.Adapters;
 using Scramble.Presentation.ViewModels;
 using ReactiveUI;
 using System.Collections.Specialized;
 using System.Reactive.Disposables;
+using System.Reactive.Disposables.Fluent;
 using System.Reactive.Linq;
 using Fragment = AndroidX.Fragment.App.Fragment;
 
@@ -23,10 +28,24 @@ public class NewChatFragment : Fragment
     private CompositeDisposable _disposables = new();
     private ChipGroup? _chipGroup;
     private NotifyCollectionChangedEventHandler? _participantsChangedHandler;
+    private TextInputEditText? _participantInput;
+    private ActivityResultLauncher? _scanQrLauncher;
 
     public NewChatFragment(MainViewModel mainViewModel)
     {
         _mainViewModel = mainViewModel;
+    }
+
+    public override void OnCreate(Bundle? savedInstanceState)
+    {
+        base.OnCreate(savedInstanceState);
+
+        // Launches ScanQrActivity and feeds the scanned text back into the ViewModel via
+        // the same NewChatParticipantInput pipeline as manual typing — Nip19.TryDecodePubkey
+        // (in ChatListViewModel) handles npub/nprofile/nostr: URI normalisation.
+        _scanQrLauncher = RegisterForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            new ScanQrCallback(this));
     }
 
     public override View? OnCreateView(LayoutInflater inflater, ViewGroup? container, Bundle? savedInstanceState)
@@ -46,6 +65,7 @@ public class NewChatFragment : Fragment
         var descInput = view.FindViewById<TextInputEditText>(Resource.Id.new_chat_desc_input)!;
         var participantInput = view.FindViewById<TextInputEditText>(Resource.Id.new_chat_participant_input)!;
         var participantLayout = view.FindViewById<TextInputLayout>(Resource.Id.new_chat_participant_layout)!;
+        _participantInput = participantInput;
         var addParticipantButton = view.FindViewById<MaterialButton>(Resource.Id.new_chat_add_participant_button)!;
         _chipGroup = view.FindViewById<ChipGroup>(Resource.Id.new_chat_participant_chips)!;
         var contactsHeader = view.FindViewById<TextView>(Resource.Id.contacts_header)!;
@@ -85,6 +105,14 @@ public class NewChatFragment : Fragment
             });
         };
 
+        // QR-scan end-icon: launch ScanQrActivity, the result feeds back through ScanQrCallback.
+        participantLayout.SetEndIconOnClickListener(new ActionClickListener(() =>
+        {
+            if (_scanQrLauncher == null || Context == null) return;
+            var intent = new Intent(Context, typeof(ScanQrActivity));
+            _scanQrLauncher.Launch(intent);
+        }));
+
         // Add participant — button or IME action
         void AddFromInput()
         {
@@ -123,7 +151,7 @@ public class NewChatFragment : Fragment
 
         // Show sending overlay while creating
         ViewModel.CreateChatCommand.IsExecuting
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(creating =>
             {
                 formSection.Visibility = creating ? ViewStates.Gone : ViewStates.Visible;
@@ -134,7 +162,7 @@ public class NewChatFragment : Fragment
             .DisposeWith(_disposables);
 
         ViewModel.WhenAnyValue(x => x.CreateProgress)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(progress =>
             {
                 sendingStatusText.Text = progress ?? "Creating chat...";
@@ -149,16 +177,16 @@ public class NewChatFragment : Fragment
 
         // Show red border on invalid npub
         ViewModel.WhenAnyValue(x => x.IsParticipantInputInvalid)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(invalid =>
             {
-                participantLayout.Error = invalid ? "Invalid npub" : null;
+                participantLayout.Error = invalid ? "Invalid npub / nprofile" : null;
                 participantLayout.ErrorEnabled = invalid;
             })
             .DisposeWith(_disposables);
 
         ViewModel.WhenAnyValue(x => x.NewChatError)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(error =>
             {
                 errorText.Text = error ?? "";
@@ -167,7 +195,7 @@ public class NewChatFragment : Fragment
             .DisposeWith(_disposables);
 
         ViewModel.WhenAnyValue(x => x.KeyPackageStatus)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(status =>
             {
                 statusText.Text = status ?? "";
@@ -176,7 +204,7 @@ public class NewChatFragment : Fragment
             .DisposeWith(_disposables);
 
         ViewModel.WhenAnyValue(x => x.IsLookingUpKeyPackages)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(loading =>
             {
                 lookupButton.Enabled = !loading;
@@ -185,7 +213,7 @@ public class NewChatFragment : Fragment
             .DisposeWith(_disposables);
 
         ViewModel.CreateChatCommand.CanExecute
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(canCreate => createButton.Enabled = canCreate)
             .DisposeWith(_disposables);
 
@@ -206,7 +234,7 @@ public class NewChatFragment : Fragment
         }
 
         ViewModel.WhenAnyValue(x => x.ShowNewChatDialog)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Where(show => !show)
             .Subscribe(_ => ParentFragmentManager.PopBackStack())
             .DisposeWith(_disposables);
@@ -239,8 +267,48 @@ public class NewChatFragment : Fragment
             _participantsChangedHandler = null;
         }
         _chipGroup = null;
+        _participantInput = null;
         _disposables.Dispose();
         _disposables = new CompositeDisposable();
         base.OnDestroyView();
+    }
+
+    /// <summary>
+    /// Receives the scanned QR payload from <see cref="ScanQrActivity"/> and pushes it into
+    /// the same input pipeline as manual typing. The ViewModel's live validation
+    /// (npub/nprofile/nostr: URI / hex via <c>Nip19.TryDecodePubkey</c>) takes it from there;
+    /// AddChatParticipantCommand is only auto-fired when the input parses to a valid pubkey,
+    /// so a partial / malformed scan just populates the field for the user to inspect.
+    /// </summary>
+    private void OnScanQrResult(ActivityResult result)
+    {
+        if (result.ResultCode != (int)global::Android.App.Result.Ok) return;
+        var scanned = result.Data?.GetStringExtra(ScanQrActivity.ResultExtraScannedText);
+        if (string.IsNullOrWhiteSpace(scanned)) return;
+        if (_participantInput == null) return;
+
+        _participantInput.Text = scanned;
+        ViewModel.NewChatParticipantInput = scanned;
+
+        // Auto-add only if the scan parsed cleanly. Reuse the ViewModel's validation:
+        // when input is valid, IsParticipantInputInvalid is false and the live pipeline
+        // already populated relay hints from any nprofile TLV.
+        if (!ViewModel.IsParticipantInputInvalid)
+        {
+            ViewModel.AddChatParticipantCommand.Execute().Subscribe().DisposeWith(_disposables);
+            _participantInput.Text = string.Empty;
+        }
+    }
+
+    private sealed class ScanQrCallback : Java.Lang.Object, IActivityResultCallback
+    {
+        private readonly NewChatFragment _fragment;
+        public ScanQrCallback(NewChatFragment fragment) => _fragment = fragment;
+
+        public void OnActivityResult(Java.Lang.Object? result)
+        {
+            if (result is ActivityResult ar)
+                _fragment.OnScanQrResult(ar);
+        }
     }
 }

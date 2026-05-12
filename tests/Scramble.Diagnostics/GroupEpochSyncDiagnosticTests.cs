@@ -6,8 +6,6 @@ using Scramble.Core.Models;
 using Scramble.Core.Services;
 using Scramble.Diagnostics.TestHelpers;
 using Xunit;
-using Xunit.Abstractions;
-
 namespace Scramble.Diagnostics;
 
 /// <summary>
@@ -36,13 +34,13 @@ public class GroupEpochSyncDiagnosticTests : IAsyncLifetime
         _output = output;
     }
 
-    public Task InitializeAsync()
+    public ValueTask InitializeAsync()
     {
         ProfileConfiguration.SetAllowLocalRelays(true);
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         foreach (var ms in _messageServices)
             ms.Dispose();
@@ -308,27 +306,27 @@ public class GroupEpochSyncDiagnosticTests : IAsyncLifetime
         await Run3UserEpochSyncTest("managed", "managed", "managed");
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task EpochSync_3Users_AllRust()
     {
-        Skip.IfNot(File.Exists(Path.Combine(AppContext.BaseDirectory, "scramble_native.dll")),
+        Assert.SkipUnless(File.Exists(Path.Combine(AppContext.BaseDirectory, "scramble_native.dll")),
             "Rust native DLL not found — skip rust backend tests");
         await Run3UserEpochSyncTest("rust", "rust", "rust");
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task EpochSync_3Users_MixedManagedRust()
     {
-        Skip.IfNot(File.Exists(Path.Combine(AppContext.BaseDirectory, "scramble_native.dll")),
+        Assert.SkipUnless(File.Exists(Path.Combine(AppContext.BaseDirectory, "scramble_native.dll")),
             "Rust native DLL not found — skip rust backend tests");
         // Alice=managed, Bob=rust, Charlie=managed — simulates OC managed ↔ OC rust interop
         await Run3UserEpochSyncTest("managed", "rust", "managed");
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task EpochSync_3Users_RustCreatorManagedMembers()
     {
-        Skip.IfNot(File.Exists(Path.Combine(AppContext.BaseDirectory, "scramble_native.dll")),
+        Assert.SkipUnless(File.Exists(Path.Combine(AppContext.BaseDirectory, "scramble_native.dll")),
             "Rust native DLL not found — skip rust backend tests");
         await Run3UserEpochSyncTest("rust", "managed", "managed");
     }

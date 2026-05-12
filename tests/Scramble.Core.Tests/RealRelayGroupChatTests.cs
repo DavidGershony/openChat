@@ -10,8 +10,6 @@ using Scramble.Core.Services;
 using Xunit;
 using Scramble.Core.Configuration;
 using Scramble.Core.Tests.TestHelpers;
-using Xunit.Abstractions;
-
 namespace Scramble.Core.Tests;
 
 /// <summary>
@@ -48,7 +46,7 @@ public class RealRelayGroupChatTests : IAsyncLifetime
         _logger = LoggingConfiguration.CreateLogger<RealRelayGroupChatTests>();
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _relayAvailable = await IsRelayReachableAsync();
         if (!_relayAvailable)
@@ -68,7 +66,7 @@ public class RealRelayGroupChatTests : IAsyncLifetime
             _userA.PubKey[..16], _userB.PubKey[..16]);
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         await DisposeUserAsync(_userA);
         await DisposeUserAsync(_userB);
@@ -87,10 +85,10 @@ public class RealRelayGroupChatTests : IAsyncLifetime
     // Test 1: Full group chat — create, invite, accept, exchange messages
     // ===================================================================
 
-    [SkippableFact]
+    [Fact]
     public async Task FullGroupChat_CreateInviteAcceptAndExchangeMessages()
     {
-        Skip.IfNot(_relayAvailable, "Relay not available at " + RelayUrl);
+        Assert.SkipUnless(_relayAvailable, "Relay not available at " + RelayUrl);
 
         _output.WriteLine($"User A pubkey: {_userA.PubKey}");
         _output.WriteLine($"User B pubkey: {_userB.PubKey}");
@@ -209,10 +207,10 @@ public class RealRelayGroupChatTests : IAsyncLifetime
     // Test 2: Published event has correct Nostr group ID (h-tag)
     // ===================================================================
 
-    [SkippableFact]
+    [Fact]
     public async Task PublishedEvent_HasCorrectNostrGroupId()
     {
-        Skip.IfNot(_relayAvailable, "Relay not available at " + RelayUrl);
+        Assert.SkipUnless(_relayAvailable, "Relay not available at " + RelayUrl);
 
         _output.WriteLine($"User A pubkey: {_userA.PubKey}");
         _output.WriteLine($"User B pubkey: {_userB.PubKey}");
@@ -292,10 +290,10 @@ public class RealRelayGroupChatTests : IAsyncLifetime
     // Test 3: Welcome event not rejected by relay (catches timestamp bug)
     // ===================================================================
 
-    [SkippableFact]
+    [Fact]
     public async Task WelcomeEvent_NotRejectedByRelay()
     {
-        Skip.IfNot(_relayAvailable, "Relay not available at " + RelayUrl);
+        Assert.SkipUnless(_relayAvailable, "Relay not available at " + RelayUrl);
 
         _output.WriteLine($"User A pubkey: {_userA.PubKey}");
         _output.WriteLine($"User B pubkey: {_userB.PubKey}");
@@ -380,10 +378,10 @@ public class RealRelayGroupChatTests : IAsyncLifetime
     // Test 4: Multi-round 2-user chat — proves MLS epoch stays in sync
     // ===================================================================
 
-    [SkippableFact]
+    [Fact]
     public async Task FullGroupChat_MultiRoundMessages_ViaRelay()
     {
-        Skip.IfNot(_relayAvailable, "Relay not available at " + RelayUrl);
+        Assert.SkipUnless(_relayAvailable, "Relay not available at " + RelayUrl);
 
         _output.WriteLine($"User A pubkey: {_userA.PubKey}");
         _output.WriteLine($"User B pubkey: {_userB.PubKey}");
@@ -429,10 +427,10 @@ public class RealRelayGroupChatTests : IAsyncLifetime
     // Test 5: Three-user group chat — all receive each other's messages
     // ===================================================================
 
-    [SkippableFact]
+    [Fact]
     public async Task ThreeUserGroupChat_AllReceiveMessages_ViaRelay()
     {
-        Skip.IfNot(_relayAvailable, "Relay not available at " + RelayUrl);
+        Assert.SkipUnless(_relayAvailable, "Relay not available at " + RelayUrl);
 
         // Setup User C
         _userC = await SetupUserAsync("C");

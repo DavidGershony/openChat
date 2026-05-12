@@ -2,8 +2,6 @@ using Moq;
 using Scramble.Core.Models;
 using Scramble.Core.Services;
 using Xunit;
-using Xunit.Abstractions;
-
 namespace Scramble.Core.Tests;
 
 /// <summary>

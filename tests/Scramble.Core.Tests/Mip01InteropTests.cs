@@ -10,7 +10,6 @@ using Scramble.Core.Models;
 using Scramble.Core.Services;
 using Xunit;
 using Scramble.Core.Tests.TestHelpers;
-using Xunit.Abstractions;
 using Extension = DotnetMls.Types.Extension;
 using KeyPackage = Scramble.Core.Models.KeyPackage;
 
@@ -56,7 +55,7 @@ public class Mip01InteropTests : IAsyncLifetime
         return File.Exists(dllPath);
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         if (!NativeDllAvailable())
             return;
@@ -85,7 +84,7 @@ public class Mip01InteropTests : IAsyncLifetime
         await _managedMlsB.InitializeAsync(_managedPrivKeyB, _managedPubKeyB);
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         _rustClient?.Dispose();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
@@ -105,10 +104,10 @@ public class Mip01InteropTests : IAsyncLifetime
     /// produces a Welcome that the C# MDK can process successfully, extracting
     /// the correct group name and metadata.
     /// </summary>
-    [SkippableFact]
+    [Fact]
     public async Task RustGroup_CSharpProcessesWelcome_ExtractsGroupMetadata()
     {
-        Skip.IfNot(NativeDllAvailable(), "Native DLL not available");
+        Assert.SkipUnless(NativeDllAvailable(), "Native DLL not available");
 
         var cs = new CipherSuite0x0001();
         var (sigPriv, sigPub) = cs.GenerateSignatureKeyPair();
@@ -189,11 +188,10 @@ public class Mip01InteropTests : IAsyncLifetime
     /// produces a Welcome that the Rust MDK can process successfully.
     /// Known issue: dotnet-mls Welcome byte format is not yet compatible with Rust MDK.
     /// </summary>
-    [SkippableFact]
+    [Fact(Skip = "Known dotnet-mls issue: C# Welcome bytes not yet compatible with Rust MDK (key schedule/ratchet tree)")]
     public async Task CSharpGroup_RustProcessesWelcome()
     {
-        Skip.IfNot(NativeDllAvailable(), "Native DLL not available");
-        Skip.If(true, "Known dotnet-mls issue: C# Welcome bytes not yet compatible with Rust MDK (key schedule/ratchet tree)");
+        Assert.SkipUnless(NativeDllAvailable(), "Native DLL not available");
 
         // Rust user generates KeyPackage
         var rustKp = await _rustClient.GenerateKeyPackageAsync();

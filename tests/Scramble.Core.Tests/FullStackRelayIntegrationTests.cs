@@ -9,8 +9,6 @@ using Scramble.Core.Services;
 using Xunit;
 using Scramble.Core.Configuration;
 using Scramble.Core.Tests.TestHelpers;
-using Xunit.Abstractions;
-
 namespace Scramble.Core.Tests;
 
 /// <summary>
@@ -51,7 +49,7 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
         _output = output;
     }
 
-    public Task InitializeAsync() => Task.CompletedTask;
+    public ValueTask InitializeAsync() => ValueTask.CompletedTask;
 
     private async Task SetupUsers(string backend)
     {
@@ -130,7 +128,7 @@ public class FullStackRelayIntegrationTests : IAsyncLifetime
         _ => throw new ArgumentException($"Unknown backend '{backend}'. Use 'rust' or 'managed'.")
     };
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         _messageServiceA?.Dispose();
         _messageServiceB?.Dispose();

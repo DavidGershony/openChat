@@ -6,6 +6,7 @@ using AndroidX.RecyclerView.Widget;
 using Google.Android.Material.Button;
 using Scramble.Presentation.ViewModels;
 using System.Reactive.Disposables;
+using System.Reactive.Disposables.Fluent;
 using System.Reactive.Linq;
 using ReactiveUI;
 
@@ -110,7 +111,7 @@ public class MessageAdapter : RecyclerView.Adapter
 
             // Observe playing state
             item.WhenAnyValue(x => x.IsPlayingAudio)
-                .ObserveOn(RxApp.MainThreadScheduler)
+                .ObserveOn(RxSchedulers.MainThreadScheduler)
                 .Subscribe(playing =>
                 {
                     audioPlayButton.SetImageResource(playing
@@ -121,7 +122,7 @@ public class MessageAdapter : RecyclerView.Adapter
 
             // Observe progress
             item.WhenAnyValue(x => x.AudioProgress)
-                .ObserveOn(RxApp.MainThreadScheduler)
+                .ObserveOn(RxSchedulers.MainThreadScheduler)
                 .Subscribe(progress =>
                 {
                     audioProgress.Progress = (int)(progress * 100);
@@ -130,7 +131,7 @@ public class MessageAdapter : RecyclerView.Adapter
 
             // Observe duration text updates
             item.WhenAnyValue(x => x.AudioDurationText)
-                .ObserveOn(RxApp.MainThreadScheduler)
+                .ObserveOn(RxSchedulers.MainThreadScheduler)
                 .Subscribe(dur =>
                 {
                     audioDuration.Text = dur ?? "0:00";
@@ -217,7 +218,7 @@ public class MessageAdapter : RecyclerView.Adapter
         if (reactionsDisplay == null) return;
 
         item.WhenAnyValue(x => x.ReactionsDisplay)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(display =>
             {
                 if (string.IsNullOrEmpty(display))

@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black">
+
+    <!-- Camera preview fills the screen behind everything else -->
+    <androidx.camera.view.PreviewView
+        android:id="@+id/scan_qr_preview"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Top scrim + cancel toolbar over the preview -->
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/scan_qr_toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="#80000000"
+        app:title="Scan QR"
+        app:titleTextColor="@android:color/white"
+        app:navigationIcon="?attr/homeAsUpIndicator"
+        app:navigationIconTint="@android:color/white" />
+
+    <!-- Centered viewfinder reticle. Plain white square frame; MLKit handles detection regardless. -->
+    <View
+        android:layout_width="240dp"
+        android:layout_height="240dp"
+        android:layout_gravity="center"
+        android:background="@drawable/scan_qr_reticle" />
+
+    <!-- Bottom hint + manual-entry escape hatch -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:padding="24dp"
+        android:background="#80000000">
+
+        <TextView
+            android:id="@+id/scan_qr_hint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Point at an npub or nprofile QR code"
+            android:textColor="@android:color/white"
+            android:textSize="14sp"
+            android:layout_marginBottom="12dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/scan_qr_manual_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Enter manually"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:textColor="@android:color/white" />
+    </LinearLayout>
+
+    <!-- Permission-denied overlay shown when CAMERA permission is refused -->
+    <LinearLayout
+        android:id="@+id/scan_qr_permission_denied"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="32dp"
+        android:background="#E0000000"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Camera permission required"
+            android:textColor="@android:color/white"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Enable the camera permission to scan QR codes, or enter the npub manually."
+            android:textColor="@android:color/white"
+            android:textSize="14sp"
+            android:gravity="center"
+            android:layout_marginTop="12dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/scan_qr_open_settings_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Open settings"
+            android:layout_marginTop="24dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/scan_qr_denied_manual_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Enter manually"
+            android:layout_marginTop="8dp"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:textColor="@android:color/white" />
+    </LinearLayout>
+
+</FrameLayout>

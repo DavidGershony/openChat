@@ -1,5 +1,5 @@
 using Avalonia;
-using Avalonia.ReactiveUI;
+using ReactiveUI.Avalonia;
 using Scramble.Core.Configuration;
 using System;
 
@@ -65,5 +65,5 @@ class Program
         => AppBuilder.Configure<App>()
             .UsePlatformDetect()
             .LogToTrace()
-            .UseReactiveUI();
+            .UseReactiveUI(rxui => rxui.WithExceptionHandler(App.CreateRxExceptionObserver()));
 }

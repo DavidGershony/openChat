@@ -41,7 +41,7 @@ public class HeadlessLoginTests : HeadlessTestBase
     [InlineData("managed")]
     public async Task GenerateNewKey_CreatesValidKeysAndLogsIn(string backend) { }
 
-    [AvaloniaTheory(Skip = "Requires ShellViewModel - login flow moved out of MainViewModel")]
+    [AvaloniaTheory]
     [InlineData("rust")]
     [InlineData("managed")]
     public async Task Logout_ClearsStateAndShowsLogin(string backend)

@@ -7,7 +7,7 @@ using System.Reactive.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using ReactiveUI;
-using ReactiveUI.Fody.Helpers;
+using ReactiveUI.SourceGenerators;
 using Scramble.Core.Configuration;
 using Scramble.Core.Logging;
 using Scramble.Core.Models;
@@ -21,7 +21,7 @@ namespace Scramble.Presentation.ViewModels;
 /// Login runs BEFORE any user-scoped services exist. After login, the correct
 /// profile is set and services are created with the right DB/MLS paths.
 /// </summary>
-public class ShellViewModel : ViewModelBase
+public partial class ShellViewModel : ViewModelBase
 {
     private readonly ILogger<ShellViewModel> _logger = LoggingConfiguration.CreateLogger<ShellViewModel>();
 
@@ -47,8 +47,8 @@ public class ShellViewModel : ViewModelBase
     // and was previously broken (we used to wipe the user row from the DB).
     private string? _recentlyLoggedOutPubKey;
 
-    [Reactive] public bool IsLoggedIn { get; set; }
-    [Reactive] public MainViewModel? MainViewModel { get; set; }
+    [Reactive] public partial bool IsLoggedIn { get; set; }
+    [Reactive] public partial MainViewModel? MainViewModel { get; set; }
 
     /// <summary>
     /// All known accounts from the registry, ordered by last active.
@@ -59,17 +59,17 @@ public class ShellViewModel : ViewModelBase
     /// <summary>
     /// The currently active account entry (for highlighting in the switcher).
     /// </summary>
-    [Reactive] public AccountEntry? ActiveAccountEntry { get; set; }
+    [Reactive] public partial AccountEntry? ActiveAccountEntry { get; set; }
 
     /// <summary>
     /// True when the login screen was triggered by "Add Account" (shows Cancel button).
     /// </summary>
-    [Reactive] public bool IsAddingAccount { get; set; }
+    [Reactive] public partial bool IsAddingAccount { get; set; }
 
     /// <summary>
     /// True when the account switcher overlay is visible.
     /// </summary>
-    [Reactive] public bool ShowAccountSwitcher { get; set; }
+    [Reactive] public partial bool ShowAccountSwitcher { get; set; }
 
     public LoginViewModel LoginViewModel { get; }
 
@@ -185,6 +185,25 @@ public class ShellViewModel : ViewModelBase
         {
             _logger.LogInformation("Login completed for {Npub}..., setting up profile", user.Npub?[..Math.Min(12, user.Npub.Length)]);
 
+            // Sanity check: detect the wrong-npub bug at the latest possible moment.
+            // For NIP-46 logins the user's signing pubkey (PublicKeyHex) MUST be
+            // resolved via get_public_key and is NOT supposed to equal the bunker's
+            // transport pubkey (SignerRemotePubKey). If they're equal, an earlier
+            // step silently fell back to the transport key — refuse to persist.
+            // Note: a few signers do legitimately reuse the same key for both
+            // roles; if you hit this in practice we can downgrade to a warning.
+            if (user.IsRemoteSigner
+                && !string.IsNullOrEmpty(user.SignerRemotePubKey)
+                && string.Equals(user.PublicKeyHex, user.SignerRemotePubKey, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogError(
+                    "Login rejected: user PublicKeyHex equals signer transport pubkey ({Pub}). This indicates get_public_key did not resolve the user's signing key.",
+                    user.PublicKeyHex[..Math.Min(16, user.PublicKeyHex.Length)]);
+                LoginViewModel.ErrorMessage = "Could not determine your public key from the signer. Please reconnect.";
+                ShowLoginView();
+                return;
+            }
+
             // Derive profile from the user's public key (unless --profile was explicit)
             if (!ProfileConfiguration.WasExplicitlySet)
             {
@@ -292,7 +311,7 @@ public class ShellViewModel : ViewModelBase
         // Set MainViewModel on the UI thread — triggers XAML visibility switch
         // [Reactive] properties must be set on the UI thread for Avalonia bindings to update reliably
         var tcs = new TaskCompletionSource();
-        RxApp.MainThreadScheduler.Schedule(Unit.Default, (_, __) =>
+        RxSchedulers.MainThreadScheduler.Schedule(Unit.Default, (_, __) =>
         {
             MainViewModel = mainVm;
             IsLoggedIn = true;
@@ -364,7 +383,7 @@ public class ShellViewModel : ViewModelBase
 
         // Update UI on main thread
         var tcs = new TaskCompletionSource();
-        RxApp.MainThreadScheduler.Schedule(Unit.Default, (_, __) =>
+        RxSchedulers.MainThreadScheduler.Schedule(Unit.Default, (_, __) =>
         {
             MainViewModel = null;
             IsLoggedIn = false;

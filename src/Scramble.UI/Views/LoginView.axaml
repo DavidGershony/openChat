@@ -109,7 +109,7 @@
                         <TextBlock Text="Enter your nsec or hex private key to login"
                                    Classes="secondary" FontSize="13" />
                         <TextBox Text="{Binding PrivateKeyInput}"
-                                 Watermark="nsec1... or hex private key"
+                                 PlaceholderText="nsec1... or hex private key"
                                  PasswordChar="*" />
                         <Button Classes="primary" HorizontalAlignment="Stretch"
                                 Command="{Binding ImportKeyCommand}"
@@ -201,7 +201,7 @@
                         <TextBlock Text="Signer relay:" FontSize="12" Margin="0,4,0,0" />
                         <Grid ColumnDefinitions="*,Auto" Margin="0">
                             <TextBox Grid.Column="0" Text="{Binding SignerRelayInput}"
-                                     Watermark="wss://relay.damus.io"
+                                     PlaceholderText="wss://relay.damus.io"
                                      FontSize="13" />
                             <Button Grid.Column="1" Margin="8,0,0,0"
                                     Command="{Binding RefreshSignerRelayCommand}"
@@ -247,7 +247,7 @@
                                    HorizontalAlignment="Center" Margin="0,8,0,0" />
 
                         <TextBox Text="{Binding BunkerUrl}"
-                                 Watermark="bunker://pubkey?relay=wss://relay.example.com"
+                                 PlaceholderText="bunker://pubkey?relay=wss://relay.example.com"
                                  TextWrapping="Wrap" />
 
                         <Button Classes="primary" HorizontalAlignment="Stretch"

@@ -9,8 +9,6 @@ using Scramble.Diagnostics.TestHelpers;
 using Scramble.Presentation.Services;
 using Scramble.Presentation.ViewModels;
 using Xunit;
-using Xunit.Abstractions;
-
 namespace Scramble.Diagnostics;
 
 /// <summary>

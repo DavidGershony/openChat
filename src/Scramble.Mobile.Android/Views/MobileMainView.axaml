@@ -1,0 +1,160 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Scramble.Presentation.ViewModels"
+             xmlns:views="using:Scramble.UI.Views"
+             xmlns:asyncImageLoader="using:AsyncImageLoader"
+             x:Class="Scramble.MobileAndroid.Views.MobileMainView"
+             x:Name="Root"
+             x:DataType="vm:ShellViewModel">
+
+    <!--
+        Mobile shell for the Avalonia Android head.
+
+        Mirrors the *body* of Scramble.UI/Views/MainWindow.axaml (Login vs. logged-in
+        content) but omits desktop chrome (custom title bar, window controls) and the
+        fixed two-column sidebar+content layout that doesn't fit on a phone.
+
+        Logged-in layout: three rows.
+          Row 0 — top header bar: avatar (opens account switcher) + display name.
+          Row 1 — main content: ChatListView, ChatView overlay, SettingsView overlay.
+          Row 2 — bottom action bar: New Chat + Settings buttons.
+
+        Both the top header and bottom action bar hide when the settings overlay is
+        open (CurrentView != null) or while an active chat is open
+        (ChatViewModel.HasChat), so their focusable children don't steal TAB focus
+        from the overlay/chat content.
+
+        Account switcher and My Profile dialog overlays are mounted at outer Grid
+        scope (same as desktop) — they reuse the shared UserControls in
+        Scramble.UI/Views/ so the unified Avalonia UI stays the single source of truth.
+
+        The DataContext is ShellViewModel (set by App.OnFrameworkInitializationCompleted).
+    -->
+
+    <Grid Background="{DynamicResource BackgroundDarkBrush}">
+
+        <!-- Logged-in view (only when IsLoggedIn).
+             IsVisible binds against the outer ShellViewModel BEFORE DataContext is
+             reassigned to MainViewModel for descendants — use a relative binding so
+             the compiled-bindings type checker doesn't look up IsLoggedIn on
+             MainViewModel. -->
+        <Grid IsVisible="{Binding #Root.DataContext.IsLoggedIn}"
+              DataContext="{Binding MainViewModel}"
+              x:DataType="vm:MainViewModel"
+              RowDefinitions="Auto,*,Auto">
+
+            <!-- Top header bar: avatar (tap to open account switcher) + display name.
+                 Hidden when chat is open or when settings overlay is shown so its
+                 controls don't capture focus underneath. -->
+            <Panel Grid.Row="0"
+                   IsVisible="{Binding CurrentView, Converter={x:Static ObjectConverters.IsNull}}">
+                <Panel IsVisible="{Binding !ChatViewModel.HasChat}">
+                    <Border Padding="12,8" Background="{DynamicResource BackgroundLightBrush}">
+                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                            <!-- Avatar (clickable - opens account switcher) -->
+                            <Button x:Name="AvatarButton" Classes="icon"
+                                    Click="AvatarButton_Click"
+                                    Padding="0" CornerRadius="18">
+                                <Panel Width="36" Height="36">
+                                    <Border Width="36" Height="36" CornerRadius="18"
+                                            Background="{DynamicResource NostrPurpleBrush}"
+                                            IsVisible="{Binding MyPictureUrl, Converter={x:Static StringConverters.IsNullOrEmpty}}">
+                                        <PathIcon Data="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"
+                                                  Width="20" Height="20" Foreground="White" />
+                                    </Border>
+                                    <Border Width="36" Height="36" CornerRadius="18" ClipToBounds="True"
+                                            IsVisible="{Binding MyPictureUrl, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                        <Image asyncImageLoader:ImageLoader.Source="{Binding MyPictureUrl}"
+                                               Stretch="UniformToFill" />
+                                    </Border>
+                                </Panel>
+                            </Button>
+                            <!-- Name or loading indicator -->
+                            <StackPanel VerticalAlignment="Center" MaxWidth="240">
+                                <TextBlock Text="{Binding HeaderDisplayName}" FontSize="16" FontWeight="Bold"
+                                           TextTrimming="CharacterEllipsis"
+                                           IsVisible="{Binding !IsHeaderLoading}" />
+                                <TextBlock Text="Loading..." FontSize="12" Classes="muted"
+                                           IsVisible="{Binding IsHeaderLoading}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </Panel>
+            </Panel>
+
+            <!-- Main content -->
+            <Grid Grid.Row="1">
+                <!-- Chat list (default view).
+                     Outer Panel hides the list whenever the settings overlay is open (CurrentView != null);
+                     inner IsVisible additionally hides it when an active chat is open.
+                     This stops the list's focusable controls from cycling under TAB when the overlay is shown. -->
+                <Panel IsVisible="{Binding CurrentView, Converter={x:Static ObjectConverters.IsNull}}">
+                    <views:ChatListView DataContext="{Binding ChatListViewModel}"
+                                        IsVisible="{Binding !$parent[Grid].DataContext.ChatViewModel.HasChat}" />
+                </Panel>
+
+                <!-- Active chat overlay -->
+                <views:ChatView DataContext="{Binding ChatViewModel}"
+                                IsVisible="{Binding HasChat}" />
+
+                <!-- Settings overlay (when CurrentView is set) -->
+                <views:SettingsView DataContext="{Binding SettingsViewModel}"
+                                    IsVisible="{Binding $parent[Grid].DataContext.CurrentView, Converter={x:Static ObjectConverters.IsNotNull}}" />
+            </Grid>
+
+            <!-- Bottom action bar. Hidden whenever the settings overlay is open or an
+                 active chat is shown so its buttons don't capture focus underneath. -->
+            <Panel Grid.Row="2"
+                   IsVisible="{Binding CurrentView, Converter={x:Static ObjectConverters.IsNull}}">
+                <Panel IsVisible="{Binding !ChatViewModel.HasChat}">
+                    <Border Padding="12,8" Background="{DynamicResource BackgroundLightBrush}">
+                        <Grid ColumnDefinitions="*,8,*">
+                            <Button Grid.Column="0" Classes="secondary"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Center"
+                                    Command="{Binding ChatListViewModel.NewChatCommand}"
+                                    Padding="8,6">
+                                <TextBlock Text="New Chat" FontSize="13" />
+                            </Button>
+                            <Button Grid.Column="2" Classes="secondary"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Center"
+                                    Command="{Binding ShowSettingsCommand}"
+                                    Padding="8,6">
+                                <TextBlock Text="Settings" FontSize="13" />
+                            </Button>
+                        </Grid>
+                    </Border>
+                </Panel>
+            </Panel>
+        </Grid>
+
+        <!-- Login view (only when not logged in). DataContext is reassigned to
+             LoginViewModel so IsVisible must reach back to ShellViewModel. -->
+        <views:LoginView DataContext="{Binding LoginViewModel}"
+                         IsVisible="{Binding #Root.DataContext.IsLoggedIn, Converter={x:Static BoolConverters.Not}}" />
+
+        <!-- New Chat dialog overlay. Mirrors the desktop overlay at MainWindow.axaml; both shells
+             render the same NewChatDialogView UserControl. Placed at outer Grid scope so the dim
+             backdrop covers the bottom action bar as well. -->
+        <ContentControl DataContext="{Binding #Root.DataContext.MainViewModel.ChatListViewModel}"
+                        x:DataType="vm:ChatListViewModel"
+                        IsVisible="{Binding ShowNewChatDialog, FallbackValue=False}">
+            <views:NewChatDialogView />
+        </ContentControl>
+
+        <!-- Account switcher overlay (shared with desktop MainWindow). Gated on
+             ShellViewModel.ShowAccountSwitcher. -->
+        <ContentControl IsVisible="{Binding ShowAccountSwitcher, FallbackValue=False}">
+            <views:AccountSwitcherView />
+        </ContentControl>
+
+        <!-- My Profile dialog overlay (shared with desktop MainWindow). Gated on
+             MainViewModel.ShowMyProfileDialog. -->
+        <ContentControl DataContext="{Binding #Root.DataContext.MainViewModel}"
+                        x:DataType="vm:MainViewModel"
+                        IsVisible="{Binding ShowMyProfileDialog, FallbackValue=False}">
+            <views:MyProfileDialogView />
+        </ContentControl>
+    </Grid>
+</UserControl>

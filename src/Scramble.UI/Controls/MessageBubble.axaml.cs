@@ -34,7 +34,7 @@ public partial class MessageBubble : UserControl
 
     private void OnReplyClick(object? sender, RoutedEventArgs e)
     {
-        if (sender is Button btn && btn.Tag is MessageViewModel msgVm)
+        if (sender is Avalonia.Controls.Button btn && btn.Tag is MessageViewModel msgVm)
         {
             // Walk up the visual tree to find the ChatView's DataContext (ChatViewModel)
             var parent = this.Parent;

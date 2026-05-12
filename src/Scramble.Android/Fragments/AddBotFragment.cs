@@ -8,6 +8,7 @@ using Scramble.Presentation.ViewModels;
 using ReactiveUI;
 using System.Reactive;
 using System.Reactive.Disposables;
+using System.Reactive.Disposables.Fluent;
 using System.Reactive.Linq;
 using Fragment = AndroidX.Fragment.App.Fragment;
 
@@ -105,7 +106,7 @@ public class AddBotFragment : Fragment
 
         // Error state
         ViewModel.WhenAnyValue(x => x.AddBotError)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(error =>
             {
                 errorText.Text = error ?? "";
@@ -115,7 +116,7 @@ public class AddBotFragment : Fragment
 
         // Sending overlay
         ViewModel.CreateBotChatCommand.IsExecuting
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(creating =>
             {
                 formScroll.Visibility = creating ? ViewStates.Gone : ViewStates.Visible;
@@ -127,7 +128,7 @@ public class AddBotFragment : Fragment
 
         // NIP-65 fetching state
         ViewModel.WhenAnyValue(x => x.IsFetchingNip65)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(fetching =>
             {
                 nip65Progress.Visibility = fetching ? ViewStates.Visible : ViewStates.Gone;
@@ -138,7 +139,7 @@ public class AddBotFragment : Fragment
 
         // NIP-65 status
         ViewModel.WhenAnyValue(x => x.Nip65Status)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(status =>
             {
                 nip65Status.Text = status ?? "";
@@ -171,7 +172,7 @@ public class AddBotFragment : Fragment
 
         // Auto-navigate back on success
         ViewModel.WhenAnyValue(x => x.ShowAddBotDialog)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Where(show => !show)
             .Subscribe(_ => ParentFragmentManager.PopBackStack())
             .DisposeWith(_disposables);

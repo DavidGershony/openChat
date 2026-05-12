@@ -13,17 +13,17 @@ public class ContactStorageTests : IAsyncLifetime
     private static readonly string ContactA = new string('b', 64);
     private static readonly string ContactB = new string('c', 64);
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _dbPath = Path.Combine(Path.GetTempPath(), $"scramble_contacts_{Guid.NewGuid()}.db");
         _storage = new StorageService(_dbPath, new MockSecureStorage());
         await _storage.InitializeAsync();
     }
 
-    public Task DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         if (File.Exists(_dbPath)) try { File.Delete(_dbPath); } catch { }
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     [Fact]

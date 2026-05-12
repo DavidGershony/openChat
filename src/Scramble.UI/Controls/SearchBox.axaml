@@ -7,7 +7,7 @@
              x:Name="Root">
 
     <TextBox Text="{Binding SearchText, ElementName=Root, Mode=TwoWay}"
-             Watermark="{Binding Watermark, ElementName=Root}"
+             PlaceholderText="{Binding Watermark, ElementName=Root}"
              Background="{DynamicResource SurfaceSecondaryBrush}"
              CornerRadius="20">
         <TextBox.InnerLeftContent>

@@ -8,8 +8,6 @@ using Scramble.Core.Models;
 using Scramble.Core.Services;
 using Scramble.Core.Tests.TestHelpers;
 using Xunit;
-using Xunit.Abstractions;
-
 namespace Scramble.Core.Tests;
 
 /// <summary>
@@ -35,7 +33,7 @@ public class LastResortKeyPackageTests : IAsyncLifetime
 
     public LastResortKeyPackageTests(ITestOutputHelper output) => _output = output;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         ProfileConfiguration.SetAllowLocalRelays(true);
 
@@ -78,14 +76,14 @@ public class LastResortKeyPackageTests : IAsyncLifetime
         await (_mlsC as ManagedMlsService)!.InitializeAsync(_privKeyC, _pubKeyC);
     }
 
-    public Task DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         _msgServiceB?.Dispose();
         SqliteConnection.ClearAllPools();
         GC.Collect();
         GC.WaitForPendingFinalizers();
         if (_dbPathB != null) try { File.Delete(_dbPathB); } catch { }
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     [Fact]

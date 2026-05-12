@@ -10,8 +10,6 @@ using Scramble.Core.Services;
 using Scramble.Presentation.ViewModels;
 using Scramble.UI.Tests.TestHelpers;
 using Xunit;
-using Xunit.Abstractions;
-
 namespace Scramble.UI.Tests;
 
 /// <summary>
@@ -44,14 +42,14 @@ public class HeadlessRealRelayTests : IAsyncLifetime
         _logger = LoggingConfiguration.CreateLogger<HeadlessRealRelayTests>();
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _relayAvailable = await IsRelayReachableAsync();
         if (!_relayAvailable)
             _logger.LogWarning("Relay at {RelayUrl} not reachable, tests will skip", RelayUrl);
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         foreach (var d in _disposables) d.Dispose();
         foreach (var nostr in _nostrServices)
@@ -74,7 +72,7 @@ public class HeadlessRealRelayTests : IAsyncLifetime
     [AvaloniaFact]
     public async Task TwoUserChat_ViaRealRelay_ViewModelLevel()
     {
-        Skip.IfNot(_relayAvailable, "Relay not available at " + RelayUrl);
+        Assert.SkipUnless(_relayAvailable, "Relay not available at " + RelayUrl);
 
         var userA = await CreateUserContextAsync("A");
         var userB = await CreateUserContextAsync("B");
@@ -123,7 +121,7 @@ public class HeadlessRealRelayTests : IAsyncLifetime
     [AvaloniaFact]
     public async Task ThreeUserChat_ViaRealRelay_ViewModelLevel()
     {
-        Skip.IfNot(_relayAvailable, "Relay not available at " + RelayUrl);
+        Assert.SkipUnless(_relayAvailable, "Relay not available at " + RelayUrl);
 
         var userA = await CreateUserContextAsync("A");
         var userB = await CreateUserContextAsync("B");
@@ -223,7 +221,7 @@ public class HeadlessRealRelayTests : IAsyncLifetime
     [AvaloniaFact]
     public async Task CloseAndReopen_MessagesStillFlow_ViaRealRelay()
     {
-        Skip.IfNot(_relayAvailable, "Relay not available at " + RelayUrl);
+        Assert.SkipUnless(_relayAvailable, "Relay not available at " + RelayUrl);
 
         var userA = await CreateUserContextAsync("A");
         var userB = await CreateUserContextAsync("B");
