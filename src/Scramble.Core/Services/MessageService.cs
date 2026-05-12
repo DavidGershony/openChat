@@ -1807,6 +1807,9 @@ public class MessageService : IMessageService, IDisposable
         }
     }
 
+    // TODO: Migrate to staged commit path (StageSelfUpdateAsync + MergeStagedAsync)
+    // for full MIP-03 compliance. Currently uses auto-merge UpdateKeysAsync which
+    // advances local state before relay confirmation.
     private async Task PerformSelfUpdateAsync(byte[] groupId)
     {
         if (_currentUser == null) return;
