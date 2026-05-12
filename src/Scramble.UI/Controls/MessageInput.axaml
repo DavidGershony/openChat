@@ -19,7 +19,7 @@
             <!-- Text Input -->
             <TextBox Grid.Column="1"
                      Text="{Binding MessageText, ElementName=Root, Mode=TwoWay}"
-                     Watermark="Type a message..."
+                     PlaceholderText="Type a message..."
                      AcceptsReturn="False"
                      TextWrapping="NoWrap"
                      VerticalContentAlignment="Center"

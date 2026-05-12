@@ -61,17 +61,17 @@
                     <Grid ColumnDefinitions="*,16,*" RowDefinitions="Auto,12,Auto">
                         <StackPanel Grid.Column="0" Grid.Row="0" Spacing="4">
                             <TextBlock Text="Display Name" Classes="muted" FontSize="12" />
-                            <TextBox Text="{Binding DisplayName}" Watermark="Your display name" />
+                            <TextBox Text="{Binding DisplayName}" PlaceholderText="Your display name" />
                         </StackPanel>
 
                         <StackPanel Grid.Column="2" Grid.Row="0" Spacing="4">
                             <TextBlock Text="Username" Classes="muted" FontSize="12" />
-                            <TextBox Text="{Binding Username}" Watermark="@username" />
+                            <TextBox Text="{Binding Username}" PlaceholderText="@username" />
                         </StackPanel>
 
                         <StackPanel Grid.Column="0" Grid.Row="2" Grid.ColumnSpan="3" Spacing="4">
                             <TextBlock Text="About" Classes="muted" FontSize="12" />
-                            <TextBox Text="{Binding About}" Watermark="Tell others about yourself..."
+                            <TextBox Text="{Binding About}" PlaceholderText="Tell others about yourself..."
                                      AcceptsReturn="True" TextWrapping="Wrap" Height="80" />
                         </StackPanel>
                     </Grid>
@@ -157,7 +157,7 @@
                     <!-- Add Relay -->
                     <Grid ColumnDefinitions="*,Auto">
                         <TextBox Grid.Column="0" Text="{Binding NewRelayUrl}"
-                                 Watermark="wss://relay.example.com">
+                                 PlaceholderText="wss://relay.example.com">
                             <TextBox.KeyBindings>
                                 <KeyBinding Gesture="Enter" Command="{Binding AddRelayCommand}" />
                             </TextBox.KeyBindings>
@@ -287,7 +287,7 @@
                         <TextBlock Text="Server for uploading encrypted voice messages and media"
                                    Classes="muted" FontSize="12" />
                         <TextBox Text="{Binding BlossomServerUrl}"
-                                 Watermark="https://blossom.nostr.build"
+                                 PlaceholderText="https://blossom.nostr.build"
                                  FontFamily="Consolas,monospace" FontSize="13" />
                     </StackPanel>
                 </StackPanel>

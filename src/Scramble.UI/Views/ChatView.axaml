@@ -172,7 +172,7 @@
                 <!-- Multi-line paste support: paste preserves newlines, Shift+Enter inserts a newline,
                      Enter sends. AcceptsReturn=True is required so the TextBox does not strip \n on paste. -->
                 <TextBox Grid.Column="1" Text="{Binding MessageText}"
-                         Watermark="Type a message..."
+                         PlaceholderText="Type a message..."
                          AcceptsReturn="True"
                          TextWrapping="Wrap"
                          MaxHeight="120"
@@ -533,7 +533,7 @@
                         <TextBlock Text="Enter the npub of the person you want to invite"
                                    Classes="secondary" FontSize="13" />
                         <TextBox Text="{Binding InvitePublicKey}"
-                                 Watermark="npub1..."
+                                 PlaceholderText="npub1..."
                                  AcceptsReturn="False" />
                         <Button Classes="primary"
                                 Command="{Binding SendInviteCommand}"

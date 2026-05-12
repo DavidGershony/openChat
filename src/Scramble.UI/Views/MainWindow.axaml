@@ -571,7 +571,7 @@
                         <StackPanel Spacing="6">
                             <TextBlock Text="Name (optional)" Classes="secondary" FontSize="13" />
                             <TextBox Text="{Binding NewChatName}"
-                                     Watermark="Chat or group name"
+                                     PlaceholderText="Chat or group name"
                                      AcceptsReturn="False" />
                         </StackPanel>
 
@@ -579,7 +579,7 @@
                         <StackPanel Spacing="6">
                             <TextBlock Text="Description (optional)" Classes="secondary" FontSize="13" />
                             <TextBox Text="{Binding NewChatDescription}"
-                                     Watermark="What's this chat about?"
+                                     PlaceholderText="What's this chat about?"
                                      AcceptsReturn="False" />
                         </StackPanel>
 
@@ -627,7 +627,7 @@
                             <Grid ColumnDefinitions="*,8,Auto">
                                 <TextBox Grid.Column="0"
                                          Text="{Binding NewChatParticipantInput}"
-                                          Watermark="npub / nprofile / nostr: / hex" />
+                                          PlaceholderText="npub / nprofile / nostr: / hex" />
                                 <Button Grid.Column="2"
                                         Content="Add"
                                         Classes="secondary"
@@ -813,7 +813,7 @@
                         <StackPanel Spacing="6">
                             <TextBlock Text="Device Public Key" Classes="secondary" FontSize="13" />
                             <TextBox Text="{Binding BotNpub}"
-                                     Watermark="npub1..."
+                                     PlaceholderText="npub1..."
                                      AcceptsReturn="False" />
                             <TextBlock Text="Enter the npub of a bot or IoT device. Messages use NIP-17 encrypted DMs."
                                        Classes="muted" FontSize="11" TextWrapping="Wrap" />
@@ -874,7 +874,7 @@
                             <!-- Manual relay panel -->
                             <StackPanel Spacing="4" IsVisible="{Binding BotRelayModeManual}">
                                 <TextBox Text="{Binding BotManualRelay}"
-                                         Watermark="wss://relay.example.com"
+                                         PlaceholderText="wss://relay.example.com"
                                          AcceptsReturn="False" />
                             </StackPanel>
                         </StackPanel>
