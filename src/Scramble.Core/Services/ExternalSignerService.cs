@@ -143,7 +143,10 @@ public class ExternalSignerService : IExternalSigner, IDisposable
             // Send connect request
             _logger.LogInformation("Sending connect request to signer, waiting for approval...");
             _status.OnNext(new ExternalSignerStatus { State = ExternalSignerState.WaitingForApproval });
-            var response = await SendRequestAsync("connect", new[] { _localPublicKeyHex!, _secret ?? "" });
+            var connectParams = _secret != null
+                ? new[] { _localPublicKeyHex!, _secret }
+                : new[] { _localPublicKeyHex! };
+            var response = await SendRequestAsync("connect", connectParams);
             _logger.LogDebug("Received connect response: {Response}", response);
 
             if (response == "ack")
