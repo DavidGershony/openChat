@@ -134,13 +134,13 @@ public partial class MainViewModel : ViewModelBase
             MyNpubQrPngBytes = _qrCodeGenerator.GeneratePng(BuildShareableProfilePayload(), 10);
             ShowMyProfileDialog = true;
 
-            // Fetch profile metadata from Nostr
+            // Show cached profile immediately, then refresh in background
             if (!string.IsNullOrEmpty(CurrentUser?.PublicKeyHex))
             {
                 IsLoadingProfile = true;
                 try
                 {
-                    var metadata = await _nostrService.FetchUserMetadataAsync(CurrentUser.PublicKeyHex);
+                    var metadata = await _messageService.GetCachedOrFetchProfileAsync(CurrentUser.PublicKeyHex);
                     if (metadata != null)
                     {
                         MyDisplayName = metadata.DisplayName;
@@ -287,6 +287,33 @@ public partial class MainViewModel : ViewModelBase
                 {
                     settingsRelay.IsConnected = status.IsConnected;
                     settingsRelay.Error = status.Error;
+                }
+            });
+
+        // Subscribe to background metadata updates — refresh profile dialog and header if data changed
+        _messageService.MetadataUpdated
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
+            .Subscribe(metadata =>
+            {
+                // Update profile dialog if it's showing for this user
+                if (ShowMyProfileDialog && CurrentUser?.PublicKeyHex == metadata.PublicKeyHex)
+                {
+                    MyDisplayName = metadata.DisplayName;
+                    MyName = metadata.Name;
+                    MyPictureUrl = metadata.Picture;
+                    MyAbout = metadata.About;
+                }
+
+                // Update header display name if it's our own profile
+                if (CurrentUser?.PublicKeyHex == metadata.PublicKeyHex)
+                {
+                    var name = metadata.GetDisplayName();
+                    if (!string.IsNullOrEmpty(metadata.DisplayName) ||
+                        !string.IsNullOrEmpty(metadata.Name) ||
+                        !string.IsNullOrEmpty(metadata.Username))
+                    {
+                        HeaderDisplayName = name;
+                    }
                 }
             });
 
@@ -719,7 +746,10 @@ public partial class MainViewModel : ViewModelBase
                 {
                     try
                     {
-                        var metadata = await _nostrService.FetchUserMetadataAsync(CurrentUser.PublicKeyHex);
+                        // Show cached profile immediately; background relay refresh
+                        // will emit MetadataUpdated if anything changed (handled by
+                        // the subscription in the constructor).
+                        var metadata = await _messageService.GetCachedOrFetchProfileAsync(CurrentUser.PublicKeyHex);
                         if (metadata != null)
                         {
                             MyDisplayName = metadata.DisplayName;

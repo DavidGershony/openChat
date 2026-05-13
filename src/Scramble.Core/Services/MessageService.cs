@@ -34,6 +34,10 @@ public class MessageService : IMessageService, IDisposable
     private readonly ConcurrentDictionary<string, DateTime> _pendingSelfUpdates = new();
     private Timer? _selfUpdateTimer;
 
+    // Deduplicates concurrent background relay fetches for the same pubkey.
+    private readonly ConcurrentDictionary<string, byte> _inflightMetadataFetches = new();
+    private readonly Subject<UserMetadata> _metadataUpdated = new();
+
     public IObservable<Message> NewMessages => _newMessages.AsObservable();
     public IObservable<(string MessageId, MessageStatus Status)> MessageStatusUpdates => _messageStatusUpdates.AsObservable();
     public IObservable<Chat> ChatUpdates => _chatUpdates.AsObservable();
@@ -41,6 +45,7 @@ public class MessageService : IMessageService, IDisposable
     public IObservable<MlsDecryptionError> DecryptionErrors => _decryptionErrors.AsObservable();
     public IObservable<(string MessageId, string Emoji, string ReactorPublicKey)> ReactionUpdates => _reactionUpdates.AsObservable();
     public IObservable<Unit> SkippedInvites => _skippedInvites.AsObservable();
+    public IObservable<UserMetadata> MetadataUpdated => _metadataUpdated.AsObservable();
 
     public MessageService(IStorageService storageService, INostrService nostrService, IMlsService mlsService)
     {
@@ -2270,6 +2275,91 @@ public class MessageService : IMessageService, IDisposable
             _logger.LogWarning(ex, "FetchAndCacheProfile failed for {PubKey}", publicKeyHex[..Math.Min(16, publicKeyHex.Length)]);
             return null;
         }
+    }
+
+    public async Task<UserMetadata?> GetCachedOrFetchProfileAsync(string publicKeyHex)
+    {
+        // 1. Check DB — fast local SQLite lookup
+        try
+        {
+            var dbUser = await _storageService.GetUserByPublicKeyAsync(publicKeyHex);
+            if (dbUser != null && !string.IsNullOrEmpty(dbUser.DisplayName))
+            {
+                var metadata = UserToMetadata(dbUser);
+                _ = BackgroundRefreshMetadataAsync(publicKeyHex);
+                return metadata;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "DB lookup failed for {PubKey}", publicKeyHex[..Math.Min(16, publicKeyHex.Length)]);
+        }
+
+        // 2. Nothing in DB — do a synchronous relay fetch
+        return await FetchAndCacheProfileAsync(publicKeyHex);
+    }
+
+    /// <summary>
+    /// Fires a background relay fetch for the given pubkey, deduplicating concurrent requests.
+    /// If newer metadata is returned, updates the DB and emits <see cref="MetadataUpdated"/>.
+    /// </summary>
+    private async Task BackgroundRefreshMetadataAsync(string publicKeyHex)
+    {
+        // Deduplicate: skip if a fetch for this pubkey is already in-flight
+        if (!_inflightMetadataFetches.TryAdd(publicKeyHex, 0))
+            return;
+
+        try
+        {
+            var metadata = await _nostrService.FetchUserMetadataAsync(publicKeyHex);
+            if (metadata == null || string.IsNullOrEmpty(metadata.PublicKeyHex))
+                return;
+
+            // Check if data actually changed compared to what's in the DB
+            var dbUser = await _storageService.GetUserByPublicKeyAsync(publicKeyHex);
+            var changed = dbUser == null
+                || dbUser.DisplayName != (metadata.DisplayName ?? metadata.Name)
+                || dbUser.AvatarUrl != metadata.Picture
+                || dbUser.About != metadata.About
+                || dbUser.Username != metadata.Username
+                || dbUser.Nip05 != metadata.Nip05;
+
+            await SaveMetadataAsUserAsync(metadata);
+
+            if (changed)
+            {
+                _logger.LogInformation("Metadata updated from relay for {PubKey}: {Name}",
+                    publicKeyHex[..Math.Min(16, publicKeyHex.Length)], metadata.GetDisplayName());
+                _metadataUpdated.OnNext(metadata);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Background metadata refresh failed for {PubKey}", publicKeyHex[..Math.Min(16, publicKeyHex.Length)]);
+        }
+        finally
+        {
+            _inflightMetadataFetches.TryRemove(publicKeyHex, out _);
+        }
+    }
+
+    /// <summary>
+    /// Converts a <see cref="User"/> DB entity to a <see cref="UserMetadata"/> for cache/display use.
+    /// </summary>
+    private static UserMetadata UserToMetadata(User user)
+    {
+        return new UserMetadata
+        {
+            PublicKeyHex = user.PublicKeyHex,
+            Npub = user.Npub,
+            Name = user.DisplayName,
+            DisplayName = user.DisplayName,
+            Username = user.Username,
+            About = user.About,
+            Picture = user.AvatarUrl,
+            Nip05 = user.Nip05,
+            CreatedAt = user.CreatedAt,
+        };
     }
 
     /// <summary>

@@ -235,6 +235,20 @@ public interface IMessageService
     /// signer details) are preserved on update.
     /// </summary>
     Task<UserMetadata?> FetchAndCacheProfileAsync(string publicKeyHex);
+
+    /// <summary>
+    /// Returns cached metadata (memory or DB) immediately, then fires a background relay fetch.
+    /// If the relay returns updated metadata, the DB and memory cache are updated and a
+    /// <see cref="MetadataUpdated"/> notification is emitted so the UI can refresh.
+    /// Returns null only if nothing is cached and the background fetch hasn't completed yet.
+    /// </summary>
+    Task<UserMetadata?> GetCachedOrFetchProfileAsync(string publicKeyHex);
+
+    /// <summary>
+    /// Fires each time a background metadata refresh returns updated profile data.
+    /// Subscribers can use this to refresh display names, avatars, etc.
+    /// </summary>
+    IObservable<UserMetadata> MetadataUpdated { get; }
 }
 
 public class KeyPackageAuditResult

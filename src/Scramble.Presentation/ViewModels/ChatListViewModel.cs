@@ -661,8 +661,9 @@ public partial class ChatListViewModel : ViewModelBase
                     continue;
                 }
 
-                // Fetch kind 0 metadata from relays
-                var metadata = await _nostrService.FetchUserMetadataAsync(otherPubKey);
+                // Use cache-first metadata fetch: returns DB/memory cache immediately,
+                // fires a background relay refresh that emits MetadataUpdated if changed.
+                var metadata = await _messageService.GetCachedOrFetchProfileAsync(otherPubKey);
                 if (string.IsNullOrEmpty(metadata?.Picture)) continue;
 
                 var localPath = await DownloadAvatarToCacheAsync(metadata.Picture, otherPubKey[..16]);
@@ -1108,7 +1109,7 @@ public partial class ChatListViewModel : ViewModelBase
             {
                 try
                 {
-                    var metadata = await _messageService.FetchAndCacheProfileAsync(participantKeys[0]);
+                    var metadata = await _messageService.GetCachedOrFetchProfileAsync(participantKeys[0]);
                     chatName = metadata?.DisplayName ?? metadata?.Name ?? string.Empty;
                 }
                 catch { /* metadata fetch is optional */ }
@@ -1434,7 +1435,7 @@ public partial class ChatListViewModel : ViewModelBase
             // Try to fetch profile for name resolution
             try
             {
-                await _messageService.FetchAndCacheProfileAsync(hex);
+                await _messageService.GetCachedOrFetchProfileAsync(hex);
             }
             catch (Exception ex)
             {
