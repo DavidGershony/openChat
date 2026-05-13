@@ -91,7 +91,7 @@
                                     Command="{Binding ChatListViewModel.AddBotCommand}"
                                     ToolTip.Tip="Link Device"
                                     Padding="8" Margin="0">
-                                <PathIcon Data="M16 9V4.5A2.5 2.5 0 0 0 13.5 2A2.5 2.5 0 0 0 11 4.5V9H7v6.5C7 18.54 9.46 21 12.5 21S18 18.54 18 15.5V9h-2M13.5 3.5a1 1 0 0 1 1 1V9h-2V4.5a1 1 0 0 1 1-1Z"
+                                <PathIcon Data="M80-160v-120h80v-440q0-33 23.5-56.5T240-800h600v80H240v440h240v120H80Zm520 0q-17 0-28.5-11.5T560-200v-400q0-17 11.5-28.5T600-640h240q17 0 28.5 11.5T880-600v400q0 17-11.5 28.5T840-160H600Zm40-120h160v-280H640v280Zm0 0h160-160Z"
                                           Width="22" Height="22"
                                           Foreground="{DynamicResource ForegroundBrush}" />
                             </Button>
@@ -138,12 +138,154 @@
 
         <!-- New Chat dialog overlay. Mirrors the desktop overlay at MainWindow.axaml; both shells
              render the same NewChatDialogView UserControl. Placed at outer Grid scope so the dim
-             backdrop covers the bottom action bar as well. -->
+             backdrop covers the entire screen. -->
         <ContentControl DataContext="{Binding #Root.DataContext.MainViewModel.ChatListViewModel}"
                         x:DataType="vm:ChatListViewModel"
                         IsVisible="{Binding ShowNewChatDialog, FallbackValue=False}">
             <views:NewChatDialogView />
         </ContentControl>
+
+        <!-- Link Device dialog overlay. Mirrors the desktop overlay at MainWindow.axaml. -->
+        <Border DataContext="{Binding #Root.DataContext.MainViewModel.ChatListViewModel}"
+                x:DataType="vm:ChatListViewModel"
+                IsVisible="{Binding ShowAddBotDialog, FallbackValue=False}"
+                Background="#80000000"
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+            <Border Classes="card"
+                    Background="{DynamicResource BackgroundCardBrush}"
+                    CornerRadius="16"
+                    Padding="20"
+                    Margin="16"
+                    VerticalAlignment="Center"
+                    HorizontalAlignment="Stretch">
+                <Panel>
+                    <!-- Form content (hidden during connecting) -->
+                    <StackPanel Spacing="14"
+                                IsVisible="{Binding !CreateBotChatCommand.IsExecuting^}">
+                        <!-- Header -->
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="Link Device"
+                                       FontSize="20" FontWeight="Bold"
+                                       VerticalAlignment="Center" />
+                            <Button Grid.Column="1" Classes="icon"
+                                    Command="{Binding CancelAddBotCommand}"
+                                    ToolTip.Tip="Close">
+                                <PathIcon Data="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+                                          Width="20" Height="20" />
+                            </Button>
+                        </Grid>
+
+                        <!-- Device Public Key Input -->
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Device Public Key" Classes="secondary" FontSize="13" />
+                            <TextBox Text="{Binding BotNpub}"
+                                     PlaceholderText="npub1..."
+                                     AcceptsReturn="False" />
+                            <TextBlock Text="Enter the npub of a bot or IoT device. Messages use NIP-17 encrypted DMs."
+                                       Classes="muted" FontSize="11" TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <!-- Relay Selection -->
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Relay" Classes="secondary" FontSize="13" />
+
+                            <RadioButton Content="Find user relay (NIP-65)"
+                                         IsChecked="{Binding BotRelayModeNip65}"
+                                         GroupName="BotRelay" />
+                            <RadioButton Content="Select from connected relays"
+                                         IsChecked="{Binding BotRelayModeList}"
+                                         GroupName="BotRelay" />
+                            <RadioButton Content="Add relay manually"
+                                         IsChecked="{Binding BotRelayModeManual}"
+                                         GroupName="BotRelay" />
+
+                            <!-- NIP-65 panel -->
+                            <StackPanel Spacing="4" IsVisible="{Binding BotRelayModeNip65}">
+                                <Button Classes="secondary" Content="Look up relays"
+                                        Command="{Binding LookupBotNip65Command}"
+                                        Padding="12,4" FontSize="12"
+                                        HorizontalAlignment="Left" />
+                                <ProgressBar IsIndeterminate="True" Height="2"
+                                             IsVisible="{Binding IsFetchingNip65}"
+                                             Foreground="{DynamicResource NostrPurpleBrush}" />
+                                <TextBlock Text="{Binding Nip65Status}"
+                                           FontSize="12" TextWrapping="Wrap"
+                                           IsVisible="{Binding Nip65Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                <ItemsControl ItemsSource="{Binding BotNip65Relays}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <CheckBox Content="{Binding Url}" IsChecked="{Binding IsChecked}"
+                                                      FontSize="12" Margin="0,1" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+
+                            <!-- Select from list panel -->
+                            <StackPanel Spacing="4" IsVisible="{Binding BotRelayModeList}">
+                                <ItemsControl ItemsSource="{Binding BotAvailableRelays}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <CheckBox Content="{Binding Url}" IsChecked="{Binding IsChecked}"
+                                                      FontSize="12" Margin="0,1" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock Text="No relays connected."
+                                           Classes="muted" FontSize="12"
+                                           IsVisible="{Binding !BotAvailableRelays.Count}" />
+                            </StackPanel>
+
+                            <!-- Manual relay panel -->
+                            <StackPanel Spacing="4" IsVisible="{Binding BotRelayModeManual}">
+                                <TextBox Text="{Binding BotManualRelay}"
+                                         PlaceholderText="wss://relay.example.com"
+                                         AcceptsReturn="False" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Error Message -->
+                        <TextBlock Text="{Binding AddBotError}"
+                                   Foreground="{DynamicResource StatusErrorBrush}"
+                                   FontSize="13"
+                                   TextWrapping="Wrap"
+                                   IsVisible="{Binding AddBotError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                        <!-- Buttons -->
+                        <Grid ColumnDefinitions="*,12,*" Margin="0,8,0,0">
+                            <Button Grid.Column="0"
+                                    Classes="secondary"
+                                    Content="Cancel"
+                                    Command="{Binding CancelAddBotCommand}"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Center" />
+                            <Button Grid.Column="2"
+                                    Classes="primary"
+                                    Content="Link"
+                                    Command="{Binding CreateBotChatCommand}"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Center" />
+                        </Grid>
+                    </StackPanel>
+
+                    <!-- Progress overlay (shown while connecting) -->
+                    <StackPanel IsVisible="{Binding CreateBotChatCommand.IsExecuting^}"
+                                VerticalAlignment="Center"
+                                HorizontalAlignment="Center"
+                                Spacing="16"
+                                Margin="40">
+                        <ProgressBar IsIndeterminate="True" Width="160" Height="4"
+                                     Foreground="{DynamicResource NostrPurpleBrush}" />
+                        <TextBlock Text="Linking device..."
+                                   FontSize="15" FontWeight="SemiBold"
+                                   HorizontalAlignment="Center" />
+                        <TextBlock Text="This may take a moment"
+                                   Classes="muted" FontSize="12"
+                                   HorizontalAlignment="Center" />
+                    </StackPanel>
+                </Panel>
+            </Border>
+        </Border>
 
         <!-- Account switcher overlay (shared with desktop MainWindow). Gated on
              ShellViewModel.ShowAccountSwitcher. -->
