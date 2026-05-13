@@ -3,6 +3,7 @@ using System.Linq;
 using System.Reactive;
 using System.Reflection;
 using System.Reactive.Linq;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using ReactiveUI;
 using ReactiveUI.SourceGenerators;
@@ -50,6 +51,12 @@ public partial class SettingsViewModel : ViewModelBase
     // Relay list publish
     [Reactive] public partial string? PublishRelayListStatus { get; set; }
 
+    // Per-purpose relay overrides (kind 10050 DM, kind 10051 KeyPackage)
+    [Reactive] public partial string NewDmRelayUrl { get; set; } = string.Empty;
+    [Reactive] public partial string NewKpRelayUrl { get; set; } = string.Empty;
+    [Reactive] public partial bool ShowDmRelaySection { get; set; }
+    [Reactive] public partial bool ShowKpRelaySection { get; set; }
+
     // Profile editing (hidden when using external signer — no private key to sign kind 0)
     [Reactive] public partial bool CanEditProfile { get; set; }
 
@@ -86,12 +93,20 @@ public partial class SettingsViewModel : ViewModelBase
     public static Action<int>? OnThemeChanged { get; set; }
 
     public ObservableCollection<RelayViewModel> Relays { get; } = new();
+    public ObservableCollection<string> DmRelays { get; } = new();
+    public ObservableCollection<string> KpRelays { get; } = new();
 
     public ReactiveCommand<Unit, Unit> SaveProfileCommand { get; }
     public ReactiveCommand<Unit, Unit> ConfirmPublishProfileCommand { get; }
     public ReactiveCommand<Unit, Unit> CancelPublishProfileCommand { get; }
     public ReactiveCommand<Unit, Unit> AddRelayCommand { get; }
     public ReactiveCommand<RelayViewModel, Unit> RemoveRelayCommand { get; }
+    public ReactiveCommand<Unit, Unit> AddDmRelayCommand { get; }
+    public ReactiveCommand<string, Unit> RemoveDmRelayCommand { get; }
+    public ReactiveCommand<Unit, Unit> AddKpRelayCommand { get; }
+    public ReactiveCommand<string, Unit> RemoveKpRelayCommand { get; }
+    public ReactiveCommand<Unit, Unit> ToggleDmRelaySectionCommand { get; }
+    public ReactiveCommand<Unit, Unit> ToggleKpRelaySectionCommand { get; }
     public ReactiveCommand<Unit, Unit> ViewLogsCommand { get; }
     public ReactiveCommand<Unit, Unit> CloseLogViewerCommand { get; }
     public ReactiveCommand<Unit, Unit> RefreshLogsCommand { get; }
@@ -132,6 +147,19 @@ public partial class SettingsViewModel : ViewModelBase
 
         AddRelayCommand = ReactiveCommand.CreateFromTask(AddRelayAsync, canAddRelay);
         RemoveRelayCommand = ReactiveCommand.Create<RelayViewModel>(RemoveRelay);
+
+        // Per-purpose relay commands
+        var canAddDmRelay = this.WhenAnyValue(x => x.NewDmRelayUrl,
+            url => !string.IsNullOrWhiteSpace(url) && Uri.TryCreate(url, UriKind.Absolute, out _));
+        var canAddKpRelay = this.WhenAnyValue(x => x.NewKpRelayUrl,
+            url => !string.IsNullOrWhiteSpace(url) && Uri.TryCreate(url, UriKind.Absolute, out _));
+
+        AddDmRelayCommand = ReactiveCommand.CreateFromTask(AddDmRelayAsync, canAddDmRelay);
+        RemoveDmRelayCommand = ReactiveCommand.CreateFromTask<string>(RemoveDmRelayAsync);
+        AddKpRelayCommand = ReactiveCommand.CreateFromTask(AddKpRelayAsync, canAddKpRelay);
+        RemoveKpRelayCommand = ReactiveCommand.CreateFromTask<string>(RemoveKpRelayAsync);
+        ToggleDmRelaySectionCommand = ReactiveCommand.Create(() => { ShowDmRelaySection = !ShowDmRelaySection; });
+        ToggleKpRelaySectionCommand = ReactiveCommand.Create(() => { ShowKpRelaySection = !ShowKpRelaySection; });
 
         // Log viewer commands
         ViewLogsCommand = ReactiveCommand.Create(() =>
@@ -359,6 +387,47 @@ public partial class SettingsViewModel : ViewModelBase
         var notifPushUrl = await _storageService.GetSettingAsync("notification_push_url");
         if (!string.IsNullOrEmpty(notifPushUrl))
             NotificationPushUrl = notifPushUrl;
+
+        // Load per-purpose relay lists
+        var dmRelayJson = await _storageService.GetSettingAsync("dm_relay_urls");
+        if (!string.IsNullOrEmpty(dmRelayJson))
+        {
+            try
+            {
+                var dmUrls = JsonSerializer.Deserialize<List<string>>(dmRelayJson);
+                if (dmUrls != null)
+                {
+                    DmRelays.Clear();
+                    foreach (var url in dmUrls)
+                        DmRelays.Add(url);
+                }
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "Failed to deserialize DM relay list");
+            }
+        }
+
+        var kpRelayJson = await _storageService.GetSettingAsync("kp_relay_urls");
+        if (!string.IsNullOrEmpty(kpRelayJson))
+        {
+            try
+            {
+                var kpUrls = JsonSerializer.Deserialize<List<string>>(kpRelayJson);
+                if (kpUrls != null)
+                {
+                    KpRelays.Clear();
+                    foreach (var url in kpUrls)
+                        KpRelays.Add(url);
+                }
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "Failed to deserialize KeyPackage relay list");
+            }
+        }
+
+        _logger.LogInformation("Loaded purpose relay lists: {DmCount} DM, {KpCount} KP", DmRelays.Count, KpRelays.Count);
     }
 
     private async Task SaveProfileAsync()
@@ -463,6 +532,49 @@ public partial class SettingsViewModel : ViewModelBase
         _logger.LogInformation("Saved relay list with {Count} relays", relayPrefs.Count);
     }
 
+    // ── Per-purpose relay management ──
+
+    private async Task AddDmRelayAsync()
+    {
+        if (string.IsNullOrWhiteSpace(NewDmRelayUrl)) return;
+        if (!DmRelays.Contains(NewDmRelayUrl))
+            DmRelays.Add(NewDmRelayUrl);
+        NewDmRelayUrl = string.Empty;
+        await SavePurposeRelaysAsync();
+    }
+
+    private async Task RemoveDmRelayAsync(string url)
+    {
+        DmRelays.Remove(url);
+        await SavePurposeRelaysAsync();
+    }
+
+    private async Task AddKpRelayAsync()
+    {
+        if (string.IsNullOrWhiteSpace(NewKpRelayUrl)) return;
+        if (!KpRelays.Contains(NewKpRelayUrl))
+            KpRelays.Add(NewKpRelayUrl);
+        NewKpRelayUrl = string.Empty;
+        await SavePurposeRelaysAsync();
+    }
+
+    private async Task RemoveKpRelayAsync(string url)
+    {
+        KpRelays.Remove(url);
+        await SavePurposeRelaysAsync();
+    }
+
+    private async Task SavePurposeRelaysAsync()
+    {
+        if (string.IsNullOrEmpty(PublicKeyHex)) return;
+
+        var dmJson = JsonSerializer.Serialize(DmRelays.ToList());
+        var kpJson = JsonSerializer.Serialize(KpRelays.ToList());
+        await _storageService.SaveSettingAsync("dm_relay_urls", dmJson);
+        await _storageService.SaveSettingAsync("kp_relay_urls", kpJson);
+        _logger.LogInformation("Saved purpose relay lists: {DmCount} DM, {KpCount} KP", DmRelays.Count, KpRelays.Count);
+    }
+
     private async Task PublishRelayListAsync()
     {
         if (string.IsNullOrEmpty(PublicKeyHex))
@@ -477,9 +589,12 @@ public partial class SettingsViewModel : ViewModelBase
             var relayPrefs = Relays.Select(r => new RelayPreference { Url = r.Url, Usage = r.Usage }).ToList();
             var relayUrls = Relays.Select(r => r.Url).ToList();
             await _nostrService.PublishRelayListAsync(relayPrefs, PrivateKeyHex);
-            // Also publish purpose-specific relay lists (kind 10050 for DMs, 10051 for KeyPackages)
-            await _nostrService.PublishDmRelayListAsync(relayUrls, PrivateKeyHex);
-            await _nostrService.PublishKeyPackageRelayListAsync(relayUrls, PrivateKeyHex);
+            // Publish purpose-specific relay lists: use per-purpose overrides when configured,
+            // otherwise fall back to the general relay list
+            var dmRelayUrls = DmRelays.Count > 0 ? DmRelays.ToList() : relayUrls;
+            var kpRelayUrls = KpRelays.Count > 0 ? KpRelays.ToList() : relayUrls;
+            await _nostrService.PublishDmRelayListAsync(dmRelayUrls, PrivateKeyHex);
+            await _nostrService.PublishKeyPackageRelayListAsync(kpRelayUrls, PrivateKeyHex);
             await _storageService.SaveUserRelayListAsync(PublicKeyHex, relayPrefs);
             PublishRelayListStatus = $"Published {relayPrefs.Count} relays";
             _logger.LogInformation("Published relay lists (kind 10002, 10050, 10051) and saved locally");

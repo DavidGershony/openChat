@@ -3,6 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Scramble.Presentation.ViewModels"
+             xmlns:sys="using:System"
              mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="700"
              x:Class="Scramble.UI.Views.SettingsView"
              x:DataType="vm:SettingsViewModel">
@@ -172,6 +173,132 @@
                             HorizontalAlignment="Left" />
                     <TextBlock Text="Publishes your relay preferences so others can find you"
                                Classes="muted" FontSize="11" />
+                </StackPanel>
+            </Border>
+
+            <!-- ── DM Relays (kind 10050) ── -->
+            <Border Classes="card" Padding="0">
+                <StackPanel>
+                    <!-- Collapsible header -->
+                    <Button Classes="icon" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                            Padding="16,12" Command="{Binding ToggleDmRelaySectionCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <PathIcon Data="M480 -120 160 -440l64 -64 256 256 256 -256 64 64 -320 320Z"
+                                      Width="14" Height="14" IsVisible="{Binding ShowDmRelaySection}" />
+                            <PathIcon Data="M560 -240 320 -480l64 -64 256 256 256 -256 64 64 -400 400Z"
+                                      Width="14" Height="14" IsVisible="{Binding !ShowDmRelaySection}">
+                                <PathIcon.RenderTransform>
+                                    <RotateTransform Angle="-90" />
+                                </PathIcon.RenderTransform>
+                            </PathIcon>
+                            <TextBlock Text="DM Relays (NIP-17)" FontWeight="SemiBold" FontSize="13" />
+                            <TextBlock Text="{Binding DmRelays.Count, StringFormat='({0})'}"
+                                       Classes="muted" FontSize="12" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Expanded content -->
+                    <StackPanel IsVisible="{Binding ShowDmRelaySection}" Spacing="8" Margin="16,0,16,16">
+                        <TextBlock Text="Relays where others send you direct messages (kind 10050). When empty, your general relay list is used."
+                                   Classes="muted" FontSize="11" TextWrapping="Wrap" />
+
+                        <!-- DM relay list -->
+                        <ItemsControl x:Name="DmRelaysItemsControl" ItemsSource="{Binding DmRelays}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="sys:String">
+                                    <Border Background="{DynamicResource SurfaceSecondaryBrush}"
+                                            CornerRadius="6" Padding="10,6" Margin="0,2">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Grid.Column="0" Text="{Binding}"
+                                                       FontFamily="Consolas" FontSize="12"
+                                                       VerticalAlignment="Center" />
+                                            <Button Grid.Column="1" Classes="icon"
+                                                    Command="{ReflectionBinding DataContext.RemoveDmRelayCommand, ElementName=DmRelaysItemsControl}"
+                                                    CommandParameter="{Binding}">
+                                                <PathIcon Data="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+                                                          Width="14" Height="14" />
+                                            </Button>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- Add DM relay -->
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBox Grid.Column="0" Text="{Binding NewDmRelayUrl}"
+                                     PlaceholderText="wss://relay.example.com" FontSize="12">
+                                <TextBox.KeyBindings>
+                                    <KeyBinding Gesture="Enter" Command="{Binding AddDmRelayCommand}" />
+                                </TextBox.KeyBindings>
+                            </TextBox>
+                            <Button Grid.Column="1" Classes="primary" Content="Add"
+                                    Command="{Binding AddDmRelayCommand}" Margin="8,0,0,0" />
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- ── KeyPackage Relays (kind 10051) ── -->
+            <Border Classes="card" Padding="0">
+                <StackPanel>
+                    <!-- Collapsible header -->
+                    <Button Classes="icon" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                            Padding="16,12" Command="{Binding ToggleKpRelaySectionCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <PathIcon Data="M480 -120 160 -440l64 -64 256 256 256 -256 64 64 -320 320Z"
+                                      Width="14" Height="14" IsVisible="{Binding ShowKpRelaySection}" />
+                            <PathIcon Data="M560 -240 320 -480l64 -64 256 256 256 -256 64 64 -400 400Z"
+                                      Width="14" Height="14" IsVisible="{Binding !ShowKpRelaySection}">
+                                <PathIcon.RenderTransform>
+                                    <RotateTransform Angle="-90" />
+                                </PathIcon.RenderTransform>
+                            </PathIcon>
+                            <TextBlock Text="KeyPackage Relays" FontWeight="SemiBold" FontSize="13" />
+                            <TextBlock Text="{Binding KpRelays.Count, StringFormat='({0})'}"
+                                       Classes="muted" FontSize="12" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Expanded content -->
+                    <StackPanel IsVisible="{Binding ShowKpRelaySection}" Spacing="8" Margin="16,0,16,16">
+                        <TextBlock Text="Relays where your MLS KeyPackages are published (kind 10051). When empty, your general relay list is used."
+                                   Classes="muted" FontSize="11" TextWrapping="Wrap" />
+
+                        <!-- KP relay list -->
+                        <ItemsControl x:Name="KpRelaysItemsControl" ItemsSource="{Binding KpRelays}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="sys:String">
+                                    <Border Background="{DynamicResource SurfaceSecondaryBrush}"
+                                            CornerRadius="6" Padding="10,6" Margin="0,2">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Grid.Column="0" Text="{Binding}"
+                                                       FontFamily="Consolas" FontSize="12"
+                                                       VerticalAlignment="Center" />
+                                            <Button Grid.Column="1" Classes="icon"
+                                                    Command="{ReflectionBinding DataContext.RemoveKpRelayCommand, ElementName=KpRelaysItemsControl}"
+                                                    CommandParameter="{Binding}">
+                                                <PathIcon Data="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+                                                          Width="14" Height="14" />
+                                            </Button>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- Add KP relay -->
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBox Grid.Column="0" Text="{Binding NewKpRelayUrl}"
+                                     PlaceholderText="wss://relay.example.com" FontSize="12">
+                                <TextBox.KeyBindings>
+                                    <KeyBinding Gesture="Enter" Command="{Binding AddKpRelayCommand}" />
+                                </TextBox.KeyBindings>
+                            </TextBox>
+                            <Button Grid.Column="1" Classes="primary" Content="Add"
+                                    Command="{Binding AddKpRelayCommand}" Margin="8,0,0,0" />
+                        </Grid>
+                    </StackPanel>
                 </StackPanel>
             </Border>
 
