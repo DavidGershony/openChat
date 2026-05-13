@@ -37,7 +37,7 @@ public partial class App : Avalonia.Application
             var nostrService = new NostrService();
             var clipboard = new AvaloniaClipboard();
             var qrCodeGenerator = new AvaloniaQrCodeGenerator();
-            var launcher = new AvaloniaLauncher();
+            var launcher = new MobileAndroidLauncher();
 
             var shellViewModel = new ShellViewModel(
                 nostrService, secureStorage, clipboard, qrCodeGenerator, launcher);

@@ -87,4 +87,15 @@ public class AvaloniaLauncher : IPlatformLauncher
             });
         }
     }
+
+    /// <summary>
+    /// Desktop fallback: opens the folder containing the file.
+    /// Overridden on Android to use the native share intent.
+    /// </summary>
+    public virtual void ShareFile(string filePath, string mimeType, string title)
+    {
+        var directory = Path.GetDirectoryName(filePath);
+        if (directory != null)
+            OpenFolder(directory);
+    }
 }

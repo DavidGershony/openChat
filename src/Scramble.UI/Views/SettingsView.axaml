@@ -433,6 +433,8 @@
                                     Command="{Binding ViewLogsCommand}" />
                             <Button Classes="secondary" Content="Open Log Folder"
                                     Command="{Binding OpenLogFolderCommand}" />
+                            <Button Classes="secondary" Content="Export Logs"
+                                    Command="{Binding ExportLogsCommand}" />
                         </StackPanel>
                     </StackPanel>
                 </StackPanel>
@@ -501,6 +503,8 @@
                 <!-- Footer -->
                 <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="12"
                             HorizontalAlignment="Right" Margin="0,16,0,0">
+                    <Button Classes="secondary" Content="Export Logs"
+                            Command="{Binding ExportLogsCommand}" />
                     <Button Classes="secondary" Content="Open Log Folder"
                             Command="{Binding OpenLogFolderCommand}" />
                     <Button Classes="primary" Content="Close"

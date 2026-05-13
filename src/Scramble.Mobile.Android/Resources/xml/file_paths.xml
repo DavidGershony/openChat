@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Log files in app-specific internal storage -->
+    <files-path name="logs" path="logs/" />
+    <!-- Also cover the AppData/Local path pattern used by LoggingConfiguration -->
+    <external-files-path name="external_logs" path="logs/" />
+    <cache-path name="cache_logs" path="logs/" />
+    <!-- Root of internal storage for any profile-based log paths -->
+    <files-path name="root" path="." />
+</paths>

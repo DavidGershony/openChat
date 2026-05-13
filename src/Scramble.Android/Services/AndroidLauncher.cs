@@ -27,4 +27,22 @@ public class AndroidLauncher : IPlatformLauncher
         intent.AddFlags(ActivityFlags.NewTask);
         _context.StartActivity(intent);
     }
+
+    public void ShareFile(string filePath, string mimeType, string title)
+    {
+        var file = new Java.IO.File(filePath);
+        if (!file.Exists()) return;
+
+        var authority = _context.PackageName + ".fileprovider";
+        var uri = AndroidX.Core.Content.FileProvider.GetUriForFile(_context, authority, file);
+
+        var intent = new Intent(Intent.ActionSend);
+        intent.SetType(mimeType);
+        intent.PutExtra(Intent.ExtraStream, uri);
+        intent.PutExtra(Intent.ExtraSubject, title);
+        intent.AddFlags(ActivityFlags.GrantReadUriPermission);
+        intent.AddFlags(ActivityFlags.NewTask);
+
+        _context.StartActivity(Intent.CreateChooser(intent, title));
+    }
 }

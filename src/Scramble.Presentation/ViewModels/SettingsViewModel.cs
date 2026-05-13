@@ -111,6 +111,7 @@ public partial class SettingsViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> CloseLogViewerCommand { get; }
     public ReactiveCommand<Unit, Unit> RefreshLogsCommand { get; }
     public ReactiveCommand<Unit, Unit> OpenLogFolderCommand { get; }
+    public ReactiveCommand<Unit, Unit> ExportLogsCommand { get; }
     public ReactiveCommand<Unit, Unit> PublishKeyPackageCommand { get; }
     public ReactiveCommand<Unit, Unit> AuditKeyPackagesCommand { get; }
     public ReactiveCommand<Unit, Unit> PublishRelayListCommand { get; }
@@ -191,6 +192,26 @@ public partial class SettingsViewModel : ViewModelBase
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to open log folder");
+            }
+        });
+
+        ExportLogsCommand = ReactiveCommand.Create(() =>
+        {
+            try
+            {
+                var logFiles = LoggingConfiguration.GetLogFiles().ToList();
+                if (logFiles.Count == 0)
+                {
+                    _logger.LogWarning("No log files found to export");
+                    return;
+                }
+
+                var latestLogFile = logFiles.First();
+                _launcher.ShareFile(latestLogFile, "text/plain", $"Scramble Logs - {DateTime.Now:yyyy-MM-dd}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to export logs");
             }
         });
 
