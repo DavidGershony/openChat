@@ -92,6 +92,36 @@ public interface INostrService
     void SetAuthCredentials(string? privateKeyHex);
 
     /// <summary>
+    /// Provide a storage service for contact relay list caching.
+    /// When set, relay lookups check the DB cache before hitting the network.
+    /// </summary>
+    void SetStorageService(IStorageService storageService);
+
+    /// <summary>
+    /// Cache-first relay list lookup. Returns cached NIP-65 if fresh (within TTL),
+    /// otherwise fetches from discovery relays and caches the result.
+    /// Falls back to <see cref="FetchRelayListAsync"/> when no storage is configured.
+    /// </summary>
+    Task<List<RelayPreference>> GetOrFetchRelayListAsync(string publicKeyHex);
+
+    /// <summary>
+    /// Cache-first DM relay list lookup (kind 10050).
+    /// </summary>
+    Task<List<string>> GetOrFetchDmRelayListAsync(string publicKeyHex);
+
+    /// <summary>
+    /// Cache-first KeyPackage relay list lookup (kind 10051).
+    /// </summary>
+    Task<List<string>> GetOrFetchKeyPackageRelayListAsync(string publicKeyHex);
+
+    /// <summary>
+    /// Connect to relay(s) for outbox model — persistent connections to contacts' relays.
+    /// These relays receive welcome/gift-wrap subscriptions but are excluded
+    /// from group message, key package, and commit broadcasts (like bot relays).
+    /// </summary>
+    Task ConnectOutboxRelaysAsync(IEnumerable<string> relayUrls);
+
+    /// <summary>
     /// Publish a KeyPackage (kind 30443).
     /// </summary>
     /// <param name="keyPackageData">Base64-encoded KeyPackage content bytes.</param>

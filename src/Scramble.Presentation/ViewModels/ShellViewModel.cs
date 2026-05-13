@@ -288,6 +288,9 @@ public partial class ShellViewModel : ViewModelBase
 
         _storageService = storageService;
 
+        // Provide storage to NostrService for contact relay list caching (outbox model)
+        _nostrService.SetStorageService(storageService);
+
         // Create MLS service via platform factory
         _mlsService = MlsServiceFactory?.Invoke(storageService)
             ?? new ManagedMlsService(storageService);

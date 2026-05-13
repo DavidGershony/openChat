@@ -221,6 +221,15 @@ public class StorageService : IStorageService
                 Value TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS ContactRelays (
+                PublicKeyHex TEXT NOT NULL,
+                Kind INTEGER NOT NULL,
+                RelayUrl TEXT NOT NULL,
+                Usage INTEGER NOT NULL DEFAULT 0,
+                FetchedAt TEXT NOT NULL,
+                PRIMARY KEY (PublicKeyHex, Kind, RelayUrl)
+            );
+
             CREATE INDEX IF NOT EXISTS IX_Messages_ChatId ON Messages(ChatId);
             CREATE INDEX IF NOT EXISTS IX_Messages_Timestamp ON Messages(Timestamp);
             CREATE INDEX IF NOT EXISTS IX_Messages_NostrEventId ON Messages(NostrEventId);
@@ -1077,6 +1086,120 @@ public class StorageService : IStorageService
         }
 
         return relays;
+    }
+
+    public async Task SaveContactRelayListAsync(string publicKeyHex, int kind, IEnumerable<string> relayUrls)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        await using var transaction = await connection.BeginTransactionAsync();
+
+        var now = DateTimeOffset.UtcNow.ToString("o");
+
+        var deleteCmd = connection.CreateCommand();
+        deleteCmd.CommandText = "DELETE FROM ContactRelays WHERE PublicKeyHex = @pubkey AND Kind = @kind";
+        deleteCmd.Parameters.AddWithValue("@pubkey", publicKeyHex);
+        deleteCmd.Parameters.AddWithValue("@kind", kind);
+        await deleteCmd.ExecuteNonQueryAsync();
+
+        foreach (var url in relayUrls)
+        {
+            var insertCmd = connection.CreateCommand();
+            insertCmd.CommandText = @"
+                INSERT INTO ContactRelays (PublicKeyHex, Kind, RelayUrl, Usage, FetchedAt)
+                VALUES (@pubkey, @kind, @url, 0, @fetchedAt)";
+            insertCmd.Parameters.AddWithValue("@pubkey", publicKeyHex);
+            insertCmd.Parameters.AddWithValue("@kind", kind);
+            insertCmd.Parameters.AddWithValue("@url", url);
+            insertCmd.Parameters.AddWithValue("@fetchedAt", now);
+            await insertCmd.ExecuteNonQueryAsync();
+        }
+
+        await transaction.CommitAsync();
+        _logger.LogDebug("Cached {Count} kind {Kind} relays for {PubKey}", relayUrls.Count(), kind, publicKeyHex[..Math.Min(16, publicKeyHex.Length)] + "...");
+    }
+
+    public async Task SaveContactRelayPreferencesAsync(string publicKeyHex, IEnumerable<RelayPreference> relays)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        await using var transaction = await connection.BeginTransactionAsync();
+
+        var now = DateTimeOffset.UtcNow.ToString("o");
+
+        var deleteCmd = connection.CreateCommand();
+        deleteCmd.CommandText = "DELETE FROM ContactRelays WHERE PublicKeyHex = @pubkey AND Kind = 10002";
+        deleteCmd.Parameters.AddWithValue("@pubkey", publicKeyHex);
+        await deleteCmd.ExecuteNonQueryAsync();
+
+        foreach (var relay in relays)
+        {
+            var insertCmd = connection.CreateCommand();
+            insertCmd.CommandText = @"
+                INSERT INTO ContactRelays (PublicKeyHex, Kind, RelayUrl, Usage, FetchedAt)
+                VALUES (@pubkey, 10002, @url, @usage, @fetchedAt)";
+            insertCmd.Parameters.AddWithValue("@pubkey", publicKeyHex);
+            insertCmd.Parameters.AddWithValue("@url", relay.Url);
+            insertCmd.Parameters.AddWithValue("@usage", (int)relay.Usage);
+            insertCmd.Parameters.AddWithValue("@fetchedAt", now);
+            await insertCmd.ExecuteNonQueryAsync();
+        }
+
+        await transaction.CommitAsync();
+        _logger.LogDebug("Cached {Count} NIP-65 relays for {PubKey}", relays.Count(), publicKeyHex[..Math.Min(16, publicKeyHex.Length)] + "...");
+    }
+
+    public async Task<(List<string> Urls, DateTimeOffset FetchedAt)?> GetContactRelayListAsync(string publicKeyHex, int kind)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        var command = connection.CreateCommand();
+        command.CommandText = "SELECT RelayUrl, FetchedAt FROM ContactRelays WHERE PublicKeyHex = @pubkey AND Kind = @kind";
+        command.Parameters.AddWithValue("@pubkey", publicKeyHex);
+        command.Parameters.AddWithValue("@kind", kind);
+
+        var urls = new List<string>();
+        DateTimeOffset fetchedAt = default;
+
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            urls.Add(reader.GetString(0));
+            if (fetchedAt == default)
+                fetchedAt = DateTimeOffset.Parse(reader.GetString(1));
+        }
+
+        return urls.Count > 0 ? (urls, fetchedAt) : null;
+    }
+
+    public async Task<(List<RelayPreference> Relays, DateTimeOffset FetchedAt)?> GetContactRelayPreferencesAsync(string publicKeyHex)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        var command = connection.CreateCommand();
+        command.CommandText = "SELECT RelayUrl, Usage, FetchedAt FROM ContactRelays WHERE PublicKeyHex = @pubkey AND Kind = 10002";
+        command.Parameters.AddWithValue("@pubkey", publicKeyHex);
+
+        var relays = new List<RelayPreference>();
+        DateTimeOffset fetchedAt = default;
+
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            relays.Add(new RelayPreference
+            {
+                Url = reader.GetString(0),
+                Usage = (RelayUsage)reader.GetInt32(1)
+            });
+            if (fetchedAt == default)
+                fetchedAt = DateTimeOffset.Parse(reader.GetString(2));
+        }
+
+        return relays.Count > 0 ? (relays, fetchedAt) : null;
     }
 
     public async Task SaveFollowsAsync(string ownerPublicKey, IEnumerable<Follow> follows) => await ExecuteWithWriteLockAsync(async () =>

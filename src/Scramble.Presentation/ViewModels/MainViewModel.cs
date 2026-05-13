@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Reactive;
@@ -635,14 +636,8 @@ public partial class MainViewModel : ViewModelBase
                 }
             }
 
-            // 4. Subscribe to welcomes + group messages in parallel
+            // 4. Connect additional relays + group subscriptions in parallel
             var subscriptionTasks = new List<Task>();
-
-            if (!string.IsNullOrEmpty(CurrentUser.PublicKeyHex))
-            {
-                subscriptionTasks.Add(_nostrService.SubscribeToWelcomesAsync(
-                    CurrentUser.PublicKeyHex, CurrentUser.PrivateKeyHex));
-            }
 
             var chats = await _messageService.GetChatsAsync();
 
@@ -700,7 +695,75 @@ public partial class MainViewModel : ViewModelBase
                 subscriptionTasks.Add(_nostrService.ConnectBotRelaysAsync(botRelayUrls));
             }
 
+            // 4d. Connect outbox relays (contacts' preferred relays) for gift wrap delivery/reception
+            try
+            {
+                var contacts = await _storageService.GetContactsAsync(CurrentUser.PublicKeyHex);
+                if (contacts.Count > 0)
+                {
+                    // Collect cached relay URLs for each contact, aggregate by frequency
+                    var relayFrequency = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var contact in contacts)
+                    {
+                        // Check cached DM relays (kind 10050) first, then NIP-65
+                        var dmCached = await _storageService.GetContactRelayListAsync(contact.PublicKeyHex, 10050);
+                        if (dmCached.HasValue && dmCached.Value.Urls.Count > 0)
+                        {
+                            foreach (var url in dmCached.Value.Urls)
+                            {
+                                var normalized = url.TrimEnd('/');
+                                relayFrequency[normalized] = relayFrequency.GetValueOrDefault(normalized) + 1;
+                            }
+                        }
+                        else
+                        {
+                            var nip65Cached = await _storageService.GetContactRelayPreferencesAsync(contact.PublicKeyHex);
+                            if (nip65Cached.HasValue)
+                            {
+                                foreach (var pref in nip65Cached.Value.Relays.Where(r =>
+                                    r.Usage == RelayUsage.Read || r.Usage == RelayUsage.Both))
+                                {
+                                    var normalized = pref.Url.TrimEnd('/');
+                                    relayFrequency[normalized] = relayFrequency.GetValueOrDefault(normalized) + 1;
+                                }
+                            }
+                        }
+                    }
+
+                    if (relayFrequency.Count > 0)
+                    {
+                        // Take top 12 most common relays, excluding ones we're already connected to
+                        var topOutboxRelays = relayFrequency
+                            .OrderByDescending(kv => kv.Value)
+                            .Select(kv => kv.Key)
+                            .Where(url => !_nostrService.ConnectedRelayUrls.Any(c =>
+                                string.Equals(c.TrimEnd('/'), url.TrimEnd('/'), StringComparison.OrdinalIgnoreCase)))
+                            .Take(12)
+                            .ToList();
+
+                        if (topOutboxRelays.Count > 0)
+                        {
+                            _logger.LogInformation(
+                                "Connecting to {Count} outbox relays from {ContactCount} contacts' cached relay lists",
+                                topOutboxRelays.Count, contacts.Count);
+                            subscriptionTasks.Add(_nostrService.ConnectOutboxRelaysAsync(topOutboxRelays));
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to connect outbox relays for contacts");
+            }
+
             await Task.WhenAll(subscriptionTasks);
+
+            // 4e. Subscribe to welcomes/gift wraps on ALL connected relays (including outbox)
+            if (!string.IsNullOrEmpty(CurrentUser.PublicKeyHex))
+            {
+                await _nostrService.SubscribeToWelcomesAsync(
+                    CurrentUser.PublicKeyHex, CurrentUser.PrivateKeyHex);
+            }
 
             // 5. KeyPackage check + profile metadata in parallel (non-blocking)
             var backgroundTasks = new List<Task>();

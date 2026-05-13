@@ -100,6 +100,13 @@ public class NostrService : INostrService, IDisposable
     // Relays connected only for bot chat DM delivery/reception — excluded from group message broadcasts
     private readonly ConcurrentDictionary<string, byte> _botOnlyRelays = new();
 
+    // Relays connected for outbox model (contacts' preferred relays) — excluded from group/KP broadcasts
+    private readonly ConcurrentDictionary<string, byte> _outboxRelays = new();
+
+    // Optional storage service for contact relay list caching
+    private IStorageService? _storageService;
+    private static readonly TimeSpan RelayListCacheTtl = TimeSpan.FromMinutes(30);
+
     // Per-relay rate limiting: tracks event count in the current sliding window
     private readonly ConcurrentDictionary<string, (int Count, DateTime WindowStart)> _relayEventRates = new();
     private const int MaxEventsPerMinute = 500;
@@ -141,6 +148,107 @@ public class NostrService : INostrService, IDisposable
         _logger.LogInformation("NIP-42 auth credentials {Status}", !string.IsNullOrEmpty(privateKeyHex) ? "set" : "cleared");
     }
 
+    public void SetStorageService(IStorageService storageService)
+    {
+        _storageService = storageService;
+        _logger.LogInformation("Storage service set for relay list caching");
+    }
+
+    private bool IsOutboxRelay(string relayUrl)
+        => _outboxRelays.ContainsKey(relayUrl.TrimEnd('/'));
+
+    /// <inheritdoc />
+    public async Task<List<RelayPreference>> GetOrFetchRelayListAsync(string publicKeyHex)
+    {
+        if (_storageService != null)
+        {
+            try
+            {
+                var cached = await _storageService.GetContactRelayPreferencesAsync(publicKeyHex);
+                if (cached.HasValue && DateTimeOffset.UtcNow - cached.Value.FetchedAt < RelayListCacheTtl)
+                {
+                    _logger.LogDebug("Using cached NIP-65 relay list for {PubKey} (fetched {Ago} ago)",
+                        publicKeyHex[..8], DateTimeOffset.UtcNow - cached.Value.FetchedAt);
+                    return cached.Value.Relays;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to read cached relay preferences for {PubKey}", publicKeyHex[..8]);
+            }
+        }
+
+        var relays = await FetchRelayListAsync(publicKeyHex);
+
+        if (_storageService != null && relays.Count > 0)
+        {
+            try
+            {
+                await _storageService.SaveContactRelayPreferencesAsync(publicKeyHex, relays);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to cache relay preferences for {PubKey}", publicKeyHex[..8]);
+            }
+        }
+
+        return relays;
+    }
+
+    /// <inheritdoc />
+    public async Task<List<string>> GetOrFetchDmRelayListAsync(string publicKeyHex)
+    {
+        return await GetOrFetchRelayTagListAsync(10050, publicKeyHex);
+    }
+
+    /// <inheritdoc />
+    public async Task<List<string>> GetOrFetchKeyPackageRelayListAsync(string publicKeyHex)
+    {
+        return await GetOrFetchRelayTagListAsync(10051, publicKeyHex);
+    }
+
+    /// <summary>
+    /// Shared cache-first fetch for kind 10050 / 10051 relay lists.
+    /// </summary>
+    private async Task<List<string>> GetOrFetchRelayTagListAsync(int kind, string publicKeyHex)
+    {
+        if (_storageService != null)
+        {
+            try
+            {
+                var cached = await _storageService.GetContactRelayListAsync(publicKeyHex, kind);
+                if (cached.HasValue && DateTimeOffset.UtcNow - cached.Value.FetchedAt < RelayListCacheTtl)
+                {
+                    _logger.LogDebug("Using cached kind {Kind} relay list for {PubKey} (fetched {Ago} ago)",
+                        kind, publicKeyHex[..8], DateTimeOffset.UtcNow - cached.Value.FetchedAt);
+                    return cached.Value.Urls;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to read cached kind {Kind} relay list for {PubKey}", kind, publicKeyHex[..8]);
+            }
+        }
+
+        var urls = kind == 10050
+            ? await FetchDmRelayListAsync(publicKeyHex)
+            : await FetchKeyPackageRelayListAsync(publicKeyHex);
+
+        if (_storageService != null && urls.Count > 0)
+        {
+            try
+            {
+                await _storageService.SaveContactRelayListAsync(publicKeyHex, kind, urls);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to cache kind {Kind} relay list for {PubKey}", kind, publicKeyHex[..8]);
+            }
+        }
+
+        return urls;
+    }
+
     public async Task ConnectAsync(string relayUrl)
     {
         await ConnectAsync(new[] { relayUrl });
@@ -172,6 +280,24 @@ public class NostrService : INostrService, IDisposable
 
         foreach (var url in newRelays)
             _botOnlyRelays.TryAdd(url.TrimEnd('/'), 0);
+
+        var connectionTasks = newRelays.Select(ConnectToRelayAsync);
+        await Task.WhenAll(connectionTasks);
+    }
+
+    public async Task ConnectOutboxRelaysAsync(IEnumerable<string> relayUrls)
+    {
+        var newRelays = relayUrls
+            .Where(url => !_relayConnections.ContainsKey(url) &&
+                          !_relayConnections.Keys.Any(k => string.Equals(k.TrimEnd('/'), url.TrimEnd('/'), StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
+        if (newRelays.Count == 0) return;
+
+        _logger.LogInformation("Connecting to {Count} outbox relays: {Relays}", newRelays.Count, string.Join(", ", newRelays));
+
+        foreach (var url in newRelays)
+            _outboxRelays.TryAdd(url.TrimEnd('/'), 0);
 
         var connectionTasks = newRelays.Select(ConnectToRelayAsync);
         await Task.WhenAll(connectionTasks);
@@ -1116,10 +1242,10 @@ public class NostrService : INostrService, IDisposable
 
         var parsedFilter = ParsedFilter.FromJson(filterJson);
 
-        // Register on all connected relays (skip bot-only relays — group subs don't belong there)
+        // Register on all connected relays (skip bot-only and outbox relays — group subs don't belong there)
         foreach (var (relayUrl, connection) in _relayConnections)
         {
-            if (IsBotOnlyRelay(relayUrl)) continue;
+            if (IsBotOnlyRelay(relayUrl) || IsOutboxRelay(relayUrl)) continue;
             if (connection.IsConnected)
             {
                 var subId = $"group_{Guid.NewGuid():N}"[..16];
@@ -1185,7 +1311,7 @@ public class NostrService : INostrService, IDisposable
         // Discover recipient's preferred DM relays (kind 10050), fall back to NIP-65 read relays
         try
         {
-            var dmRelays = await FetchDmRelayListAsync(recipientPublicKey);
+            var dmRelays = await GetOrFetchDmRelayListAsync(recipientPublicKey);
             if (dmRelays.Count > 0)
             {
                 _logger.LogInformation("Using {Count} kind 10050 DM relays for Welcome delivery", dmRelays.Count);
@@ -1199,7 +1325,7 @@ public class NostrService : INostrService, IDisposable
             else
             {
                 // Fall back to NIP-65 read relays
-                var recipientRelays = await FetchRelayListAsync(recipientPublicKey);
+                var recipientRelays = await GetOrFetchRelayListAsync(recipientPublicKey);
                 var readRelays = recipientRelays
                     .Where(r => r.Usage == RelayUsage.Read || r.Usage == RelayUsage.Both)
                     .Select(r => r.Url)
@@ -1325,6 +1451,40 @@ public class NostrService : INostrService, IDisposable
             senderPrivateKeyHex: senderPrivateKeyHex,
             senderPublicKeyHex: senderPublicKeyHex,
             recipientPublicKeyHex: recipientPublicKeyHex);
+
+        // Auto-discover recipient's DM relays when no target relays are specified
+        if (targetRelayUrls == null || targetRelayUrls.Count == 0)
+        {
+            try
+            {
+                var dmRelays = await GetOrFetchDmRelayListAsync(recipientPublicKeyHex);
+                if (dmRelays.Count > 0)
+                {
+                    _logger.LogInformation("Auto-discovered {Count} DM relays for gift wrap recipient {Recipient}",
+                        dmRelays.Count, recipientPublicKeyHex[..Math.Min(8, recipientPublicKeyHex.Length)]);
+                    targetRelayUrls = dmRelays;
+                }
+                else
+                {
+                    // Fall back to NIP-65 read relays
+                    var recipientRelays = await GetOrFetchRelayListAsync(recipientPublicKeyHex);
+                    var readRelays = recipientRelays
+                        .Where(r => r.Usage == RelayUsage.Read || r.Usage == RelayUsage.Both)
+                        .Select(r => r.Url)
+                        .ToList();
+                    if (readRelays.Count > 0)
+                    {
+                        _logger.LogInformation("Using {Count} NIP-65 read relays for gift wrap recipient {Recipient}",
+                            readRelays.Count, recipientPublicKeyHex[..Math.Min(8, recipientPublicKeyHex.Length)]);
+                        targetRelayUrls = readRelays;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to auto-discover relays for gift wrap recipient, broadcasting to all connected relays");
+            }
+        }
 
         _logger.LogInformation("Publishing NIP-59 gift-wrapped kind {Kind} (kind 1059) for {Recipient} to {Target}",
             rumorKind, recipientPublicKeyHex[..Math.Min(16, recipientPublicKeyHex.Length)],
@@ -1738,7 +1898,7 @@ public class NostrService : INostrService, IDisposable
         var targetRelays = new List<(string url, NostrRelayConnection conn)>();
         foreach (var (relayUrl, connection) in _relayConnections)
         {
-            if (IsBotOnlyRelay(relayUrl)) continue;
+            if (IsBotOnlyRelay(relayUrl) || IsOutboxRelay(relayUrl)) continue;
             if (connection.IsConnected)
                 targetRelays.Add((relayUrl, connection));
         }
@@ -1829,7 +1989,7 @@ public class NostrService : INostrService, IDisposable
         var relaysToTry = new List<string>();
         try
         {
-            var kpRelays = await FetchKeyPackageRelayListAsync(publicKeyHex);
+            var kpRelays = await GetOrFetchKeyPackageRelayListAsync(publicKeyHex);
             if (kpRelays.Count > 0)
             {
                 _logger.LogInformation("Using {Count} kind 10051 relays for KeyPackage fetch", kpRelays.Count);
@@ -1838,7 +1998,7 @@ public class NostrService : INostrService, IDisposable
             else
             {
                 // Fall back to NIP-65 write relays
-                var userRelays = await FetchRelayListAsync(publicKeyHex);
+                var userRelays = await GetOrFetchRelayListAsync(publicKeyHex);
                 var writeRelays = userRelays
                     .Where(r => r.Usage == RelayUsage.Write || r.Usage == RelayUsage.Both)
                     .Select(r => r.Url)
@@ -2185,7 +2345,7 @@ public class NostrService : INostrService, IDisposable
             var relaysToTry = new List<string>();
             try
             {
-                var userRelays = await FetchRelayListAsync(publicKeyHex);
+                var userRelays = await GetOrFetchRelayListAsync(publicKeyHex);
                 var userRelayUrls = userRelays
                     .Where(r => r.Usage == RelayUsage.Read || r.Usage == RelayUsage.Both)
                     .Select(r => r.Url)
@@ -2442,7 +2602,7 @@ public class NostrService : INostrService, IDisposable
         var relaysToTry = new List<string>();
         try
         {
-            var userRelays = await FetchRelayListAsync(publicKeyHex);
+            var userRelays = await GetOrFetchRelayListAsync(publicKeyHex);
             var writeRelays = userRelays
                 .Where(r => r.Usage == RelayUsage.Write || r.Usage == RelayUsage.Both)
                 .Select(r => r.Url);
@@ -2842,7 +3002,7 @@ public class NostrService : INostrService, IDisposable
         var targetRelays = new List<(string url, NostrRelayConnection conn)>();
         foreach (var (relayUrl, connection) in _relayConnections)
         {
-            if (IsBotOnlyRelay(relayUrl)) continue;
+            if (IsBotOnlyRelay(relayUrl) || IsOutboxRelay(relayUrl)) continue;
             if (connection.IsConnected)
                 targetRelays.Add((relayUrl, connection));
         }

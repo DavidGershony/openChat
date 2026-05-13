@@ -65,6 +65,12 @@ public interface IStorageService
     Task SaveUserRelayListAsync(string publicKeyHex, IEnumerable<RelayPreference> relays);
     Task<List<RelayPreference>> GetUserRelayListAsync(string publicKeyHex);
 
+    // Contact relay list cache (NIP-65 kind 10002, DM kind 10050, KeyPackage kind 10051)
+    Task SaveContactRelayListAsync(string publicKeyHex, int kind, IEnumerable<string> relayUrls);
+    Task SaveContactRelayPreferencesAsync(string publicKeyHex, IEnumerable<RelayPreference> relays);
+    Task<(List<string> Urls, DateTimeOffset FetchedAt)?> GetContactRelayListAsync(string publicKeyHex, int kind);
+    Task<(List<RelayPreference> Relays, DateTimeOffset FetchedAt)?> GetContactRelayPreferencesAsync(string publicKeyHex);
+
     // MLS state (legacy blob persistence — used only for migration)
     Task SaveMlsStateAsync(string groupId, byte[] state);
     Task<byte[]?> GetMlsStateAsync(string groupId);
