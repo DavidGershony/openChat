@@ -1182,23 +1182,38 @@ public class NostrService : INostrService, IDisposable
             ? _connectedRelays.Keys.ToList()
             : NostrConstants.DefaultRelays.ToList();
 
-        // Discover recipient's read relays via NIP-65 and publish there too
+        // Discover recipient's preferred DM relays (kind 10050), fall back to NIP-65 read relays
         try
         {
-            var recipientRelays = await FetchRelayListAsync(recipientPublicKey);
-            var readRelays = recipientRelays
-                .Where(r => r.Usage == RelayUsage.Read || r.Usage == RelayUsage.Both)
-                .Select(r => r.Url)
-                .ToList();
-            if (readRelays.Count > 0)
+            var dmRelays = await FetchDmRelayListAsync(recipientPublicKey);
+            if (dmRelays.Count > 0)
             {
-                _logger.LogInformation("Adding {Count} NIP-65 read relays for Welcome delivery", readRelays.Count);
-                foreach (var readRelay in readRelays.Where(r => !_connectedRelays.ContainsKey(r)))
+                _logger.LogInformation("Using {Count} kind 10050 DM relays for Welcome delivery", dmRelays.Count);
+                foreach (var dmRelay in dmRelays.Where(r => !_connectedRelays.ContainsKey(r)))
                 {
-                    try { await ConnectAsync(readRelay); }
+                    try { await ConnectAsync(dmRelay); }
                     catch { /* best-effort */ }
                 }
-                relayUrls = relayUrls.Union(readRelays).Distinct().ToList();
+                relayUrls = relayUrls.Union(dmRelays).Distinct().ToList();
+            }
+            else
+            {
+                // Fall back to NIP-65 read relays
+                var recipientRelays = await FetchRelayListAsync(recipientPublicKey);
+                var readRelays = recipientRelays
+                    .Where(r => r.Usage == RelayUsage.Read || r.Usage == RelayUsage.Both)
+                    .Select(r => r.Url)
+                    .ToList();
+                if (readRelays.Count > 0)
+                {
+                    _logger.LogInformation("Adding {Count} NIP-65 read relays for Welcome delivery", readRelays.Count);
+                    foreach (var readRelay in readRelays.Where(r => !_connectedRelays.ContainsKey(r)))
+                    {
+                        try { await ConnectAsync(readRelay); }
+                        catch { /* best-effort */ }
+                    }
+                    relayUrls = relayUrls.Union(readRelays).Distinct().ToList();
+                }
             }
         }
         catch (Exception ex)
@@ -1810,20 +1825,29 @@ public class NostrService : INostrService, IDisposable
 
         var keyPackages = new List<KeyPackage>();
 
-        // Discover target user's relays via NIP-65, then fall back to connected/default relays
+        // Prefer target user's kind 10051 KeyPackage relays, fall back to NIP-65 write relays
         var relaysToTry = new List<string>();
         try
         {
-            var userRelays = await FetchRelayListAsync(publicKeyHex);
-            // User's write relays are where they publish KeyPackages
-            var writeRelays = userRelays
-                .Where(r => r.Usage == RelayUsage.Write || r.Usage == RelayUsage.Both)
-                .Select(r => r.Url)
-                .ToList();
-            if (writeRelays.Count > 0)
+            var kpRelays = await FetchKeyPackageRelayListAsync(publicKeyHex);
+            if (kpRelays.Count > 0)
             {
-                _logger.LogInformation("Using {Count} NIP-65 write relays for KeyPackage fetch", writeRelays.Count);
-                relaysToTry.AddRange(writeRelays);
+                _logger.LogInformation("Using {Count} kind 10051 relays for KeyPackage fetch", kpRelays.Count);
+                relaysToTry.AddRange(kpRelays);
+            }
+            else
+            {
+                // Fall back to NIP-65 write relays
+                var userRelays = await FetchRelayListAsync(publicKeyHex);
+                var writeRelays = userRelays
+                    .Where(r => r.Usage == RelayUsage.Write || r.Usage == RelayUsage.Both)
+                    .Select(r => r.Url)
+                    .ToList();
+                if (writeRelays.Count > 0)
+                {
+                    _logger.LogInformation("Using {Count} NIP-65 write relays for KeyPackage fetch", writeRelays.Count);
+                    relaysToTry.AddRange(writeRelays);
+                }
             }
         }
         catch (Exception ex)
@@ -2548,6 +2572,131 @@ public class NostrService : INostrService, IDisposable
         var eventId = await PublishEventAsync(10002, "", tags, privateKeyHex);
         _logger.LogInformation("Published NIP-65 relay list, event ID: {EventId}", eventId);
         return eventId;
+    }
+
+    public async Task<string> PublishDmRelayListAsync(List<string> relayUrls, string? privateKeyHex)
+    {
+        _logger.LogInformation("Publishing DM relay list (kind 10050) with {Count} relays", relayUrls.Count);
+
+        // NIP-17: kind 10050 uses ["relay", url] tags
+        var tags = relayUrls
+            .Select(url => new List<string> { "relay", url })
+            .ToList();
+
+        var eventId = await PublishEventAsync(10050, "", tags, privateKeyHex);
+        _logger.LogInformation("Published DM relay list, event ID: {EventId}", eventId);
+        return eventId;
+    }
+
+    public async Task<string> PublishKeyPackageRelayListAsync(List<string> relayUrls, string? privateKeyHex)
+    {
+        _logger.LogInformation("Publishing KeyPackage relay list (kind 10051) with {Count} relays", relayUrls.Count);
+
+        // Kind 10051 uses ["relay", url] tags (same format as 10050)
+        var tags = relayUrls
+            .Select(url => new List<string> { "relay", url })
+            .ToList();
+
+        var eventId = await PublishEventAsync(10051, "", tags, privateKeyHex);
+        _logger.LogInformation("Published KeyPackage relay list, event ID: {EventId}", eventId);
+        return eventId;
+    }
+
+    public async Task<List<string>> FetchDmRelayListAsync(string publicKeyHex)
+    {
+        _logger.LogInformation("Fetching DM relay list (kind 10050) for {PubKey}",
+            publicKeyHex[..Math.Min(16, publicKeyHex.Length)] + "...");
+
+        return await FetchRelayTagListAsync(10050, publicKeyHex);
+    }
+
+    public async Task<List<string>> FetchKeyPackageRelayListAsync(string publicKeyHex)
+    {
+        _logger.LogInformation("Fetching KeyPackage relay list (kind 10051) for {PubKey}",
+            publicKeyHex[..Math.Min(16, publicKeyHex.Length)] + "...");
+
+        return await FetchRelayTagListAsync(10051, publicKeyHex);
+    }
+
+    /// <summary>
+    /// Generic fetcher for relay-tag list events (kinds 10050, 10051).
+    /// Queries discovery relays and connected relays in parallel, picks the most recent event,
+    /// and extracts ["relay", url] tags.
+    /// </summary>
+    private async Task<List<string>> FetchRelayTagListAsync(int kind, string publicKeyHex)
+    {
+        var allRelays = NostrConstants.DiscoveryRelays
+            .Union(_connectedRelays.Keys)
+            .Distinct()
+            .ToList();
+
+        var tasks = allRelays.Select(async relay =>
+        {
+            try
+            {
+                return await FetchRelayTagListFromRelayAsync(relay, kind, publicKeyHex);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to fetch kind {Kind} relay list from {Relay}", kind, relay);
+                return (new List<string>(), 0L);
+            }
+        });
+
+        var results = await Task.WhenAll(tasks);
+
+        var relayUrls = new List<string>();
+        long latestCreatedAt = 0;
+        foreach (var (found, createdAt) in results)
+        {
+            if (found.Count > 0 && createdAt > latestCreatedAt)
+            {
+                relayUrls = found;
+                latestCreatedAt = createdAt;
+            }
+        }
+
+        _logger.LogInformation("Kind {Kind} relay list: {Count} relays found", kind, relayUrls.Count);
+        return relayUrls;
+    }
+
+    private async Task<(List<string> Relays, long CreatedAt)> FetchRelayTagListFromRelayAsync(
+        string relayUrl, int kind, string publicKeyHex)
+    {
+        var filterJson = JsonSerializer.Serialize(new { kinds = new[] { kind }, authors = new[] { publicKeyHex }, limit = 1 });
+        var events = await QueryRelayAsync(relayUrl, filterJson);
+
+        var relays = new List<string>();
+        long createdAt = 0;
+
+        foreach (var eventJson in events)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(eventJson);
+                var eventData = doc.RootElement;
+                if (eventData.GetProperty("kind").GetInt32() != kind) continue;
+
+                createdAt = eventData.GetProperty("created_at").GetInt64();
+                var tags = eventData.GetProperty("tags");
+
+                foreach (var tag in tags.EnumerateArray())
+                {
+                    if (tag.GetArrayLength() < 2) continue;
+                    if (tag[0].GetString() != "relay") continue;
+
+                    var url = tag[1].GetString();
+                    if (!string.IsNullOrEmpty(url))
+                        relays.Add(url);
+                }
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "Failed to parse kind {Kind} relay list event from {Relay}", kind, relayUrl);
+            }
+        }
+
+        return (relays, createdAt);
     }
 
     public string? NpubToHex(string npub)

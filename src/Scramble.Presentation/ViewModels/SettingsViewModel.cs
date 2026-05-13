@@ -475,10 +475,14 @@ public partial class SettingsViewModel : ViewModelBase
         {
             PublishRelayListStatus = "Publishing...";
             var relayPrefs = Relays.Select(r => new RelayPreference { Url = r.Url, Usage = r.Usage }).ToList();
+            var relayUrls = Relays.Select(r => r.Url).ToList();
             await _nostrService.PublishRelayListAsync(relayPrefs, PrivateKeyHex);
+            // Also publish purpose-specific relay lists (kind 10050 for DMs, 10051 for KeyPackages)
+            await _nostrService.PublishDmRelayListAsync(relayUrls, PrivateKeyHex);
+            await _nostrService.PublishKeyPackageRelayListAsync(relayUrls, PrivateKeyHex);
             await _storageService.SaveUserRelayListAsync(PublicKeyHex, relayPrefs);
             PublishRelayListStatus = $"Published {relayPrefs.Count} relays";
-            _logger.LogInformation("Published and saved NIP-65 relay list");
+            _logger.LogInformation("Published relay lists (kind 10002, 10050, 10051) and saved locally");
         }
         catch (Exception ex)
         {

@@ -219,6 +219,32 @@ public interface INostrService
     Task<string> PublishRelayListAsync(List<RelayPreference> relays, string? privateKeyHex);
 
     /// <summary>
+    /// Publish the current user's DM relay list (kind 10050, NIP-17).
+    /// These are the relays where the user wants to receive gift-wrapped DMs and Welcomes.
+    /// Tags use the "relay" format: ["relay", "wss://..."].
+    /// </summary>
+    Task<string> PublishDmRelayListAsync(List<string> relayUrls, string? privateKeyHex);
+
+    /// <summary>
+    /// Publish the current user's KeyPackage relay list (kind 10051).
+    /// These are the relays where the user publishes MLS KeyPackages.
+    /// Tags use the "relay" format: ["relay", "wss://..."].
+    /// </summary>
+    Task<string> PublishKeyPackageRelayListAsync(List<string> relayUrls, string? privateKeyHex);
+
+    /// <summary>
+    /// Fetch a user's DM relay list (kind 10050) from discovery relays.
+    /// Returns the relay URLs where the user wants to receive gift-wrapped messages.
+    /// </summary>
+    Task<List<string>> FetchDmRelayListAsync(string publicKeyHex);
+
+    /// <summary>
+    /// Fetch a user's KeyPackage relay list (kind 10051) from discovery relays.
+    /// Returns the relay URLs where the user publishes MLS KeyPackages.
+    /// </summary>
+    Task<List<string>> FetchKeyPackageRelayListAsync(string publicKeyHex);
+
+    /// <summary>
     /// Convert npub to hex public key.
     /// </summary>
     string? NpubToHex(string npub);

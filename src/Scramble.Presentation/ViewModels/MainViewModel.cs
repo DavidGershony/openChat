@@ -619,16 +619,19 @@ public partial class MainViewModel : ViewModelBase
                 var defaultPrefs = NostrConstants.DefaultRelays
                     .Select(url => new RelayPreference { Url = url, Usage = RelayUsage.Both })
                     .ToList();
+                var defaultUrls = NostrConstants.DefaultRelays.ToList();
                 try
                 {
-                    _logger.LogInformation("Publishing default NIP-65 relay list for new key");
+                    _logger.LogInformation("Publishing default relay lists (kind 10002, 10050, 10051) for new key");
                     await _nostrService.PublishRelayListAsync(defaultPrefs, CurrentUser!.PrivateKeyHex);
+                    await _nostrService.PublishDmRelayListAsync(defaultUrls, CurrentUser.PrivateKeyHex);
+                    await _nostrService.PublishKeyPackageRelayListAsync(defaultUrls, CurrentUser.PrivateKeyHex);
                     await _storageService.SaveUserRelayListAsync(CurrentUser.PublicKeyHex, defaultPrefs);
-                    _logger.LogInformation("Default NIP-65 relay list published successfully");
+                    _logger.LogInformation("Default relay lists published successfully");
                 }
                 catch (Exception pubEx)
                 {
-                    _logger.LogWarning(pubEx, "Failed to publish default relay list");
+                    _logger.LogWarning(pubEx, "Failed to publish default relay lists");
                 }
             }
 
