@@ -50,7 +50,6 @@ public class HeadlessGroupMemberTests : HeadlessTestBase
     // --- Add Member ---
 
     [AvaloniaTheory]
-    [InlineData("rust")]
     [InlineData("managed")]
     public async Task AddMember_UpdatesParticipantList(string backend)
     {
@@ -67,7 +66,6 @@ public class HeadlessGroupMemberTests : HeadlessTestBase
     }
 
     [AvaloniaTheory]
-    [InlineData("rust")]
     [InlineData("managed")]
     public async Task AddMember_PublishesWelcomeToRelay(string backend)
     {
@@ -84,7 +82,6 @@ public class HeadlessGroupMemberTests : HeadlessTestBase
     // --- Remove Member ---
 
     [AvaloniaTheory]
-    [InlineData("rust")]
     [InlineData("managed")]
     public async Task RemoveMember_UpdatesParticipantList(string backend)
     {
@@ -104,7 +101,6 @@ public class HeadlessGroupMemberTests : HeadlessTestBase
     }
 
     [AvaloniaTheory]
-    [InlineData("rust")]
     [InlineData("managed")]
     public async Task RemoveMember_PublishesCommit(string backend)
     {

@@ -85,13 +85,13 @@ public class DoubleInitMessageServiceTests
         var mlsMock1 = new Mock<IMlsService>();
         mlsMock1.Setup(m => m.InitializeAsync(It.IsAny<string>(), It.IsAny<string>()))
             .Returns(Task.CompletedTask);
-        mlsMock1.Setup(m => m.DecryptMessageAsync(It.IsAny<byte[]>(), It.IsAny<byte[]>()))
+        mlsMock1.Setup(m => m.DecryptMessageAsync(It.IsAny<byte[]>(), It.IsAny<byte[]>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset?>()))
             .ReturnsAsync(decryptedMsg);
 
         var mlsMock2 = new Mock<IMlsService>();
         mlsMock2.Setup(m => m.InitializeAsync(It.IsAny<string>(), It.IsAny<string>()))
             .Returns(Task.CompletedTask);
-        mlsMock2.Setup(m => m.DecryptMessageAsync(It.IsAny<byte[]>(), It.IsAny<byte[]>()))
+        mlsMock2.Setup(m => m.DecryptMessageAsync(It.IsAny<byte[]>(), It.IsAny<byte[]>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset?>()))
             .ReturnsAsync(decryptedMsg);
 
         // Create TWO MessageService instances sharing the same NostrService (the real bug)
@@ -186,7 +186,7 @@ public class DoubleInitMessageServiceTests
         var mlsMock = new Mock<IMlsService>();
         mlsMock.Setup(m => m.InitializeAsync(It.IsAny<string>(), It.IsAny<string>()))
             .Returns(Task.CompletedTask);
-        mlsMock.Setup(m => m.DecryptMessageAsync(It.IsAny<byte[]>(), It.IsAny<byte[]>()))
+        mlsMock.Setup(m => m.DecryptMessageAsync(It.IsAny<byte[]>(), It.IsAny<byte[]>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset?>()))
             .ReturnsAsync(new MlsDecryptedMessage
             {
                 SenderPublicKey = "abcd" + new string('0', 60),

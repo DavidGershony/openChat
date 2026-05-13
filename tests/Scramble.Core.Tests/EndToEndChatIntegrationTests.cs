@@ -541,8 +541,8 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
         wrappedMlsA.Setup(m => m.InitializeAsync(It.IsAny<string>(), It.IsAny<string>())).Returns(Task.CompletedTask);
         wrappedMlsA.Setup(m => m.EncryptMessageAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<List<List<string>>?>()))
             .Returns<byte[], string, List<List<string>>?>((gid, msg, tags) => _mlsServiceA.EncryptMessageAsync(gid, msg, tags));
-        wrappedMlsA.Setup(m => m.DecryptMessageAsync(It.IsAny<byte[]>(), It.IsAny<byte[]>()))
-            .Returns<byte[], byte[]>((gid, data) => _mlsServiceA.DecryptMessageAsync(gid, data));
+        wrappedMlsA.Setup(m => m.DecryptMessageAsync(It.IsAny<byte[]>(), It.IsAny<byte[]>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset?>()))
+            .Returns<byte[], byte[], string?, DateTimeOffset?>((gid, data, eventId, createdAt) => _mlsServiceA.DecryptMessageAsync(gid, data, eventId, createdAt));
         wrappedMlsA.Setup(m => m.ExportGroupStateAsync(It.IsAny<byte[]>()))
             .Returns<byte[]>(gid => _mlsServiceA.ExportGroupStateAsync(gid));
         wrappedMlsA.Setup(m => m.GetGroupInfoAsync(It.IsAny<byte[]>()))
@@ -554,8 +554,8 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
         wrappedMlsB.Setup(m => m.InitializeAsync(It.IsAny<string>(), It.IsAny<string>())).Returns(Task.CompletedTask);
         wrappedMlsB.Setup(m => m.EncryptMessageAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<List<List<string>>?>()))
             .Returns<byte[], string, List<List<string>>?>((gid, msg, tags) => _mlsServiceB.EncryptMessageAsync(gid, msg, tags));
-        wrappedMlsB.Setup(m => m.DecryptMessageAsync(It.IsAny<byte[]>(), It.IsAny<byte[]>()))
-            .Returns<byte[], byte[]>((gid, data) => _mlsServiceB.DecryptMessageAsync(gid, data));
+        wrappedMlsB.Setup(m => m.DecryptMessageAsync(It.IsAny<byte[]>(), It.IsAny<byte[]>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset?>()))
+            .Returns<byte[], byte[], string?, DateTimeOffset?>((gid, data, eventId, createdAt) => _mlsServiceB.DecryptMessageAsync(gid, data, eventId, createdAt));
         wrappedMlsB.Setup(m => m.ExportGroupStateAsync(It.IsAny<byte[]>()))
             .Returns<byte[]>(gid => _mlsServiceB.ExportGroupStateAsync(gid));
         wrappedMlsB.Setup(m => m.GetGroupInfoAsync(It.IsAny<byte[]>()))
@@ -869,8 +869,8 @@ public class EndToEndChatIntegrationTests : IAsyncLifetime
         wrappedMlsA.Setup(m => m.InitializeAsync(It.IsAny<string>(), It.IsAny<string>())).Returns(Task.CompletedTask);
         wrappedMlsA.Setup(m => m.EncryptMessageAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<List<List<string>>?>()))
             .Returns<byte[], string, List<List<string>>?>((gid, msg, tags) => _mlsServiceA.EncryptMessageAsync(gid, msg, tags));
-        wrappedMlsA.Setup(m => m.DecryptMessageAsync(It.IsAny<byte[]>(), It.IsAny<byte[]>()))
-            .Returns<byte[], byte[]>((gid, data) => _mlsServiceA.DecryptMessageAsync(gid, data));
+        wrappedMlsA.Setup(m => m.DecryptMessageAsync(It.IsAny<byte[]>(), It.IsAny<byte[]>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset?>()))
+            .Returns<byte[], byte[], string?, DateTimeOffset?>((gid, data, eventId, createdAt) => _mlsServiceA.DecryptMessageAsync(gid, data, eventId, createdAt));
         wrappedMlsA.Setup(m => m.ExportGroupStateAsync(It.IsAny<byte[]>()))
             .Returns<byte[]>(gid => _mlsServiceA.ExportGroupStateAsync(gid));
         wrappedMlsA.Setup(m => m.GetGroupInfoAsync(It.IsAny<byte[]>()))

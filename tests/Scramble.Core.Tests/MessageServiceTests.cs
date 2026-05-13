@@ -90,7 +90,7 @@ public class MessageServiceTests : IDisposable
             Id = "user-2", PublicKeyHex = senderPubKey, DisplayName = "Sender", Npub = "npub1sender"
         });
 
-        _mlsMock.Setup(m => m.DecryptMessageAsync(groupId, It.IsAny<byte[]>()))
+        _mlsMock.Setup(m => m.DecryptMessageAsync(groupId, It.IsAny<byte[]>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset?>()))
             .ReturnsAsync(new MlsDecryptedMessage
             {
                 SenderPublicKey = senderPubKey,
@@ -161,7 +161,7 @@ public class MessageServiceTests : IDisposable
         _storageMock.Setup(s => s.MessageExistsByNostrEventIdAsync(It.IsAny<string>())).ReturnsAsync(false);
         _storageMock.Setup(s => s.GetMessageByNostrEventIdAsync(targetEventId)).ReturnsAsync(targetMessage);
 
-        _mlsMock.Setup(m => m.DecryptMessageAsync(groupId, It.IsAny<byte[]>()))
+        _mlsMock.Setup(m => m.DecryptMessageAsync(groupId, It.IsAny<byte[]>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset?>()))
             .ReturnsAsync(new MlsDecryptedMessage
             {
                 SenderPublicKey = senderPubKey,
@@ -277,7 +277,7 @@ public class MessageServiceTests : IDisposable
         await Task.Delay(200);
 
         // Assert - decrypt should never be called for duplicates
-        _mlsMock.Verify(m => m.DecryptMessageAsync(It.IsAny<byte[]>(), It.IsAny<byte[]>()), Times.Never);
+        _mlsMock.Verify(m => m.DecryptMessageAsync(It.IsAny<byte[]>(), It.IsAny<byte[]>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset?>()), Times.Never);
     }
 
     [Fact]
@@ -300,7 +300,7 @@ public class MessageServiceTests : IDisposable
         await Task.Delay(200);
 
         // Assert
-        _mlsMock.Verify(m => m.DecryptMessageAsync(It.IsAny<byte[]>(), It.IsAny<byte[]>()), Times.Never);
+        _mlsMock.Verify(m => m.DecryptMessageAsync(It.IsAny<byte[]>(), It.IsAny<byte[]>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset?>()), Times.Never);
         _storageMock.Verify(s => s.SaveMessageAsync(It.IsAny<Message>()), Times.Never);
     }
 
@@ -323,7 +323,7 @@ public class MessageServiceTests : IDisposable
         _storageMock.Setup(s => s.GetAllChatsAsync()).ReturnsAsync(new List<Chat> { chat });
         _storageMock.Setup(s => s.GetChatByGroupIdAsync(It.IsAny<string>())).ReturnsAsync(chat);
         _storageMock.Setup(s => s.MessageExistsByNostrEventIdAsync(It.IsAny<string>())).ReturnsAsync(false);
-        _mlsMock.Setup(m => m.DecryptMessageAsync(groupId, It.IsAny<byte[]>()))
+        _mlsMock.Setup(m => m.DecryptMessageAsync(groupId, It.IsAny<byte[]>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset?>()))
             .ThrowsAsync(new InvalidOperationException("MLS decrypt failed"));
 
         var errors = new List<MlsDecryptionError>();
@@ -368,7 +368,7 @@ public class MessageServiceTests : IDisposable
         _storageMock.Setup(s => s.GetAllChatsAsync()).ReturnsAsync(new List<Chat> { chat });
         _storageMock.Setup(s => s.GetChatByGroupIdAsync(It.IsAny<string>())).ReturnsAsync(chat);
         _storageMock.Setup(s => s.MessageExistsByNostrEventIdAsync(It.IsAny<string>())).ReturnsAsync(false);
-        _mlsMock.Setup(m => m.DecryptMessageAsync(groupId, It.IsAny<byte[]>()))
+        _mlsMock.Setup(m => m.DecryptMessageAsync(groupId, It.IsAny<byte[]>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset?>()))
             .ReturnsAsync(new MlsDecryptedMessage { IsCommit = true, SenderPublicKey = "ee".PadLeft(64, 'e') });
 
         // Act
@@ -786,7 +786,7 @@ public class MessageServiceTests : IDisposable
         await Task.Delay(200);
 
         // Assert
-        _mlsMock.Verify(m => m.DecryptMessageAsync(It.IsAny<byte[]>(), It.IsAny<byte[]>()), Times.Never);
+        _mlsMock.Verify(m => m.DecryptMessageAsync(It.IsAny<byte[]>(), It.IsAny<byte[]>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset?>()), Times.Never);
         _storageMock.Verify(s => s.SaveMessageAsync(It.IsAny<Message>()), Times.Never);
     }
 
@@ -982,7 +982,7 @@ public class MessageServiceTests : IDisposable
         _storageMock.Setup(s => s.GetUserByPublicKeyAsync(senderPubKey)).ReturnsAsync((User?)null);
         _nostrMock.Setup(n => n.FetchUserMetadataAsync(senderPubKey)).ReturnsAsync((UserMetadata?)null);
 
-        _mlsMock.Setup(m => m.DecryptMessageAsync(groupId, It.IsAny<byte[]>()))
+        _mlsMock.Setup(m => m.DecryptMessageAsync(groupId, It.IsAny<byte[]>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset?>()))
             .ReturnsAsync(new MlsDecryptedMessage
             {
                 SenderPublicKey = senderPubKey,
@@ -1092,7 +1092,7 @@ public class MessageServiceTests : IDisposable
         _storageMock.Setup(s => s.GetUserByPublicKeyAsync(senderPubKey)).ReturnsAsync((User?)null);
         _nostrMock.Setup(n => n.FetchUserMetadataAsync(senderPubKey)).ReturnsAsync((UserMetadata?)null);
 
-        _mlsMock.Setup(m => m.DecryptMessageAsync(groupId, It.IsAny<byte[]>()))
+        _mlsMock.Setup(m => m.DecryptMessageAsync(groupId, It.IsAny<byte[]>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset?>()))
             .ReturnsAsync(new MlsDecryptedMessage
             {
                 SenderPublicKey = senderPubKey,

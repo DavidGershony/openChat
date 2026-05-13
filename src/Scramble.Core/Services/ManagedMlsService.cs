@@ -48,6 +48,7 @@ public class ManagedMlsService : IMlsService
         public byte[] KeyPackageBytes { get; init; } = Array.Empty<byte>();
         public byte[] InitPrivateKey { get; init; } = Array.Empty<byte>();
         public byte[] HpkePrivateKey { get; init; } = Array.Empty<byte>();
+        public bool IsLastResort { get; init; }
     }
 
     // All stored KeyPackages with their private keys (supports multiple)
@@ -261,7 +262,8 @@ public class ManagedMlsService : IMlsService
         {
             KeyPackageBytes = kpBytes,
             InitPrivateKey = initPrivateKey,
-            HpkePrivateKey = hpkePrivateKey
+            HpkePrivateKey = hpkePrivateKey,
+            IsLastResort = true
         });
 
         // Build Nostr event tags using the protocol builder.
@@ -446,14 +448,22 @@ public class ManagedMlsService : IMlsService
                 // MIP-02 §"Processing Requirements" step 5: publish fresh kind:30443 under same d-tag.
                 // MIP-02 §"Processing Requirements" step 6: securely delete init_key.
                 //
-                // We zeroize the consumed KeyPackage's init_key now and remove it from the
-                // stored list. The rotation (fresh KP publish) is handled by MessageService's
-                // AutoPublishKeyPackageIfNeededAsync after AcceptInvite completes.
-                _logger.LogInformation("ProcessWelcome: matched KeyPackage {Index}/{Total}, zeroizing consumed init_key (MIP-02 step 6)",
-                    i + 1, _storedKeyPackages.Count);
-                CryptographicOperations.ZeroMemory(kp.InitPrivateKey);
-                CryptographicOperations.ZeroMemory(kp.HpkePrivateKey);
-                _storedKeyPackages.RemoveAt(i);
+                // For last-resort KeyPackages (RFC 9420 §17.3), we keep the key material
+                // available so the same KP can be reused by other senders until a fresh
+                // package is rotated in. Non-last-resort packages are zeroized immediately.
+                if (!kp.IsLastResort)
+                {
+                    _logger.LogInformation("ProcessWelcome: matched KeyPackage {Index}/{Total}, zeroizing consumed init_key (MIP-02 step 6)",
+                        i + 1, _storedKeyPackages.Count);
+                    CryptographicOperations.ZeroMemory(kp.InitPrivateKey);
+                    CryptographicOperations.ZeroMemory(kp.HpkePrivateKey);
+                    _storedKeyPackages.RemoveAt(i);
+                }
+                else
+                {
+                    _logger.LogInformation("ProcessWelcome: matched last-resort KeyPackage {Index}/{Total}, keeping key material for reuse (RFC 9420 §17.3)",
+                        i + 1, _storedKeyPackages.Count);
+                }
 
                 await PersistGroupStateAsync(preview.GroupId);
                 await SaveServiceStateAsync();
@@ -1098,7 +1108,8 @@ public class ManagedMlsService : IMlsService
                 {
                     KeyPackageBytes = reader.ReadOpaqueV(),
                     InitPrivateKey = reader.ReadOpaqueV(),
-                    HpkePrivateKey = reader.ReadOpaqueV()
+                    HpkePrivateKey = reader.ReadOpaqueV(),
+                    IsLastResort = true // All KPs from this implementation include LastResort extension
                 });
             }
         }
@@ -1131,7 +1142,8 @@ public class ManagedMlsService : IMlsService
                 {
                     KeyPackageBytes = reader.ReadOpaqueV(),
                     InitPrivateKey = reader.ReadOpaqueV(),
-                    HpkePrivateKey = reader.ReadOpaqueV()
+                    HpkePrivateKey = reader.ReadOpaqueV(),
+                    IsLastResort = true // All KPs from this implementation include LastResort extension
                 });
             }
 

@@ -5,6 +5,7 @@ using System.Text.Json;
 using Scramble.Core.Configuration;
 using Scramble.Core.Models;
 using Scramble.Core.Services;
+using Scramble.Core.Tests.TestHelpers;
 using Xunit;
 namespace Scramble.Core.Tests;
 
@@ -56,8 +57,8 @@ public class WelcomeRumorFormatTests : IAsyncLifetime
         _dbPaths.Add(dbA);
         _dbPaths.Add(dbB);
 
-        _storageA = new StorageService(dbA);
-        _storageB = new StorageService(dbB);
+        _storageA = new StorageService(dbA, new MockSecureStorage());
+        _storageB = new StorageService(dbB, new MockSecureStorage());
         await _storageA.InitializeAsync();
         await _storageB.InitializeAsync();
 
