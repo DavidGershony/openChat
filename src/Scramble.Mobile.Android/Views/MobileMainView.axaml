@@ -14,15 +14,14 @@
         content) but omits desktop chrome (custom title bar, window controls) and the
         fixed two-column sidebar+content layout that doesn't fit on a phone.
 
-        Logged-in layout: three rows.
-          Row 0 — top header bar: avatar (opens account switcher) + display name.
+        Logged-in layout: two rows.
+          Row 0 — top header bar: avatar (opens account switcher), display name,
+                  and action icons (new chat + settings) aligned to the right.
           Row 1 — main content: ChatListView, ChatView overlay, SettingsView overlay.
-          Row 2 — bottom action bar: New Chat + Settings buttons.
 
-        Both the top header and bottom action bar hide when the settings overlay is
-        open (CurrentView != null) or while an active chat is open
-        (ChatViewModel.HasChat), so their focusable children don't steal TAB focus
-        from the overlay/chat content.
+        The top header bar hides when the settings overlay is open (CurrentView != null)
+        or while an active chat is open (ChatViewModel.HasChat), so its focusable
+        children don't steal TAB focus from the overlay/chat content.
 
         Account switcher and My Profile dialog overlays are mounted at outer Grid
         scope (same as desktop) — they reuse the shared UserControls in
@@ -41,18 +40,19 @@
         <Grid IsVisible="{Binding #Root.DataContext.IsLoggedIn}"
               DataContext="{Binding MainViewModel}"
               x:DataType="vm:MainViewModel"
-              RowDefinitions="Auto,*,Auto">
+              RowDefinitions="Auto,*">
 
-            <!-- Top header bar: avatar (tap to open account switcher) + display name.
+            <!-- Top header bar: avatar (tap to open account switcher), display name,
+                 and action icons (new chat + settings) aligned to the right.
                  Hidden when chat is open or when settings overlay is shown so its
                  controls don't capture focus underneath. -->
             <Panel Grid.Row="0"
                    IsVisible="{Binding CurrentView, Converter={x:Static ObjectConverters.IsNull}}">
                 <Panel IsVisible="{Binding !ChatViewModel.HasChat}">
                     <Border Padding="12,8" Background="{DynamicResource BackgroundLightBrush}">
-                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                        <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
                             <!-- Avatar (clickable - opens account switcher) -->
-                            <Button x:Name="AvatarButton" Classes="icon"
+                            <Button x:Name="AvatarButton" Grid.Column="0" Classes="icon"
                                     Click="AvatarButton_Click"
                                     Padding="0" CornerRadius="18">
                                 <Panel Width="36" Height="36">
@@ -70,14 +70,41 @@
                                 </Panel>
                             </Button>
                             <!-- Name or loading indicator -->
-                            <StackPanel VerticalAlignment="Center" MaxWidth="240">
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" MaxWidth="240" Margin="10,0,0,0">
                                 <TextBlock Text="{Binding HeaderDisplayName}" FontSize="16" FontWeight="Bold"
                                            TextTrimming="CharacterEllipsis"
                                            IsVisible="{Binding !IsHeaderLoading}" />
                                 <TextBlock Text="Loading..." FontSize="12" Classes="muted"
                                            IsVisible="{Binding IsHeaderLoading}" />
                             </StackPanel>
-                        </StackPanel>
+                            <!-- New Chat icon button -->
+                            <Button Grid.Column="2" Classes="icon"
+                                    Command="{Binding ChatListViewModel.NewChatCommand}"
+                                    ToolTip.Tip="New Chat"
+                                    Padding="8" Margin="4,0">
+                                <PathIcon Data="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"
+                                          Width="22" Height="22"
+                                          Foreground="{DynamicResource ForegroundBrush}" />
+                            </Button>
+                            <!-- Link Device icon button -->
+                            <Button Grid.Column="3" Classes="icon"
+                                    Command="{Binding ChatListViewModel.AddBotCommand}"
+                                    ToolTip.Tip="Link Device"
+                                    Padding="8" Margin="0">
+                                <PathIcon Data="M16 9V4.5A2.5 2.5 0 0 0 13.5 2A2.5 2.5 0 0 0 11 4.5V9H7v6.5C7 18.54 9.46 21 12.5 21S18 18.54 18 15.5V9h-2M13.5 3.5a1 1 0 0 1 1 1V9h-2V4.5a1 1 0 0 1 1-1Z"
+                                          Width="22" Height="22"
+                                          Foreground="{DynamicResource ForegroundBrush}" />
+                            </Button>
+                            <!-- Settings icon button (3 vertical dots) -->
+                            <Button Grid.Column="4" Classes="icon"
+                                    Command="{Binding ShowSettingsCommand}"
+                                    ToolTip.Tip="Settings"
+                                    Padding="8" Margin="0,0,4,0">
+                                <PathIcon Data="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"
+                                          Width="22" Height="22"
+                                          Foreground="{DynamicResource ForegroundBrush}" />
+                            </Button>
+                        </Grid>
                     </Border>
                 </Panel>
             </Panel>
@@ -102,31 +129,6 @@
                                     IsVisible="{Binding $parent[Grid].DataContext.CurrentView, Converter={x:Static ObjectConverters.IsNotNull}}" />
             </Grid>
 
-            <!-- Bottom action bar. Hidden whenever the settings overlay is open or an
-                 active chat is shown so its buttons don't capture focus underneath. -->
-            <Panel Grid.Row="2"
-                   IsVisible="{Binding CurrentView, Converter={x:Static ObjectConverters.IsNull}}">
-                <Panel IsVisible="{Binding !ChatViewModel.HasChat}">
-                    <Border Padding="12,8" Background="{DynamicResource BackgroundLightBrush}">
-                        <Grid ColumnDefinitions="*,8,*">
-                            <Button Grid.Column="0" Classes="secondary"
-                                    HorizontalAlignment="Stretch"
-                                    HorizontalContentAlignment="Center"
-                                    Command="{Binding ChatListViewModel.NewChatCommand}"
-                                    Padding="8,6">
-                                <TextBlock Text="New Chat" FontSize="13" />
-                            </Button>
-                            <Button Grid.Column="2" Classes="secondary"
-                                    HorizontalAlignment="Stretch"
-                                    HorizontalContentAlignment="Center"
-                                    Command="{Binding ShowSettingsCommand}"
-                                    Padding="8,6">
-                                <TextBlock Text="Settings" FontSize="13" />
-                            </Button>
-                        </Grid>
-                    </Border>
-                </Panel>
-            </Panel>
         </Grid>
 
         <!-- Login view (only when not logged in). DataContext is reassigned to
