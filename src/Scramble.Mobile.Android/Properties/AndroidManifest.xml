@@ -4,7 +4,7 @@
     <application android:label="Scramble" android:icon="@drawable/Icon">
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="${applicationId}.fileprovider"
+            android:authorities="app.scramble.chat.avalonia.fileprovider"
             android:exported="false"
             android:grantUriPermission="true">
             <meta-data
