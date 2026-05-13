@@ -10,7 +10,48 @@ on:
         required: true
 
 jobs:
+  # Gate: run the test suite before building any release artifacts.
+  # Mirrors the test step from dotnet-desktop.yml so a tag push cannot
+  # produce a release with failing tests.
+  test:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src/Scramble.Native
+
+      - name: Build Rust native DLL
+        run: cargo build --release --manifest-path src/Scramble.Native/Cargo.toml
+
+      - name: Copy DLL to Desktop project
+        run: cp src/Scramble.Native/target/release/scramble_native.dll src/Scramble.Desktop/
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore Scramble.Desktop.slnf -p:DesktopOnly=true
+
+      - name: Build
+        run: dotnet build Scramble.Desktop.slnf --no-restore --configuration Release -p:DesktopOnly=true
+
+      - name: Execute unit tests
+        run: dotnet test Scramble.Desktop.slnf --no-build --configuration Release --filter "Category!=Relay&Category!=Integration" -p:DesktopOnly=true
+
   build-desktop:
+    needs: [test]
     strategy:
       matrix:
         include:
@@ -82,6 +123,7 @@ jobs:
   # signing / version-extraction steps. Both use the same keystore secret — same
   # publisher signs both APKs, which is the correct semantics.
   build-android:
+    needs: [test]
     strategy:
       fail-fast: false  # one head's failure shouldn't kill the other's APK build
       matrix:
