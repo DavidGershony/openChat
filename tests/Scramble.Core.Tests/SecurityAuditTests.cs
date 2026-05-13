@@ -136,17 +136,10 @@ public class SecurityAuditTests
         Assert.True(value <= 64 * 1024 * 1024, "Max message size should be at most 64 MB");
     }
 
-    [Fact]
-    public void NostrService_HasMaxMessageSizeConstant()
-    {
-        var field = typeof(NostrService).GetField("MaxWebSocketMessageSize",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-
-        Assert.NotNull(field);
-        var value = (int)field!.GetValue(null)!;
-        Assert.True(value >= 1 * 1024 * 1024, "Max message size should be at least 1 MB");
-        Assert.True(value <= 64 * 1024 * 1024, "Max message size should be at most 64 MB");
-    }
+    // NostrService no longer manages raw WebSocket reads (routed through
+    // NostrRelayConnection.QueryAsync), so its MaxWebSocketMessageSize constant
+    // was removed.  The limit is enforced in NostrRelayConnection instead — see
+    // NostrRelayConnection_HasMaxMessageSizeConstant above.
 
     // ── Finding 3: NostrConnect secret not logged ──
 

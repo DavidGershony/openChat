@@ -347,31 +347,26 @@ public class NostrService : INostrService, IDisposable
     }
 
     /// <summary>
-    /// Maximum WebSocket message size (16 MB). Messages exceeding this are dropped to prevent DoS.
+    /// Queries a relay for events matching the given filter. Reuses an existing persistent
+    /// connection if available; otherwise opens a temporary connection for the query.
+    /// Returns raw event JSON strings (inner event objects).
     /// </summary>
-    private const int MaxWebSocketMessageSize = 16 * 1024 * 1024;
-
-    /// <summary>
-    /// Reads a complete WebSocket message, accumulating frames until EndOfMessage is true.
-    /// Handles messages larger than the receive buffer (e.g. MLS Welcome events).
-    /// Returns null if the message exceeds the maximum allowed size.
-    /// </summary>
-    private static async Task<(WebSocketMessageType Type, string Text)?> ReceiveFullMessageAsync(
-        ClientWebSocket ws, byte[] buffer, CancellationToken ct)
+    private async Task<List<string>> QueryRelayAsync(string relayUrl, string filterJson, TimeSpan? timeout = null)
     {
-        using var ms = new MemoryStream();
-        WebSocketReceiveResult result;
-        do
-        {
-            result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
-            if (result.MessageType == WebSocketMessageType.Close)
-                return (WebSocketMessageType.Close, string.Empty);
-            ms.Write(buffer, 0, result.Count);
-            if (ms.Length > MaxWebSocketMessageSize)
-                return null; // message too large, drop it
-        } while (!result.EndOfMessage);
+        var queryTimeout = timeout ?? TimeSpan.FromSeconds(10);
 
-        return (result.MessageType, Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length));
+        // Prefer persistent connection if the relay is already connected
+        if (_relayConnections.TryGetValue(relayUrl, out var connection) && connection.IsConnected)
+        {
+            _logger.LogDebug("QueryRelay: reusing persistent connection to {Relay}", relayUrl);
+            return await connection.QueryAsync(filterJson, queryTimeout);
+        }
+
+        // Fall back to a temporary connection
+        _logger.LogDebug("QueryRelay: opening temporary connection to {Relay}", relayUrl);
+        await using var temp = NostrRelayConnection.CreateTemporary(relayUrl, _connectionLogger);
+        await temp.ConnectAsync();
+        return await temp.QueryAsync(filterJson, queryTimeout);
     }
 
 
@@ -1877,143 +1872,81 @@ public class NostrService : INostrService, IDisposable
     private async Task<List<KeyPackage>> FetchKeyPackagesFromRelayAsync(string relayUrl, string publicKeyHex, int limit)
     {
         var keyPackages = new List<KeyPackage>();
+        var filterJson = JsonSerializer.Serialize(new { kinds = new[] { 30443 }, authors = new[] { publicKeyHex }, limit });
+        var rawEvents = await QueryRelayAsync(relayUrl, filterJson);
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        using var ws = new ClientWebSocket();
-
-        _logger.LogDebug("Connecting to relay {Relay} for KeyPackage fetch", relayUrl);
-        await ws.ConnectAsync(new Uri(relayUrl), cts.Token);
-
-        // Generate a unique subscription ID
-        var subId = $"kp_{Guid.NewGuid():N}"[..16];
-
-        // Build REQ message: ["REQ", subId, {"kinds": [30443], "authors": [pubkey], "limit": N}]
-        var filter = new
+        foreach (var eventJson in rawEvents)
         {
-            kinds = new[] { 30443 },
-            authors = new[] { publicKeyHex },
-            limit
-        };
-        var reqMessage = JsonSerializer.Serialize(new object[] { "REQ", subId, filter });
-
-        _logger.LogDebug("Sending REQ for KeyPackages: {Message}", reqMessage);
-        var reqBytes = Encoding.UTF8.GetBytes(reqMessage);
-        await ws.SendAsync(new ArraySegment<byte>(reqBytes), WebSocketMessageType.Text, true, cts.Token);
-
-        // Receive responses
-        var buffer = new byte[65536];
-
-        while (ws.State == WebSocketState.Open)
-        {
-            var msg = await ReceiveFullMessageAsync(ws, buffer, cts.Token);
-            if (msg == null || msg.Value.Type == WebSocketMessageType.Close)
-                break;
-
-            var message = msg.Value.Text;
-
             try
             {
-                using var doc = JsonDocument.Parse(message);
-                var root = doc.RootElement;
+                using var doc = JsonDocument.Parse(eventJson);
+                var eventData = doc.RootElement;
+                var kind = eventData.GetProperty("kind").GetInt32();
 
-                if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() < 1)
-                    continue;
-
-                var messageType = root[0].GetString();
-
-                if (messageType == "EVENT" && root.GetArrayLength() >= 3)
+                if (kind == 30443)
                 {
-                    var eventData = root[2];
-                    var kind = eventData.GetProperty("kind").GetInt32();
+                    var content = eventData.GetProperty("content").GetString();
+                    var eventId = eventData.GetProperty("id").GetString();
+                    var createdAt = eventData.GetProperty("created_at").GetInt64();
 
-                    if (kind == 30443)
+                    if (!string.IsNullOrEmpty(content))
                     {
-                        var content = eventData.GetProperty("content").GetString();
-                        var eventId = eventData.GetProperty("id").GetString();
-                        var createdAt = eventData.GetProperty("created_at").GetInt64();
-
-                        if (!string.IsNullOrEmpty(content))
+                        try
                         {
-                            try
+                            // Parse and validate via MIP-00 protocol library
+                            var tags = eventData.GetProperty("tags");
+                            var tagsArray = tags.EnumerateArray()
+                                .Select(t => t.EnumerateArray().Select(v => v.GetString() ?? "").ToArray())
+                                .ToArray();
+
+                            var (keyPackageData, keyPackageRefHex, parsedRelays) =
+                                KeyPackageEventParser.ParseKeyPackageEvent(content, tagsArray);
+
+                            // Basic sanity check: MLS KeyPackages are typically > 100 bytes
+                            if (keyPackageData.Length < 64)
                             {
-                                // Parse and validate via MIP-00 protocol library
-                                var tags = eventData.GetProperty("tags");
-                                var tagsArray = tags.EnumerateArray()
-                                    .Select(t => t.EnumerateArray().Select(v => v.GetString() ?? "").ToArray())
-                                    .ToArray();
-
-                                var (keyPackageData, keyPackageRefHex, parsedRelays) =
-                                    KeyPackageEventParser.ParseKeyPackageEvent(content, tagsArray);
-
-                                // Basic sanity check: MLS KeyPackages are typically > 100 bytes
-                                if (keyPackageData.Length < 64)
-                                {
-                                    _logger.LogWarning(
-                                        "KeyPackage event {EventId} content too short ({Length} bytes), likely invalid",
-                                        eventId, keyPackageData.Length);
-                                    continue;
-                                }
-
-                                // Extract ciphersuite ID from tags (not part of MIP-00 parser output)
-                                ushort ciphersuiteId = 0x0001;
-                                var csTag = tagsArray.FirstOrDefault(t => t.Length >= 2 && t[0] == "mls_ciphersuite");
-                                if (csTag != null && csTag[1].StartsWith("0x") &&
-                                    ushort.TryParse(csTag[1][2..], System.Globalization.NumberStyles.HexNumber, null, out var parsed))
-                                    ciphersuiteId = parsed;
-
-                                // Store the full event JSON for MLS processing
-                                var eventJson = eventData.GetRawText();
-                                var keyPackage = new KeyPackage
-                                {
-                                    Id = eventId ?? Guid.NewGuid().ToString(),
-                                    OwnerPublicKey = publicKeyHex,
-                                    Data = keyPackageData,
-                                    EventJson = eventJson,
-                                    NostrEventId = eventId,
-                                    CiphersuiteId = ciphersuiteId,
-                                    CreatedAt = DateTimeOffset.FromUnixTimeSeconds(createdAt).UtcDateTime,
-                                    ExpiresAt = DateTimeOffset.FromUnixTimeSeconds(createdAt).UtcDateTime.AddDays(30),
-                                    RelayUrls = parsedRelays.Length > 0
-                                        ? parsedRelays.ToList()
-                                        : new List<string> { relayUrl }
-                                };
-                                keyPackages.Add(keyPackage);
-                                _logger.LogDebug("Found valid KeyPackage {EventId} from {Relay} (ciphersuite=0x{Cs:x4}, kpRef={KpRef}, {Len} bytes)",
-                                    eventId, relayUrl, ciphersuiteId, keyPackageRefHex[..Math.Min(16, keyPackageRefHex.Length)], keyPackageData.Length);
+                                _logger.LogWarning(
+                                    "KeyPackage event {EventId} content too short ({Length} bytes), likely invalid",
+                                    eventId, keyPackageData.Length);
+                                continue;
                             }
-                            catch (FormatException)
+
+                            // Extract ciphersuite ID from tags (not part of MIP-00 parser output)
+                            ushort ciphersuiteId = 0x0001;
+                            var csTag = tagsArray.FirstOrDefault(t => t.Length >= 2 && t[0] == "mls_ciphersuite");
+                            if (csTag != null && csTag[1].StartsWith("0x") &&
+                                ushort.TryParse(csTag[1][2..], System.Globalization.NumberStyles.HexNumber, null, out var parsed))
+                                ciphersuiteId = parsed;
+
+                            var keyPackage = new KeyPackage
                             {
-                                _logger.LogWarning("Invalid base64 content in KeyPackage event {EventId}", eventId);
-                            }
+                                Id = eventId ?? Guid.NewGuid().ToString(),
+                                OwnerPublicKey = publicKeyHex,
+                                Data = keyPackageData,
+                                EventJson = eventData.GetRawText(),
+                                NostrEventId = eventId,
+                                CiphersuiteId = ciphersuiteId,
+                                CreatedAt = DateTimeOffset.FromUnixTimeSeconds(createdAt).UtcDateTime,
+                                ExpiresAt = DateTimeOffset.FromUnixTimeSeconds(createdAt).UtcDateTime.AddDays(30),
+                                RelayUrls = parsedRelays.Length > 0
+                                    ? parsedRelays.ToList()
+                                    : new List<string> { relayUrl }
+                            };
+                            keyPackages.Add(keyPackage);
+                            _logger.LogDebug("Found valid KeyPackage {EventId} from {Relay} (ciphersuite=0x{Cs:x4}, kpRef={KpRef}, {Len} bytes)",
+                                eventId, relayUrl, ciphersuiteId, keyPackageRefHex[..Math.Min(16, keyPackageRefHex.Length)], keyPackageData.Length);
+                        }
+                        catch (FormatException)
+                        {
+                            _logger.LogWarning("Invalid base64 content in KeyPackage event {EventId}", eventId);
                         }
                     }
-                }
-                else if (messageType == "EOSE")
-                {
-                    _logger.LogDebug("Received EOSE for KeyPackage subscription {SubId}", subId);
-                    break;
                 }
             }
             catch (JsonException ex)
             {
-                _logger.LogWarning(ex, "Failed to parse relay message");
+                _logger.LogWarning(ex, "Failed to parse KeyPackage event from {Relay}", relayUrl);
             }
-        }
-
-        // Send CLOSE message
-        try
-        {
-            var closeMessage = JsonSerializer.Serialize(new object[] { "CLOSE", subId });
-            var closeBytes = Encoding.UTF8.GetBytes(closeMessage);
-            if (ws.State == WebSocketState.Open)
-            {
-                await ws.SendAsync(new ArraySegment<byte>(closeBytes), WebSocketMessageType.Text, true, cts.Token);
-                await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Done", cts.Token);
-            }
-        }
-        catch
-        {
-            // Ignore close errors
         }
 
         return keyPackages;
@@ -2067,89 +2000,40 @@ public class NostrService : INostrService, IDisposable
     {
         var events = new List<NostrEventReceived>();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-        using var ws = new ClientWebSocket();
-
-        _logger.LogDebug("Connecting to relay {Relay} for gift-wrap fetch (inner kind {Kind})", relayUrl, wantedInnerKind);
-        await ws.ConnectAsync(new Uri(relayUrl), cts.Token);
-
-        var subId = $"gw_{Guid.NewGuid():N}"[..16];
-
         var filter = new Dictionary<string, object>
         {
             { "kinds", new[] { 1059 } },
             { "#p", new[] { publicKeyHex } },
             { "limit", limit }
         };
-        var reqMessage = JsonSerializer.Serialize(new object[] { "REQ", subId, filter });
+        var filterJson = JsonSerializer.Serialize(filter);
+        var rawEvents = await QueryRelayAsync(relayUrl, filterJson, TimeSpan.FromSeconds(15));
 
-        _logger.LogDebug("Sending gift-wrap fetch REQ (kind 1059): {Message}", reqMessage);
-        var reqBytes = Encoding.UTF8.GetBytes(reqMessage);
-        await ws.SendAsync(new ArraySegment<byte>(reqBytes), WebSocketMessageType.Text, true, cts.Token);
-
-        var buffer = new byte[65536];
-
-        while (ws.State == WebSocketState.Open)
+        foreach (var eventJson in rawEvents)
         {
-            var msg = await ReceiveFullMessageAsync(ws, buffer, cts.Token);
-            if (msg == null || msg.Value.Type == WebSocketMessageType.Close)
-                break;
-
-            var message = msg.Value.Text;
-
             try
             {
-                using var doc = JsonDocument.Parse(message);
-                var root = doc.RootElement;
-
-                if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() < 1)
-                    continue;
-
-                var messageType = root[0].GetString();
-
-                if (messageType == "EVENT" && root.GetArrayLength() >= 3)
+                using var doc = JsonDocument.Parse(eventJson);
+                var eventData = doc.RootElement;
+                var nostrEvent = ParseNostrEvent(eventData, relayUrl);
+                if (nostrEvent != null && nostrEvent.Kind == 1059 &&
+                    (!string.IsNullOrEmpty(_subscribedUserPrivKey) || _externalSigner?.IsConnected == true))
                 {
-                    var eventData = root[2];
-                    var nostrEvent = ParseNostrEvent(eventData, relayUrl);
-                    if (nostrEvent != null && nostrEvent.Kind == 1059 &&
-                        (!string.IsNullOrEmpty(_subscribedUserPrivKey) || _externalSigner?.IsConnected == true))
+                    var rumor = await UnwrapGiftWrapAsync(nostrEvent);
+                    if (rumor != null && rumor.Kind == wantedInnerKind)
                     {
-                        var rumor = await UnwrapGiftWrapAsync(nostrEvent);
-                        if (rumor != null && rumor.Kind == wantedInnerKind)
-                        {
-                            _logger.LogDebug("Unwrapped gift-wrap (inner kind {Kind}) {EventId} from {Sender}",
-                                wantedInnerKind,
-                                rumor.EventId[..Math.Min(16, rumor.EventId.Length)],
-                                rumor.PublicKey[..Math.Min(16, rumor.PublicKey.Length)]);
-                            events.Add(rumor);
-                        }
+                        _logger.LogDebug("Unwrapped gift-wrap (inner kind {Kind}) {EventId} from {Sender}",
+                            wantedInnerKind,
+                            rumor.EventId[..Math.Min(16, rumor.EventId.Length)],
+                            rumor.PublicKey[..Math.Min(16, rumor.PublicKey.Length)]);
+                        events.Add(rumor);
                     }
-                }
-                else if (messageType == "EOSE")
-                {
-                    _logger.LogDebug("Received EOSE for gift-wrap fetch subscription {SubId}", subId);
-                    break;
                 }
             }
             catch (JsonException ex)
             {
-                _logger.LogWarning(ex, "Failed to parse relay message during gift-wrap fetch");
+                _logger.LogWarning(ex, "Failed to parse gift-wrap event from {Relay}", relayUrl);
             }
-        }
-
-        try
-        {
-            var closeMessage = JsonSerializer.Serialize(new object[] { "CLOSE", subId });
-            var closeBytes = Encoding.UTF8.GetBytes(closeMessage);
-            if (ws.State == WebSocketState.Open)
-            {
-                await ws.SendAsync(new ArraySegment<byte>(closeBytes), WebSocketMessageType.Text, true, cts.Token);
-                await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Done", cts.Token);
-            }
-        }
-        catch
-        {
-            // Ignore close errors
         }
 
         return events;
@@ -2230,14 +2114,6 @@ public class NostrService : INostrService, IDisposable
     {
         var events = new List<NostrEventReceived>();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-        using var ws = new ClientWebSocket();
-
-        _logger.LogDebug("Connecting to relay {Relay} for group history fetch", relayUrl);
-        await ws.ConnectAsync(new Uri(relayUrl), cts.Token);
-
-        var subId = $"gh_{Guid.NewGuid():N}"[..16];
-
         var filter = new Dictionary<string, object>
         {
             { "kinds", new[] { 445 } },
@@ -2246,70 +2122,28 @@ public class NostrService : INostrService, IDisposable
             { "until", until.ToUnixTimeSeconds() },
             { "limit", limit }
         };
-        var reqMessage = JsonSerializer.Serialize(new object[] { "REQ", subId, filter });
+        var filterJson = JsonSerializer.Serialize(filter);
+        var rawEvents = await QueryRelayAsync(relayUrl, filterJson, TimeSpan.FromSeconds(15));
 
-        _logger.LogDebug("Sending group history REQ: {Message}", reqMessage);
-        var reqBytes = Encoding.UTF8.GetBytes(reqMessage);
-        await ws.SendAsync(new ArraySegment<byte>(reqBytes), WebSocketMessageType.Text, true, cts.Token);
-
-        var buffer = new byte[65536];
-
-        while (ws.State == WebSocketState.Open)
+        foreach (var eventJson in rawEvents)
         {
-            var msg = await ReceiveFullMessageAsync(ws, buffer, cts.Token);
-            if (msg == null || msg.Value.Type == WebSocketMessageType.Close)
-                break;
-
-            var message = msg.Value.Text;
-
             try
             {
-                using var doc = JsonDocument.Parse(message);
-                var root = doc.RootElement;
-
-                if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() < 1)
-                    continue;
-
-                var messageType = root[0].GetString();
-
-                if (messageType == "EVENT" && root.GetArrayLength() >= 3)
+                using var doc = JsonDocument.Parse(eventJson);
+                var eventData = doc.RootElement;
+                var nostrEvent = ParseNostrEvent(eventData, relayUrl);
+                if (nostrEvent != null && nostrEvent.Kind == 445)
                 {
-                    var eventData = root[2];
-                    var nostrEvent = ParseNostrEvent(eventData, relayUrl);
-                    if (nostrEvent != null && nostrEvent.Kind == 445)
-                    {
-                        events.Add(nostrEvent);
-                        _logger.LogDebug("Found group history event {EventId} from {Sender}",
-                            nostrEvent.EventId[..Math.Min(16, nostrEvent.EventId.Length)],
-                            nostrEvent.PublicKey[..Math.Min(16, nostrEvent.PublicKey.Length)]);
-                    }
-                }
-                else if (messageType == "EOSE")
-                {
-                    _logger.LogDebug("Received EOSE for group history subscription {SubId}", subId);
-                    break;
+                    events.Add(nostrEvent);
+                    _logger.LogDebug("Found group history event {EventId} from {Sender}",
+                        nostrEvent.EventId[..Math.Min(16, nostrEvent.EventId.Length)],
+                        nostrEvent.PublicKey[..Math.Min(16, nostrEvent.PublicKey.Length)]);
                 }
             }
             catch (JsonException ex)
             {
-                _logger.LogWarning(ex, "Failed to parse relay message during group history fetch");
+                _logger.LogWarning(ex, "Failed to parse group history event from {Relay}", relayUrl);
             }
-        }
-
-        // Close subscription
-        try
-        {
-            var closeMessage = JsonSerializer.Serialize(new object[] { "CLOSE", subId });
-            var closeBytes = Encoding.UTF8.GetBytes(closeMessage);
-            if (ws.State == WebSocketState.Open)
-            {
-                await ws.SendAsync(new ArraySegment<byte>(closeBytes), WebSocketMessageType.Text, true, cts.Token);
-                await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Done", cts.Token);
-            }
-        }
-        catch
-        {
-            // Ignore close errors
         }
 
         return events;
@@ -2387,101 +2221,40 @@ public class NostrService : INostrService, IDisposable
 
     private async Task<UserMetadata?> FetchMetadataFromRelayAsync(string relayUrl, string publicKeyHex, string npub)
     {
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        using var ws = new ClientWebSocket();
+        var filterJson = JsonSerializer.Serialize(new { kinds = new[] { 0 }, authors = new[] { publicKeyHex }, limit = 1 });
+        var events = await QueryRelayAsync(relayUrl, filterJson);
 
-        _logger.LogDebug("Connecting to relay {Relay} for metadata fetch", relayUrl);
-        await ws.ConnectAsync(new Uri(relayUrl), cts.Token);
-
-        // Generate a unique subscription ID
-        var subId = $"meta_{Guid.NewGuid():N}"[..16];
-
-        // Build REQ message: ["REQ", subId, {"kinds": [0], "authors": [pubkey], "limit": 1}]
-        var filter = new
+        foreach (var eventJson in events)
         {
-            kinds = new[] { 0 },
-            authors = new[] { publicKeyHex },
-            limit = 1
-        };
-        var reqMessage = JsonSerializer.Serialize(new object[] { "REQ", subId, filter });
-
-        _logger.LogDebug("Sending REQ: {Message}", reqMessage);
-        var reqBytes = Encoding.UTF8.GetBytes(reqMessage);
-        await ws.SendAsync(new ArraySegment<byte>(reqBytes), WebSocketMessageType.Text, true, cts.Token);
-
-        // Receive responses
-        var buffer = new byte[16384];
-        UserMetadata? metadata = null;
-
-        while (ws.State == WebSocketState.Open)
-        {
-            var msg = await ReceiveFullMessageAsync(ws, buffer, cts.Token);
-            if (msg == null || msg.Value.Type == WebSocketMessageType.Close)
-                break;
-
-            var message = msg.Value.Text;
-            _logger.LogDebug("Received from relay: {Message}", message[..Math.Min(200, message.Length)]);
-
             try
             {
-                using var doc = JsonDocument.Parse(message);
-                var root = doc.RootElement;
+                using var doc = JsonDocument.Parse(eventJson);
+                var eventData = doc.RootElement;
+                var kind = eventData.GetProperty("kind").GetInt32();
 
-                if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() < 1)
-                    continue;
-
-                var messageType = root[0].GetString();
-
-                if (messageType == "EVENT" && root.GetArrayLength() >= 3)
+                if (kind == 0)
                 {
-                    var eventData = root[2];
-                    var kind = eventData.GetProperty("kind").GetInt32();
+                    var content = eventData.GetProperty("content").GetString();
+                    var createdAt = eventData.GetProperty("created_at").GetInt64();
 
-                    if (kind == 0)
+                    if (!string.IsNullOrEmpty(content))
                     {
-                        var content = eventData.GetProperty("content").GetString();
-                        var createdAt = eventData.GetProperty("created_at").GetInt64();
-
-                        if (!string.IsNullOrEmpty(content))
+                        var metadata = ParseMetadataContent(content, publicKeyHex, npub);
+                        if (metadata != null)
                         {
-                            metadata = ParseMetadataContent(content, publicKeyHex, npub);
-                            if (metadata != null)
-                            {
-                                metadata.CreatedAt = DateTimeOffset.FromUnixTimeSeconds(createdAt).UtcDateTime;
-                            }
+                            metadata.CreatedAt = DateTimeOffset.FromUnixTimeSeconds(createdAt).UtcDateTime;
+                            return metadata;
                         }
                     }
-                }
-                else if (messageType == "EOSE")
-                {
-                    // End of stored events - we're done
-                    _logger.LogDebug("Received EOSE for subscription {SubId}", subId);
-                    break;
                 }
             }
             catch (JsonException ex)
             {
-                _logger.LogWarning(ex, "Failed to parse relay message");
+                _logger.LogWarning(ex, "Failed to parse metadata event from {Relay}", relayUrl);
             }
         }
 
-        // Send CLOSE message
-        try
-        {
-            var closeMessage = JsonSerializer.Serialize(new object[] { "CLOSE", subId });
-            var closeBytes = Encoding.UTF8.GetBytes(closeMessage);
-            if (ws.State == WebSocketState.Open)
-            {
-                await ws.SendAsync(new ArraySegment<byte>(closeBytes), WebSocketMessageType.Text, true, cts.Token);
-                await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Done", cts.Token);
-            }
-        }
-        catch
-        {
-            // Ignore close errors
-        }
-
-        return metadata;
+        return null;
     }
 
     private UserMetadata? ParseMetadataContent(string content, string publicKeyHex, string npub)
@@ -2585,96 +2358,54 @@ public class NostrService : INostrService, IDisposable
 
     private async Task<(List<RelayPreference> Relays, long CreatedAt)> FetchRelayListFromRelayAsync(string relayUrl, string publicKeyHex)
     {
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        using var ws = new ClientWebSocket();
+        var filterJson = JsonSerializer.Serialize(new { kinds = new[] { 10002 }, authors = new[] { publicKeyHex }, limit = 1 });
+        var events = await QueryRelayAsync(relayUrl, filterJson);
 
-        await ws.ConnectAsync(new Uri(relayUrl), cts.Token);
-
-        var subId = $"nip65_{Guid.NewGuid():N}"[..16];
-
-        // Request kind 10002 (replaceable event — only latest matters)
-        var filter = new { kinds = new[] { 10002 }, authors = new[] { publicKeyHex }, limit = 1 };
-        var reqMessage = JsonSerializer.Serialize(new object[] { "REQ", subId, filter });
-        var reqBytes = Encoding.UTF8.GetBytes(reqMessage);
-        await ws.SendAsync(new ArraySegment<byte>(reqBytes), WebSocketMessageType.Text, true, cts.Token);
-
-        var buffer = new byte[16384];
         var relays = new List<RelayPreference>();
         long createdAt = 0;
 
-        while (ws.State == WebSocketState.Open)
+        foreach (var eventJson in events)
         {
-            var msg = await ReceiveFullMessageAsync(ws, buffer, cts.Token);
-            if (msg == null || msg.Value.Type == WebSocketMessageType.Close) break;
-
-            var message = msg.Value.Text;
-
             try
             {
-                using var doc = JsonDocument.Parse(message);
-                var root = doc.RootElement;
+                using var doc = JsonDocument.Parse(eventJson);
+                var eventData = doc.RootElement;
+                var kind = eventData.GetProperty("kind").GetInt32();
 
-                if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() < 1)
-                    continue;
-
-                var messageType = root[0].GetString();
-
-                if (messageType == "EVENT" && root.GetArrayLength() >= 3)
+                if (kind == 10002)
                 {
-                    var eventData = root[2];
-                    var kind = eventData.GetProperty("kind").GetInt32();
+                    createdAt = eventData.GetProperty("created_at").GetInt64();
+                    var tags = eventData.GetProperty("tags");
 
-                    if (kind == 10002)
+                    foreach (var tag in tags.EnumerateArray())
                     {
-                        createdAt = eventData.GetProperty("created_at").GetInt64();
-                        var tags = eventData.GetProperty("tags");
+                        if (tag.GetArrayLength() < 2) continue;
+                        if (tag[0].GetString() != "r") continue;
 
-                        foreach (var tag in tags.EnumerateArray())
+                        var url = tag[1].GetString();
+                        if (string.IsNullOrEmpty(url)) continue;
+
+                        var usage = RelayUsage.Both;
+                        if (tag.GetArrayLength() >= 3)
                         {
-                            if (tag.GetArrayLength() < 2) continue;
-                            if (tag[0].GetString() != "r") continue;
-
-                            var url = tag[1].GetString();
-                            if (string.IsNullOrEmpty(url)) continue;
-
-                            var usage = RelayUsage.Both;
-                            if (tag.GetArrayLength() >= 3)
+                            var marker = tag[2].GetString();
+                            usage = marker switch
                             {
-                                var marker = tag[2].GetString();
-                                usage = marker switch
-                                {
-                                    "read" => RelayUsage.Read,
-                                    "write" => RelayUsage.Write,
-                                    _ => RelayUsage.Both
-                                };
-                            }
-
-                            relays.Add(new RelayPreference { Url = url, Usage = usage });
+                                "read" => RelayUsage.Read,
+                                "write" => RelayUsage.Write,
+                                _ => RelayUsage.Both
+                            };
                         }
+
+                        relays.Add(new RelayPreference { Url = url, Usage = usage });
                     }
-                }
-                else if (messageType == "EOSE")
-                {
-                    break;
                 }
             }
             catch (JsonException ex)
             {
-                _logger.LogWarning(ex, "Failed to parse relay message");
+                _logger.LogWarning(ex, "Failed to parse relay list event from {Relay}", relayUrl);
             }
         }
-
-        try
-        {
-            var closeMessage = JsonSerializer.Serialize(new object[] { "CLOSE", subId });
-            var closeBytes = Encoding.UTF8.GetBytes(closeMessage);
-            if (ws.State == WebSocketState.Open)
-            {
-                await ws.SendAsync(new ArraySegment<byte>(closeBytes), WebSocketMessageType.Text, true, cts.Token);
-                await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Done", cts.Token);
-            }
-        }
-        catch { /* Ignore close errors */ }
 
         return (relays, createdAt);
     }
@@ -2735,76 +2466,45 @@ public class NostrService : INostrService, IDisposable
 
     private async Task<(List<Follow> Follows, long CreatedAt)> FetchFollowingFromRelayAsync(string relayUrl, string publicKeyHex)
     {
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        using var ws = new ClientWebSocket();
-        await ws.ConnectAsync(new Uri(relayUrl), cts.Token);
+        var filterJson = JsonSerializer.Serialize(new { kinds = new[] { 3 }, authors = new[] { publicKeyHex }, limit = 1 });
+        var rawEvents = await QueryRelayAsync(relayUrl, filterJson);
 
-        var subId = $"follows_{Guid.NewGuid():N}"[..16];
-        var filter = new { kinds = new[] { 3 }, authors = new[] { publicKeyHex }, limit = 1 };
-        var reqMessage = JsonSerializer.Serialize(new object[] { "REQ", subId, filter });
-        await ws.SendAsync(new ArraySegment<byte>(Encoding.UTF8.GetBytes(reqMessage)),
-            WebSocketMessageType.Text, true, cts.Token);
-
-        var buffer = new byte[32768];
         var follows = new List<Follow>();
         long createdAt = 0;
 
-        while (ws.State == WebSocketState.Open)
+        foreach (var eventJson in rawEvents)
         {
-            var msg = await ReceiveFullMessageAsync(ws, buffer, cts.Token);
-            if (msg == null || msg.Value.Type == WebSocketMessageType.Close) break;
-
             try
             {
-                using var doc = JsonDocument.Parse(msg.Value.Text);
-                var root = doc.RootElement;
-                if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() < 1) continue;
+                using var doc = JsonDocument.Parse(eventJson);
+                var eventData = doc.RootElement;
+                if (eventData.GetProperty("kind").GetInt32() != 3) continue;
 
-                var messageType = root[0].GetString();
-                if (messageType == "EVENT" && root.GetArrayLength() >= 3)
+                createdAt = eventData.GetProperty("created_at").GetInt64();
+                follows.Clear();
+                foreach (var tag in eventData.GetProperty("tags").EnumerateArray())
                 {
-                    var eventData = root[2];
-                    if (eventData.GetProperty("kind").GetInt32() != 3) continue;
+                    if (tag.GetArrayLength() < 2) continue;
+                    if (tag[0].GetString() != "p") continue;
+                    var pub = tag[1].GetString();
+                    if (string.IsNullOrEmpty(pub) || pub.Length != 64) continue;
 
-                    createdAt = eventData.GetProperty("created_at").GetInt64();
-                    follows.Clear();
-                    foreach (var tag in eventData.GetProperty("tags").EnumerateArray())
+                    string? relayHint = tag.GetArrayLength() >= 3 ? tag[2].GetString() : null;
+                    string? petname = tag.GetArrayLength() >= 4 ? tag[3].GetString() : null;
+                    follows.Add(new Follow
                     {
-                        if (tag.GetArrayLength() < 2) continue;
-                        if (tag[0].GetString() != "p") continue;
-                        var pub = tag[1].GetString();
-                        if (string.IsNullOrEmpty(pub) || pub.Length != 64) continue;
-
-                        string? relayHint = tag.GetArrayLength() >= 3 ? tag[2].GetString() : null;
-                        string? petname = tag.GetArrayLength() >= 4 ? tag[3].GetString() : null;
-                        follows.Add(new Follow
-                        {
-                            PublicKeyHex = pub.ToLowerInvariant(),
-                            RelayHint = string.IsNullOrWhiteSpace(relayHint) ? null : relayHint,
-                            Petname = string.IsNullOrWhiteSpace(petname) ? null : petname,
-                            AddedAt = DateTime.UtcNow
-                        });
-                    }
+                        PublicKeyHex = pub.ToLowerInvariant(),
+                        RelayHint = string.IsNullOrWhiteSpace(relayHint) ? null : relayHint,
+                        Petname = string.IsNullOrWhiteSpace(petname) ? null : petname,
+                        AddedAt = DateTime.UtcNow
+                    });
                 }
-                else if (messageType == "EOSE") break;
             }
             catch (JsonException ex)
             {
-                _logger.LogWarning(ex, "Failed to parse follow message from {Relay}", relayUrl);
+                _logger.LogWarning(ex, "Failed to parse follow event from {Relay}", relayUrl);
             }
         }
-
-        try
-        {
-            var close = JsonSerializer.Serialize(new object[] { "CLOSE", subId });
-            if (ws.State == WebSocketState.Open)
-            {
-                await ws.SendAsync(new ArraySegment<byte>(Encoding.UTF8.GetBytes(close)),
-                    WebSocketMessageType.Text, true, cts.Token);
-                await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Done", cts.Token);
-            }
-        }
-        catch { }
 
         return (follows, createdAt);
     }

@@ -3,6 +3,7 @@ using System.Net.WebSockets;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Scramble.Core.Logging;
 using Scramble.Core.Models;
@@ -180,6 +181,85 @@ public class NostrRelayConnection : IAsyncDisposable
     /// Returns true if a subscription with the given ID is tracked (for H2 validation).
     /// </summary>
     public bool HasSubscription(string subId) => _activeSubscriptions.ContainsKey(subId);
+
+    /// <summary>
+    /// Sends a one-shot REQ over the existing connection, collects all EVENT responses
+    /// until EOSE, sends CLOSE, and returns the raw JSON of each event object.
+    /// Does NOT track the subscription for reconnect replay.
+    /// </summary>
+    /// <param name="filterJson">Raw JSON filter object, e.g. {"kinds":[0],"authors":["abc"],"limit":1}</param>
+    /// <param name="timeout">Maximum time to wait for EOSE.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>List of raw event JSON strings (the inner event object, not the outer array).</returns>
+    public async Task<List<string>> QueryAsync(string filterJson, TimeSpan timeout, CancellationToken ct = default)
+    {
+        if (_disposed) throw new ObjectDisposedException(nameof(NostrRelayConnection));
+        if (!_isConnected || _ws?.State != WebSocketState.Open)
+            throw new InvalidOperationException($"Not connected to {RelayUrl}");
+
+        var subId = $"q_{Guid.NewGuid():N}"[..12];
+        var events = new List<string>();
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // Subscribe to the shared message stream, filter for our query subscription ID
+        using var sub = _messages.Subscribe(message =>
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(message);
+                var root = doc.RootElement;
+                if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() < 2)
+                    return;
+
+                var msgSubId = root[1].GetString();
+                if (msgSubId != subId) return;
+
+                var msgType = root[0].GetString();
+                if (msgType == "EVENT" && root.GetArrayLength() >= 3)
+                {
+                    events.Add(root[2].GetRawText());
+                }
+                else if (msgType == "EOSE")
+                {
+                    tcs.TrySetResult(true);
+                }
+            }
+            catch (JsonException)
+            {
+                // Ignore parse errors for individual messages
+            }
+        });
+
+        // Send REQ (not tracked in _activeSubscriptions — no replay on reconnect)
+        var reqMessage = $"[\"REQ\",\"{subId}\",{filterJson}]";
+        await SendAsync(Encoding.UTF8.GetBytes(reqMessage), ct);
+
+        // Wait for EOSE or timeout
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(timeout);
+        try
+        {
+            await tcs.Task.WaitAsync(timeoutCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning("Query timed out on {RelayUrl} after {Timeout}s (subId: {SubId})",
+                RelayUrl, timeout.TotalSeconds, subId);
+        }
+
+        // Send CLOSE to clean up the relay-side subscription
+        try
+        {
+            var closeMessage = $"[\"CLOSE\",\"{subId}\"]";
+            await SendAsync(Encoding.UTF8.GetBytes(closeMessage), CancellationToken.None);
+        }
+        catch
+        {
+            // Ignore close errors
+        }
+
+        return events;
+    }
 
     /// <summary>
     /// Gracefully disconnects from the relay without auto-reconnect.
