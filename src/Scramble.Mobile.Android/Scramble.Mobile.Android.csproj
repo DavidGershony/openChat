@@ -34,9 +34,19 @@
     <ProjectReference Include="..\Scramble.UI\Scramble.UI.csproj" />
   </ItemGroup>
 
-  <!-- Reuse the launcher icon from the native Android project so the two heads stay visually consistent. -->
+  <!--
+    Launcher icon: reuse the PNGs from the native Android project.
+    - mipmap-*/ic_launcher.png  → pre-API-26 fallback (legacy launcher icon)
+    - drawable/Icon.png         → referenced by the adaptive-icon foreground layer
+    - mipmap-anydpi-v26/*.xml   → adaptive icon definitions (API 26+) with transparent background
+  -->
   <ItemGroup>
-    <AndroidResource Include="..\Scramble.Android\Resources\mipmap-xxhdpi\ic_launcher.png" Link="Resources\drawable\Icon.png" />
+    <AndroidResource Include="..\Scramble.Android\Resources\mipmap-mdpi\ic_launcher.png"    Link="Resources\mipmap-mdpi\ic_launcher.png" />
+    <AndroidResource Include="..\Scramble.Android\Resources\mipmap-hdpi\ic_launcher.png"    Link="Resources\mipmap-hdpi\ic_launcher.png" />
+    <AndroidResource Include="..\Scramble.Android\Resources\mipmap-xhdpi\ic_launcher.png"   Link="Resources\mipmap-xhdpi\ic_launcher.png" />
+    <AndroidResource Include="..\Scramble.Android\Resources\mipmap-xxhdpi\ic_launcher.png"  Link="Resources\mipmap-xxhdpi\ic_launcher.png" />
+    <AndroidResource Include="..\Scramble.Android\Resources\mipmap-xxxhdpi\ic_launcher.png" Link="Resources\mipmap-xxxhdpi\ic_launcher.png" />
+    <AndroidResource Include="..\Scramble.Android\Resources\mipmap-xxhdpi\ic_launcher.png"  Link="Resources\drawable\Icon.png" />
   </ItemGroup>
 
 </Project>
