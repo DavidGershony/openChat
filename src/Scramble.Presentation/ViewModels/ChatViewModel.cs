@@ -54,6 +54,15 @@ public partial class ChatViewModel : ViewModelBase
     [Reactive] public partial bool IsLoading { get; set; }
     [Reactive] public partial bool HasChat { get; set; }
 
+    /// <summary>
+    /// Command invoked when the user taps the back arrow in the chat header.
+    /// Assigned by <see cref="MainViewModel"/> after construction so the
+    /// ChatView does not need to walk the visual tree. On mobile this navigates
+    /// back to the chat list; on desktop the list is always visible so the
+    /// button is hidden.
+    /// </summary>
+    [Reactive] public partial ReactiveCommand<Unit, Unit>? BackCommand { get; set; }
+
     // Metadata panel
     [Reactive] public partial bool ShowMetadataPanel { get; set; }
     [Reactive] public partial bool IsLoadingMetadata { get; set; }

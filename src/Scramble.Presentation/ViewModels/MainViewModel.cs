@@ -120,6 +120,15 @@ public partial class MainViewModel : ViewModelBase
         // a $parent[Window] visual-tree walk (which only works on desktop).
         SettingsViewModel.BackCommand = ShowChatsCommand;
 
+        // Wire ChatView's back arrow to clear the active chat and return to the list.
+        // On mobile this navigates back; on desktop the button is hidden because both
+        // panels are always visible.
+        ChatViewModel.BackCommand = ReactiveCommand.Create(() =>
+        {
+            ChatViewModel.ClearChat();
+            ChatListViewModel.SelectedChat = null;
+        });
+
         LogoutCommand = ReactiveCommand.CreateFromTask(LogoutAsync);
 
         ShowMyProfileCommand = ReactiveCommand.CreateFromTask(async () =>
