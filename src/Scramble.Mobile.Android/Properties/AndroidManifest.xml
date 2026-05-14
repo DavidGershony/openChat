@@ -7,7 +7,7 @@
             android:name="androidx.core.content.FileProvider"
             android:authorities="app.scramble.chat.avalonia.fileprovider"
             android:exported="false"
-            android:grantUriPermission="true">
+            android:grantUriPermissions="true">
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
