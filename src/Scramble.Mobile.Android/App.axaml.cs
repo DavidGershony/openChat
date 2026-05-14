@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Scramble.Core.Configuration;
@@ -18,8 +19,7 @@ namespace Scramble.MobileAndroid;
 /// be evaluated as a possible replacement for the native Scramble.Android app.
 ///
 /// What's intentionally NOT wired here (yet):
-///   - Real secure storage (uses PassThroughSecureStorage — see that class for context).
-///   - Audio recording/playback, file picker, push notifications, QR scanner.
+///   - Push notifications, QR scanner.
 ///   - Theme switching (defaults to NostrTheme via App.axaml StyleInclude).
 /// Each will be added only when its absence blocks an evaluation milestone.
 /// </summary>
@@ -42,11 +42,17 @@ public partial class App : Avalonia.Application
             var platform = new PlatformContext
             {
                 IsMobile = true,
-                HasFilePicker = false,
-                HasAudioRecording = false,
-                HasAudioPlayback = false,
-                HasMediaUpload = false,
+                HasFilePicker = true,
+                HasAudioRecording = true,
+                HasAudioPlayback = true,
+                HasMediaUpload = true,
             };
+
+            // Audio and upload services (set as static on ChatViewModel, same as desktop)
+            var context = Android.App.Application.Context;
+            ChatViewModel.AudioRecordingService = new MobileAndroidAudioRecordingService(context);
+            ChatViewModel.AudioPlaybackService = new MobileAndroidAudioPlaybackService(context);
+            ChatViewModel.MediaUploadService = new BlossomUploadService();
 
             var shellViewModel = new ShellViewModel(
                 nostrService, secureStorage, clipboard, qrCodeGenerator, launcher, platform);
@@ -54,6 +60,51 @@ public partial class App : Avalonia.Application
             // MLS service factory — Android cannot load the Rust uniffi backend (MlsService)
             // without the native libs cross-compiled for ARM; force Managed (pure-C#) here.
             shellViewModel.MlsServiceFactory = storage => new ManagedMlsService(storage);
+
+            // File picker — use Avalonia's cross-platform StorageProvider API
+            ChatViewModel.FilePickerFunc = async () =>
+            {
+                // Get the TopLevel from the MainView once it's set
+                var singleViewLifetime = (ISingleViewApplicationLifetime)ApplicationLifetime!;
+                var topLevel = TopLevel.GetTopLevel(singleViewLifetime.MainView);
+                if (topLevel == null) return null;
+
+                var files = await topLevel.StorageProvider.OpenFilePickerAsync(
+                    new Avalonia.Platform.Storage.FilePickerOpenOptions
+                    {
+                        Title = "Select image to send",
+                        AllowMultiple = false,
+                        FileTypeFilter = new[]
+                        {
+                            new Avalonia.Platform.Storage.FilePickerFileType("Images")
+                            {
+                                Patterns = new[] { "*.png", "*.jpg", "*.jpeg", "*.gif", "*.webp" },
+                                MimeTypes = new[] { "image/png", "image/jpeg", "image/gif", "image/webp" }
+                            },
+                            Avalonia.Platform.Storage.FilePickerFileTypes.All
+                        }
+                    });
+
+                if (files.Count == 0) return null;
+
+                var file = files[0];
+                await using var stream = await file.OpenReadAsync();
+                using var ms = new System.IO.MemoryStream();
+                await stream.CopyToAsync(ms);
+                var data = ms.ToArray();
+
+                var ext = System.IO.Path.GetExtension(file.Name).ToLowerInvariant();
+                var mime = ext switch
+                {
+                    ".png" => "image/png",
+                    ".jpg" or ".jpeg" => "image/jpeg",
+                    ".gif" => "image/gif",
+                    ".webp" => "image/webp",
+                    _ => "application/octet-stream"
+                };
+
+                return (data, file.Name, mime);
+            };
 
             singleView.MainView = new MobileMainView
             {
