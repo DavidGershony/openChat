@@ -277,7 +277,7 @@ public class MobileAndroidAudioPlaybackService : IAudioPlaybackService
         }
     }
 
-    private static void WriteWavHeader(Stream stream, int dataLength, int sampleRate, int channels)
+    private static void WriteWavHeader(System.IO.Stream stream, int dataLength, int sampleRate, int channels)
     {
         var bitsPerSample = 16;
         var byteRate = sampleRate * channels * bitsPerSample / 8;
