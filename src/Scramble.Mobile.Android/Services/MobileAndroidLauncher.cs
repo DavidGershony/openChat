@@ -15,6 +15,8 @@ public class MobileAndroidLauncher : AvaloniaLauncher
     private static readonly ILogger<MobileAndroidLauncher> _logger =
         LoggingConfiguration.CreateLogger<MobileAndroidLauncher>();
 
+    public override bool IsMobile => true;
+
     /// <summary>
     /// Shares a file using Android's native share intent (ACTION_SEND).
     /// The file is exposed via FileProvider so the receiving app gets a

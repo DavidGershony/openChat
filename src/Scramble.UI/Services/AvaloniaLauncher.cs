@@ -10,6 +10,8 @@ public class AvaloniaLauncher : IPlatformLauncher
 {
     private static readonly ILogger<AvaloniaLauncher> _logger = LoggingConfiguration.CreateLogger<AvaloniaLauncher>();
 
+    public virtual bool IsMobile => false;
+
     /// <summary>
     /// Allowed URL schemes for OpenUrl. Only https is permitted to prevent command injection
     /// via crafted URIs (e.g. cmd.exe, file://, javascript:).

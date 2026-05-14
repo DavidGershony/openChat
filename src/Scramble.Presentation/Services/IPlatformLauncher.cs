@@ -5,6 +5,12 @@ namespace Scramble.Presentation.Services;
 /// </summary>
 public interface IPlatformLauncher
 {
+    /// <summary>
+    /// Whether the app is running on a mobile (single-view) shell.
+    /// Used to control navigation affordances like the chat back button.
+    /// </summary>
+    bool IsMobile => false;
+
     void OpenUrl(string url);
     void OpenFolder(string path);
 

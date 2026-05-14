@@ -121,13 +121,15 @@ public partial class MainViewModel : ViewModelBase
         SettingsViewModel.BackCommand = ShowChatsCommand;
 
         // Wire ChatView's back arrow to clear the active chat and return to the list.
-        // On mobile this navigates back; on desktop the button is hidden because both
-        // panels are always visible.
-        ChatViewModel.BackCommand = ReactiveCommand.Create(() =>
+        // Only on mobile — on desktop the chat list is always visible side-by-side.
+        if (launcher.IsMobile)
         {
-            ChatViewModel.ClearChat();
-            ChatListViewModel.SelectedChat = null;
-        });
+            ChatViewModel.BackCommand = ReactiveCommand.Create(() =>
+            {
+                ChatViewModel.ClearChat();
+                ChatListViewModel.SelectedChat = null;
+            });
+        }
 
         LogoutCommand = ReactiveCommand.CreateFromTask(LogoutAsync);
 
