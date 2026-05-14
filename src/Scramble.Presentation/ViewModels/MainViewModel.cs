@@ -77,7 +77,7 @@ public partial class MainViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> ToggleRelayListCommand { get; }
 
     public MainViewModel(IMessageService messageService, INostrService nostrService, IStorageService storageService, IMlsService mlsService,
-        IPlatformClipboard clipboard, IQrCodeGenerator qrCodeGenerator, IPlatformLauncher launcher,
+        IPlatformClipboard clipboard, IQrCodeGenerator qrCodeGenerator, IPlatformLauncher launcher, PlatformContext? platform = null,
         Action? onLogoutRequested = null)
     {
         _messageService = messageService;
@@ -122,7 +122,7 @@ public partial class MainViewModel : ViewModelBase
 
         // Wire ChatView's back arrow to clear the active chat and return to the list.
         // Only on mobile — on desktop the chat list is always visible side-by-side.
-        if (launcher.IsMobile)
+        if (platform is { IsMobile: true })
         {
             ChatViewModel.BackCommand = ReactiveCommand.Create(() =>
             {

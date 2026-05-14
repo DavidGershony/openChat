@@ -5,6 +5,7 @@ using Scramble.Core.Configuration;
 using Scramble.Core.Services;
 using Scramble.MobileAndroid.Services;
 using Scramble.MobileAndroid.Views;
+using Scramble.Presentation.Services;
 using Scramble.Presentation.ViewModels;
 using Scramble.UI.Services;
 
@@ -38,9 +39,10 @@ public partial class App : Avalonia.Application
             var clipboard = new AvaloniaClipboard();
             var qrCodeGenerator = new AvaloniaQrCodeGenerator();
             var launcher = new MobileAndroidLauncher();
+            var platform = new PlatformContext { IsMobile = true };
 
             var shellViewModel = new ShellViewModel(
-                nostrService, secureStorage, clipboard, qrCodeGenerator, launcher);
+                nostrService, secureStorage, clipboard, qrCodeGenerator, launcher, platform);
 
             // MLS service factory — Android cannot load the Rust uniffi backend (MlsService)
             // without the native libs cross-compiled for ARM; force Managed (pure-C#) here.

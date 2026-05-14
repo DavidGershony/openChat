@@ -31,6 +31,7 @@ public partial class ShellViewModel : ViewModelBase
     private readonly IQrCodeGenerator _qrCodeGenerator;
     private readonly IPlatformLauncher _launcher;
     private readonly ISecureStorage _secureStorage;
+    private readonly PlatformContext _platform;
 
     // Profile-dependent services (created after login, disposed on logout)
     private IStorageService? _storageService;
@@ -89,13 +90,15 @@ public partial class ShellViewModel : ViewModelBase
         ISecureStorage secureStorage,
         IPlatformClipboard clipboard,
         IQrCodeGenerator qrCodeGenerator,
-        IPlatformLauncher launcher)
+        IPlatformLauncher launcher,
+        PlatformContext? platform = null)
     {
         _nostrService = nostrService;
         _secureStorage = secureStorage;
         _clipboard = clipboard;
         _qrCodeGenerator = qrCodeGenerator;
         _launcher = launcher;
+        _platform = platform ?? new PlatformContext();
 
         // LoginViewModel uses NostrService for crypto and ExternalSignerService for Amber.
         // It does NOT get StorageService — saving happens here after profile is set.
@@ -301,7 +304,7 @@ public partial class ShellViewModel : ViewModelBase
         // Create MainViewModel with all services
         var mainVm = new MainViewModel(
             _messageService, _nostrService, storageService, _mlsService,
-            _clipboard, _qrCodeGenerator, _launcher,
+            _clipboard, _qrCodeGenerator, _launcher, _platform,
             onLogoutRequested: OnLogoutRequested);
 
         // Pass the external signer if the user logged in via Amber
