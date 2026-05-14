@@ -23,6 +23,7 @@ public partial class SettingsViewModel : ViewModelBase
     private readonly IMlsService _mlsService;
     private readonly IMessageService _messageService;
     private readonly IPlatformLauncher _launcher;
+    private readonly PlatformContext? _platform;
 
     [Reactive] public partial string? PublicKeyHex { get; set; }
     [Reactive] public partial string? PrivateKeyHex { get; set; }
@@ -130,7 +131,7 @@ public partial class SettingsViewModel : ViewModelBase
     /// </summary>
     [Reactive] public partial ReactiveCommand<Unit, Unit>? BackCommand { get; set; }
 
-    public SettingsViewModel(INostrService nostrService, IStorageService storageService, IMlsService mlsService, IMessageService messageService, IPlatformLauncher launcher)
+    public SettingsViewModel(INostrService nostrService, IStorageService storageService, IMlsService mlsService, IMessageService messageService, IPlatformLauncher launcher, PlatformContext? platform = null)
     {
         _logger = LoggingConfiguration.CreateLogger<SettingsViewModel>();
         _nostrService = nostrService;
@@ -138,6 +139,7 @@ public partial class SettingsViewModel : ViewModelBase
         _mlsService = mlsService;
         _messageService = messageService;
         _launcher = launcher;
+        _platform = platform;
 
         SaveProfileCommand = ReactiveCommand.CreateFromTask(SaveProfileAsync);
         ConfirmPublishProfileCommand = ReactiveCommand.CreateFromTask(PublishProfileAsync);
@@ -265,11 +267,18 @@ public partial class SettingsViewModel : ViewModelBase
 
                     if (enabled)
                     {
-                        // Check audio recording dependencies
-                        var audioWarning = ChatViewModel.AudioRecordingService?.CheckDependencies();
-                        Mip04DependencyWarning = audioWarning;
-                        if (audioWarning != null)
-                            _logger.LogWarning("MIP-04 dependency issue: {Warning}", audioWarning);
+                        // Check audio recording dependencies (platform-aware)
+                        if (_platform is { HasAudioRecording: false })
+                        {
+                            Mip04DependencyWarning = "Voice messages are not available on this platform.";
+                        }
+                        else
+                        {
+                            var audioWarning = ChatViewModel.AudioRecordingService?.CheckDependencies();
+                            Mip04DependencyWarning = audioWarning;
+                            if (audioWarning != null)
+                                _logger.LogWarning("MIP-04 dependency issue: {Warning}", audioWarning);
+                        }
                     }
                     else
                     {

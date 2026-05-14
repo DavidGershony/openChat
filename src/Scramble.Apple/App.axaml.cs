@@ -11,6 +11,7 @@ using Scramble.Core.Configuration;
 using Scramble.Core.Logging;
 using Scramble.UI.Views;
 using Scramble.UI.Services;
+using Scramble.Presentation.Services;
 using Scramble.Presentation.ViewModels;
 using Scramble.Core.Services;
 using Scramble.Apple.Services;
@@ -60,9 +61,17 @@ public partial class App : Application
                 var clipboard = new AvaloniaClipboard();
                 var qrCodeGenerator = new AvaloniaQrCodeGenerator();
                 var launcher = new AvaloniaLauncher();
+                var platform = new PlatformContext
+                {
+                    IsMobile = false,
+                    HasFilePicker = true,
+                    HasAudioRecording = false,
+                    HasAudioPlayback = false,
+                    HasMediaUpload = false,
+                };
 
                 _logger?.LogDebug("Creating ShellViewModel...");
-                var shellViewModel = new ShellViewModel(nostrService, secureStorage, clipboard, qrCodeGenerator, launcher);
+                var shellViewModel = new ShellViewModel(nostrService, secureStorage, clipboard, qrCodeGenerator, launcher, platform);
 
                 // MLS service factory — only Managed (pure-C#) backend on macOS for now
                 shellViewModel.MlsServiceFactory = storage => new ManagedMlsService(storage);

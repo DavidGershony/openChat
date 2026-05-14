@@ -102,6 +102,12 @@ public partial class ChatViewModel : ViewModelBase
     // MIP-04 state (controls attach/mic button visibility)
     [Reactive] public partial bool IsMip04Enabled { get; set; }
 
+    // Platform capability flags (computed from PlatformContext + IsMip04Enabled).
+    // These drive XAML visibility so controls are hidden when the platform lacks the capability.
+    [Reactive] public partial bool CanAttachFiles { get; private set; }
+    [Reactive] public partial bool CanRecordAudio { get; private set; }
+    [Reactive] public partial bool CanPlayAudio { get; private set; }
+
     // Voice recording state
     [Reactive] public partial bool IsRecording { get; set; }
     [Reactive] public partial string RecordingDuration { get; set; } = "0:00";
@@ -147,7 +153,7 @@ public partial class ChatViewModel : ViewModelBase
     /// </summary>
     public static Func<Task<(byte[] Data, string FileName, string MimeType)?>>? FilePickerFunc { get; set; }
 
-    public ChatViewModel(IMessageService messageService, IStorageService storageService, INostrService nostrService, IMlsService mlsService, IPlatformClipboard clipboard, IMediaDownloadService? mediaDownloadService = null)
+    public ChatViewModel(IMessageService messageService, IStorageService storageService, INostrService nostrService, IMlsService mlsService, IPlatformClipboard clipboard, PlatformContext? platform = null, IMediaDownloadService? mediaDownloadService = null)
     {
         _logger = LoggingConfiguration.CreateLogger<ChatViewModel>();
         _messageService = messageService;
@@ -155,6 +161,18 @@ public partial class ChatViewModel : ViewModelBase
         _nostrService = nostrService;
         _mlsService = mlsService;
         _clipboard = clipboard;
+
+        // Recompute capability properties whenever IsMip04Enabled changes
+        var hasFilePicker = platform?.HasFilePicker ?? false;
+        var hasAudioRecording = platform?.HasAudioRecording ?? false;
+        var hasAudioPlayback = platform?.HasAudioPlayback ?? false;
+        this.WhenAnyValue(x => x.IsMip04Enabled)
+            .Subscribe(mip04 =>
+            {
+                CanAttachFiles = mip04 && hasFilePicker;
+                CanRecordAudio = mip04 && hasAudioRecording;
+                CanPlayAudio = hasAudioPlayback; // playback doesn't need MIP-04 toggle
+            });
 
         // Set static service references for MessageViewModel media loading
         MessageViewModel.MediaDownloadService = mediaDownloadService ?? new MediaDownloadService();
@@ -1041,7 +1059,10 @@ public partial class ChatViewModel : ViewModelBase
 
             // Upload to Blossom
             if (MediaUploadService == null)
-                throw new InvalidOperationException("Media upload service not configured");
+            {
+                _logger.LogWarning("Cannot upload file: media upload service not available on this platform");
+                return;
+            }
 
             UploadStatus = string.IsNullOrEmpty(_currentUserPrivateKeyHex)
                 ? "Waiting for signer approval..."
@@ -1178,7 +1199,10 @@ public partial class ChatViewModel : ViewModelBase
 
             // Upload to Blossom
             if (MediaUploadService == null)
-                throw new InvalidOperationException("Media upload service not configured");
+            {
+                _logger.LogWarning("Cannot upload voice message: media upload service not available on this platform");
+                return;
+            }
 
             UploadStatus = "Waiting for signer approval...";
 

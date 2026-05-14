@@ -79,6 +79,14 @@ public partial class App : Application
                 var clipboard = new AvaloniaClipboard();
                 var qrCodeGenerator = new AvaloniaQrCodeGenerator();
                 var launcher = new AvaloniaLauncher();
+                var platform = new PlatformContext
+                {
+                    IsMobile = false,
+                    HasFilePicker = true,
+                    HasAudioRecording = true,
+                    HasAudioPlayback = true,
+                    HasMediaUpload = true,
+                };
 
                 // Audio and upload services (profile-independent, set as static on ChatViewModel)
                 var audioRecording = new DesktopAudioRecordingService();
@@ -92,7 +100,7 @@ public partial class App : Application
                 // Will be set below after MainWindow is created.
 
                 _logger?.LogDebug("Creating ShellViewModel...");
-                var shellViewModel = new ShellViewModel(nostrService, secureStorage, clipboard, qrCodeGenerator, launcher);
+                var shellViewModel = new ShellViewModel(nostrService, secureStorage, clipboard, qrCodeGenerator, launcher, platform);
 
                 // MLS service factory — platform-specific backend selection
                 shellViewModel.MlsServiceFactory = storage =>

@@ -39,7 +39,14 @@ public partial class App : Avalonia.Application
             var clipboard = new AvaloniaClipboard();
             var qrCodeGenerator = new AvaloniaQrCodeGenerator();
             var launcher = new MobileAndroidLauncher();
-            var platform = new PlatformContext { IsMobile = true };
+            var platform = new PlatformContext
+            {
+                IsMobile = true,
+                HasFilePicker = false,
+                HasAudioRecording = false,
+                HasAudioPlayback = false,
+                HasMediaUpload = false,
+            };
 
             var shellViewModel = new ShellViewModel(
                 nostrService, secureStorage, clipboard, qrCodeGenerator, launcher, platform);

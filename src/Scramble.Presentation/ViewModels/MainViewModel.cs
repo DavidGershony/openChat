@@ -90,8 +90,8 @@ public partial class MainViewModel : ViewModelBase
 
         // Initialize child view models
         ChatListViewModel = new ChatListViewModel(messageService, storageService, mlsService, nostrService);
-        ChatViewModel = new ChatViewModel(messageService, storageService, nostrService, mlsService, clipboard);
-        SettingsViewModel = new SettingsViewModel(nostrService, storageService, mlsService, messageService, launcher);
+        ChatViewModel = new ChatViewModel(messageService, storageService, nostrService, mlsService, clipboard, platform);
+        SettingsViewModel = new SettingsViewModel(nostrService, storageService, mlsService, messageService, launcher, platform);
 
         // Set up commands
         ShowSettingsCommand = ReactiveCommand.Create(() =>
