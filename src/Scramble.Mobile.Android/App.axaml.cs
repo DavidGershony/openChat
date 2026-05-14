@@ -47,6 +47,7 @@ public partial class App : Avalonia.Application
                 HasAudioPlayback = true,
                 HasMediaUpload = true,
             };
+            PlatformContext.IsMobileGlobal = true;
 
             // Audio and upload services (set as static on ChatViewModel, same as desktop)
             var context = Android.App.Application.Context;

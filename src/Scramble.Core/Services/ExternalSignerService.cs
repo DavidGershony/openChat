@@ -90,11 +90,11 @@ public class ExternalSignerService : IExternalSigner, IDisposable
             // Parse the connection string
             if (!ParseConnectionString(connectionString, out var remotePubKey, out var relayUrls, out var secret))
             {
-                _logger.LogError("Failed to parse connection string - invalid format");
+                _logger.LogError("Failed to parse connection string - invalid format. Input length: {Len}", connectionString.Trim().Length);
                 _status.OnNext(new ExternalSignerStatus
                 {
                     State = ExternalSignerState.Error,
-                    Error = "Invalid connection string format"
+                    Error = "Invalid connection string format. Expected bunker://... or nostrconnect://... with relay parameters."
                 });
                 return false;
             }
@@ -519,24 +519,40 @@ public class ExternalSignerService : IExternalSigner, IDisposable
         relayUrls = null;
         secret = null;
 
+        // Trim whitespace/newlines — users often paste bunker URLs with leading/trailing
+        // whitespace from messaging apps, QR code scanners, or clipboard managers.
+        connectionString = connectionString.Trim();
+
+        if (string.IsNullOrEmpty(connectionString))
+            return false;
+
         try
         {
             Uri uri;
 
             // Handle bunker:// URLs
-            if (connectionString.StartsWith("bunker://"))
+            if (connectionString.StartsWith("bunker://", StringComparison.OrdinalIgnoreCase))
             {
                 uri = new Uri(connectionString);
                 remotePubKey = uri.Host;
             }
             // Handle nostrconnect:// URLs
-            else if (connectionString.StartsWith("nostrconnect://"))
+            else if (connectionString.StartsWith("nostrconnect://", StringComparison.OrdinalIgnoreCase))
             {
                 uri = new Uri(connectionString);
                 remotePubKey = uri.Host;
             }
             else
             {
+                _logger.LogWarning("Connection string has unrecognized scheme (expected bunker:// or nostrconnect://)");
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(remotePubKey) || remotePubKey.Length != 64 ||
+                !remotePubKey.All(c => "0123456789abcdef".Contains(c)))
+            {
+                _logger.LogWarning("Connection string has invalid remote pubkey: '{PubKey}'",
+                    remotePubKey?[..Math.Min(16, remotePubKey?.Length ?? 0)]);
                 return false;
             }
 
@@ -546,7 +562,18 @@ public class ExternalSignerService : IExternalSigner, IDisposable
             relayUrls = relays?.Where(r => !string.IsNullOrEmpty(r)).Distinct().ToList() ?? new();
             secret = query["secret"];
 
-            return !string.IsNullOrEmpty(remotePubKey) && relayUrls.Count > 0;
+            if (relayUrls.Count == 0)
+            {
+                _logger.LogWarning("Connection string has no relay= parameters");
+                return false;
+            }
+
+            return true;
+        }
+        catch (UriFormatException ex)
+        {
+            _logger.LogWarning(ex, "Connection string is not a valid URI");
+            return false;
         }
         catch
         {
@@ -589,6 +616,38 @@ public class ExternalSignerService : IExternalSigner, IDisposable
         _logger.LogInformation("Connected to {Count}/{Total} signer relays", _relayConnections.Count, urls.Count);
     }
 
+    /// <summary>
+    /// Sends a message to a single open signer relay (the first with an open WebSocket).
+    /// NIP-46 requests only need to reach one relay — broadcasting to all relays causes
+    /// duplicate signing prompts on the signer app (the "sign-event flood" bug).
+    /// Responses are still received from all relays via the per-relay listeners.
+    /// </summary>
+    private async Task SendToOneRelayAsync(byte[] bytes)
+    {
+        var ct = _cts?.Token ?? CancellationToken.None;
+        foreach (var conn in _relayConnections)
+        {
+            if (conn.WebSocket?.State == WebSocketState.Open)
+            {
+                try
+                {
+                    await conn.WebSocket.SendAsync(bytes, WebSocketMessageType.Text, true, ct);
+                    _logger.LogDebug("NIP-46 sent to signer relay {Relay}", conn.Url);
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to send to signer relay {Relay}, trying next", conn.Url);
+                }
+            }
+        }
+        _logger.LogError("NIP-46 failed to send: no open signer relay");
+    }
+
+    /// <summary>
+    /// Sends a message to all open signer relays. Only used for ack responses
+    /// where delivery reliability matters more than avoiding duplicates.
+    /// </summary>
     private async Task BroadcastToRelaysAsync(byte[] bytes)
     {
         var ct = _cts?.Token ?? CancellationToken.None;
@@ -749,7 +808,8 @@ public class ExternalSignerService : IExternalSigner, IDisposable
         var tcs = new TaskCompletionSource<string>();
         _pendingRequests[requestId] = tcs;
 
-        await BroadcastToRelaysAsync(bytes);
+        // Send to one relay only — broadcasting causes duplicate signing prompts on the signer
+        await SendToOneRelayAsync(bytes);
 
         // Wait for response with timeout (sign_event needs longer for user approval)
         using var timeoutCts = new CancellationTokenSource(timeout);

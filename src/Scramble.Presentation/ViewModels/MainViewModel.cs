@@ -42,6 +42,12 @@ public partial class MainViewModel : ViewModelBase
     [Reactive] public partial int TotalRelayCount { get; set; }
     [Reactive] public partial string RelayCountText { get; set; } = "Relays: 0/0";
 
+    /// <summary>
+    /// True when relay statuses have been populated (TotalRelayCount > 0) but none are
+    /// connected. Drives the "No internet connection" banner in the UI.
+    /// </summary>
+    [Reactive] public partial bool ShowNoInternet { get; set; }
+
     // My Profile Dialog
     [Reactive] public partial bool ShowMyProfileDialog { get; set; }
     [Reactive] public partial string? MyNpub { get; set; }
@@ -548,6 +554,7 @@ public partial class MainViewModel : ViewModelBase
         ConnectedRelayCount = RelayStatuses.Count(r => r.IsConnected);
         TotalRelayCount = RelayStatuses.Count;
         RelayCountText = $"Relays: {ConnectedRelayCount}/{TotalRelayCount}";
+        ShowNoInternet = TotalRelayCount > 0 && ConnectedRelayCount == 0;
     }
 
     /// <summary>

@@ -152,6 +152,9 @@ public partial class ShellViewModel : ViewModelBase
                 if (savedUser != null)
                 {
                     _logger.LogInformation("Auto-login: found saved user {Npub}...", savedUser.Npub?[..Math.Min(12, savedUser.Npub.Length)]);
+                    // Suppress signer auto-login during session restore to prevent
+                    // RestoreSessionAsync's Connected event from racing with this path.
+                    LoginViewModel.SuppressSignerAutoLogin = true;
                     await ActivateSession(savedUser, storageService);
                     return;
                 }

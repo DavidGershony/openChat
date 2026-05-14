@@ -36,6 +36,16 @@ public partial class LoginViewModel : ViewModelBase
     /// </summary>
     [Reactive] public partial bool IsAddAccountMode { get; set; }
 
+    /// <summary>
+    /// When true, the signer status subscription will NOT trigger auto-login via
+    /// HandleSignerConnectedAsync. Set by ShellViewModel before calling
+    /// InitializeAfterLoginAsync to prevent a duplicate ActivateSession race:
+    /// RestoreSessionAsync emits Connected, which the subscription picks up and
+    /// would otherwise create a second User + trigger OnLoginCompleted while the
+    /// first session is already active.
+    /// </summary>
+    public bool SuppressSignerAutoLogin { get; set; }
+
     // Generated key display
     [Reactive] public partial string? GeneratedNsec { get; set; }
     [Reactive] public partial string? GeneratedNpub { get; set; }
@@ -316,6 +326,14 @@ public partial class LoginViewModel : ViewModelBase
         // Guard: skip if already logged in (prevents duplicate login from signer reconnect)
         if (LoggedInUser != null) return;
 
+        // Guard: skip if the session is being managed by auto-login / restore
+        // (RestoreSessionAsync emits Connected which would otherwise race here)
+        if (SuppressSignerAutoLogin)
+        {
+            _logger.LogInformation("HandleSignerConnectedAsync suppressed — session managed by auto-login");
+            return;
+        }
+
         try
         {
             // Amber (and other NIP-46 signers) often uses a different pubkey for
@@ -394,6 +412,16 @@ public partial class LoginViewModel : ViewModelBase
 
         try
         {
+            // Disconnect any existing nostrconnect listener to prevent cross-contamination:
+            // the nostrconnect flow created keypair A + secret A; if we now connect via
+            // bunker:// with keypair B, a stale nostrconnect ack (with secret A) arriving
+            // on the old WebSocket would fail with "invalid secret".
+            if (ExternalSigner.IsConnected || ExternalSigner.RelayUrls.Count > 0)
+            {
+                _logger.LogInformation("Disconnecting existing signer session before bunker:// connect");
+                await ExternalSigner.DisconnectAsync();
+            }
+
             var success = await ExternalSigner.ConnectWithStringAsync(BunkerUrl.Trim());
 
             if (success && ExternalSigner.PublicKeyHex != null)
@@ -438,6 +466,7 @@ public partial class LoginViewModel : ViewModelBase
         NostrConnectQrPngBytes = null;
         SelectedLoginMethod = LoginMethod.PrivateKey;
         IsAddAccountMode = false;
+        SuppressSignerAutoLogin = false;
 
         // Disconnect the external signer to prevent the old Amber session
         // from auto-logging in when the login screen is re-displayed.

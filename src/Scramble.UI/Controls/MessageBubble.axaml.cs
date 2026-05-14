@@ -3,6 +3,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Input.Platform;
+using Scramble.Presentation.Services;
 using Scramble.Presentation.ViewModels;
 
 namespace Scramble.UI.Controls;
@@ -22,15 +23,29 @@ public partial class MessageBubble : UserControl
     protected override void OnPointerEntered(PointerEventArgs e)
     {
         base.OnPointerEntered(e);
-        if (DataContext is MessageViewModel vm)
+        // On desktop, show the action bar on hover.
+        // On mobile, hover events are unreliable — use tap instead (see OnPointerReleased).
+        if (!PlatformContext.IsMobileGlobal && DataContext is MessageViewModel vm)
             vm.IsHovering = true;
     }
 
     protected override void OnPointerExited(PointerEventArgs e)
     {
         base.OnPointerExited(e);
-        if (DataContext is MessageViewModel vm)
+        if (!PlatformContext.IsMobileGlobal && DataContext is MessageViewModel vm)
             vm.IsHovering = false;
+    }
+
+    protected override void OnPointerReleased(PointerReleasedEventArgs e)
+    {
+        base.OnPointerReleased(e);
+
+        // On mobile, tap a message to toggle the action bar (reactions/reply/copy).
+        // Desktop keeps the existing hover behavior via OnPointerEntered/Exited.
+        if (PlatformContext.IsMobileGlobal && DataContext is MessageViewModel vm)
+        {
+            vm.IsHovering = !vm.IsHovering;
+        }
     }
 
     private void OnReplyClick(object? sender, RoutedEventArgs e)
@@ -44,6 +59,9 @@ public partial class MessageBubble : UserControl
                 if (parent.DataContext is ChatViewModel chatVm)
                 {
                     chatVm.SetReplyTo(msgVm.Message);
+                    // Hide the action bar after action on mobile
+                    if (PlatformContext.IsMobileGlobal)
+                        msgVm.IsHovering = false;
                     break;
                 }
                 parent = (parent as Control)?.Parent;
@@ -61,6 +79,10 @@ public partial class MessageBubble : UserControl
             return;
 
         await topLevel.Clipboard.SetTextAsync(msgVm.Content);
+
+        // Hide the action bar after action on mobile
+        if (PlatformContext.IsMobileGlobal)
+            msgVm.IsHovering = false;
     }
 
     private void AudioSlider_PointerPressed(object? sender, RoutedEventArgs e)
