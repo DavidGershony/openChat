@@ -343,9 +343,19 @@ public partial class MainViewModel : ViewModelBase
             ? CurrentUser.DisplayName
             : "Scramble";
 
-        // Show spinners immediately while everything initializes
+        // Populate profile fields from cached CurrentUser immediately so the header
+        // avatar and name render without waiting for the network metadata fetch.
+        MyDisplayName = CurrentUser.DisplayName;
+        MyName = CurrentUser.Username;
+        MyPictureUrl = CurrentUser.AvatarUrl;
+        MyAbout = CurrentUser.About;
+
+        // Show chat list spinner while chats load from DB.
+        // Only show the header loading indicator if we have NO cached display name —
+        // when cached data is available the header already shows the real name/picture,
+        // and the background network refresh will silently update it if anything changed.
         ChatListViewModel.IsLoading = true;
-        IsHeaderLoading = true;
+        IsHeaderLoading = string.IsNullOrEmpty(CurrentUser.DisplayName);
 
         _logger.LogDebug("Initializing message service");
         await _messageService.InitializeAsync();

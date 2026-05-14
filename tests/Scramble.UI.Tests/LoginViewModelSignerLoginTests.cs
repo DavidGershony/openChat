@@ -32,7 +32,7 @@ public class LoginViewModelSignerLoginTests
         var nostr = new Mock<INostrService>();
         nostr.Setup(n => n.GenerateKeyPair()).Returns(("priv", "pub", "nsec1", "npub1"));
         var qr = new Mock<IQrCodeGenerator>();
-        return new LoginViewModel(nostr.Object, qr.Object, signer);
+        return new LoginViewModel(nostr.Object, qr.Object, externalSigner: signer);
     }
 
     [Fact]

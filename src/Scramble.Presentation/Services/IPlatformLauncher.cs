@@ -16,4 +16,12 @@ public interface IPlatformLauncher
     /// <param name="mimeType">MIME type of the file (e.g. "text/plain").</param>
     /// <param name="title">Title shown in the share chooser.</param>
     void ShareFile(string filePath, string mimeType, string title);
+
+    /// <summary>
+    /// Launches a nostrconnect:// URI to open an external signer app (e.g. Amber on Android).
+    /// On platforms where no signer app is available, this is a no-op.
+    /// </summary>
+    /// <param name="uri">The nostrconnect:// URI to launch.</param>
+    /// <returns>True if the URI was launched successfully, false otherwise.</returns>
+    bool LaunchSignerUri(string uri);
 }

@@ -66,6 +66,9 @@ public partial class App : Avalonia.Application
             var shellViewModel = new ShellViewModel(
                 nostrService, secureStorage, clipboard, qrCodeGenerator, launcher, platform);
 
+            // Expose ShellViewModel so MainActivity can handle the back button
+            MainActivity.Shell = shellViewModel;
+
             // MLS service factory — Android cannot load the Rust uniffi backend (MlsService)
             // without the native libs cross-compiled for ARM; force Managed (pure-C#) here.
             shellViewModel.MlsServiceFactory = storage => new ManagedMlsService(storage);

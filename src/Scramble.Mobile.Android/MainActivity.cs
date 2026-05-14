@@ -1,9 +1,12 @@
 using System.Collections.Concurrent;
+using System.Reactive.Linq;
 using Android.App;
 using Android.Content.PM;
+using Android.Views;
 using AndroidX.Core.App;
 using AndroidX.Core.Content;
 using Avalonia.Android;
+using Scramble.Presentation.ViewModels;
 
 namespace Scramble.MobileAndroid;
 
@@ -12,6 +15,7 @@ namespace Scramble.MobileAndroid;
     Theme = "@style/MyTheme.NoActionBar",
     Icon = "@drawable/Icon",
     MainLauncher = true,
+    WindowSoftInputMode = SoftInput.AdjustResize,
     ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.UiMode)]
 public class MainActivity : AvaloniaMainActivity
 {
@@ -21,6 +25,12 @@ public class MainActivity : AvaloniaMainActivity
     /// </summary>
     public static MainActivity? Current { get; private set; }
 
+    /// <summary>
+    /// Reference to the ShellViewModel so the back button can navigate.
+    /// Set from App.axaml.cs after creating the view model.
+    /// </summary>
+    public static ShellViewModel? Shell { get; set; }
+
     private int _nextRequestCode = 2000;
     private readonly ConcurrentDictionary<int, TaskCompletionSource<bool>> _pendingPermissions = new();
 
@@ -28,6 +38,9 @@ public class MainActivity : AvaloniaMainActivity
     {
         Current = this;
         base.OnCreate(savedInstanceState);
+
+        // Handle the Android back button / gesture to navigate within the app
+        OnBackPressedDispatcher.AddCallback(this, new ScrambleBackCallback());
     }
 
     protected override void OnDestroy()
@@ -67,6 +80,47 @@ public class MainActivity : AvaloniaMainActivity
         {
             var allGranted = grantResults.Length > 0 && grantResults.All(r => r == Permission.Granted);
             tcs.TrySetResult(allGranted);
+        }
+    }
+
+    /// <summary>
+    /// Handles the Android back button / gesture. Navigates within the app:
+    /// chat -> chat list, settings -> chat list, chat list -> exit.
+    /// </summary>
+    private class ScrambleBackCallback : AndroidX.Activity.OnBackPressedCallback
+    {
+        public ScrambleBackCallback() : base(true) { }
+
+        public override void HandleOnBackPressed()
+        {
+            var main = Shell?.MainViewModel;
+            if (main == null)
+            {
+                // No active session — let Android handle it (exit/minimize)
+                Enabled = false;
+                Current?.OnBackPressedDispatcher.OnBackPressed();
+                Enabled = true;
+                return;
+            }
+
+            // If a chat is open, go back to the chat list
+            if (main.ChatViewModel.HasChat && main.ChatViewModel.BackCommand != null)
+            {
+                main.ChatViewModel.BackCommand.Execute().Subscribe();
+                return;
+            }
+
+            // If settings (or any overlay) is open, go back to chat list
+            if (main.CurrentView != null)
+            {
+                main.ShowChatsCommand.Execute().Subscribe();
+                return;
+            }
+
+            // Already at root (chat list) — let Android handle it (exit/minimize)
+            Enabled = false;
+            Current?.OnBackPressedDispatcher.OnBackPressed();
+            Enabled = true;
         }
     }
 }

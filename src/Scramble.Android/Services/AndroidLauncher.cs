@@ -45,4 +45,19 @@ public class AndroidLauncher : IPlatformLauncher
 
         _context.StartActivity(Intent.CreateChooser(intent, title));
     }
+
+    public bool LaunchSignerUri(string uri)
+    {
+        try
+        {
+            var intent = new Intent(Intent.ActionView, global::Android.Net.Uri.Parse(uri));
+            intent.AddFlags(ActivityFlags.NewTask);
+            _context.StartActivity(intent);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 }

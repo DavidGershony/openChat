@@ -102,7 +102,7 @@ public partial class ShellViewModel : ViewModelBase
 
         // LoginViewModel uses NostrService for crypto and ExternalSignerService for Amber.
         // It does NOT get StorageService — saving happens here after profile is set.
-        LoginViewModel = new LoginViewModel(nostrService, qrCodeGenerator);
+        LoginViewModel = new LoginViewModel(nostrService, qrCodeGenerator, launcher);
 
         // When LoginViewModel produces a user, complete the login flow
         LoginViewModel.WhenAnyValue(x => x.LoggedInUser)

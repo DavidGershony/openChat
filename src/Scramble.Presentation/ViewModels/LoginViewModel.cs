@@ -17,6 +17,7 @@ public partial class LoginViewModel : ViewModelBase
     private readonly ILogger<LoginViewModel> _logger;
     private readonly INostrService _nostrService;
     private readonly IQrCodeGenerator _qrCodeGenerator;
+    private readonly IPlatformLauncher? _launcher;
 
     /// <summary>
     /// The external signer instance, available for wiring into NostrService after login.
@@ -60,14 +61,17 @@ public partial class LoginViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> CopyNpubCommand { get; }
     public ReactiveCommand<LoginMethod, Unit> SelectLoginMethodCommand { get; }
     public ReactiveCommand<Unit, Unit> RefreshSignerRelayCommand { get; }
+    public ReactiveCommand<Unit, Unit> OpenSignerAppCommand { get; }
 
-    public LoginViewModel(INostrService nostrService, IQrCodeGenerator qrCodeGenerator, IExternalSigner? externalSigner = null)
+    public LoginViewModel(INostrService nostrService, IQrCodeGenerator qrCodeGenerator,
+        IPlatformLauncher? launcher = null, IExternalSigner? externalSigner = null)
     {
         _logger = LoggingConfiguration.CreateLogger<LoginViewModel>();
         _logger.LogDebug("LoginViewModel initializing");
 
         _nostrService = nostrService;
         _qrCodeGenerator = qrCodeGenerator;
+        _launcher = launcher;
         ExternalSigner = externalSigner ?? new ExternalSignerService();
 
         GenerateNewKeyCommand = ReactiveCommand.Create(GenerateNewKey);
@@ -116,6 +120,23 @@ public partial class LoginViewModel : ViewModelBase
             NostrConnectQrPngBytes = null;
             await GenerateNostrConnectAsync();
         });
+
+        // Open the nostrconnect URI in an external signer app (e.g. Amber on Android).
+        // Only enabled when a URI has been generated and a launcher is available.
+        var canOpenSigner = this.WhenAnyValue(
+            x => x.NostrConnectUri,
+            uri => !string.IsNullOrEmpty(uri) && _launcher != null);
+
+        OpenSignerAppCommand = ReactiveCommand.Create(() =>
+        {
+            if (!string.IsNullOrEmpty(NostrConnectUri) && _launcher != null)
+            {
+                if (!_launcher.LaunchSignerUri(NostrConnectUri))
+                {
+                    ErrorMessage = "No signer app found. Install Amber or paste a bunker:// URL below.";
+                }
+            }
+        }, canOpenSigner);
 
         // Subscribe to external signer status and auto-login on connect
         if (ExternalSigner != null)

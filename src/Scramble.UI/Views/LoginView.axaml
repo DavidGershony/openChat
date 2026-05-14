@@ -225,6 +225,15 @@
                                    HorizontalAlignment="Center" Margin="0,4,0,0"
                                    FontSize="11" Foreground="{DynamicResource WarningTextBrush}" />
 
+                        <!-- Open in signer app (e.g. Amber on Android) -->
+                        <Button Classes="primary" HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center"
+                                IsVisible="{Binding NostrConnectUri, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                Command="{Binding OpenSignerAppCommand}"
+                                Margin="0,8,0,0" Padding="10,10">
+                            <TextBlock Text="Open in Signer App" FontSize="14" />
+                        </Button>
+
                         <!-- Scanning for request label (visible when waiting for signer) -->
                         <TextBlock Text="Scanning for request..."
                                    IsVisible="{Binding IsExternalSignerConnecting}"

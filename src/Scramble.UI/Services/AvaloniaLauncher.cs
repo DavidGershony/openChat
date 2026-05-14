@@ -98,4 +98,10 @@ public class AvaloniaLauncher : IPlatformLauncher
         if (directory != null)
             OpenFolder(directory);
     }
+
+    /// <summary>
+    /// Desktop: no-op — signer apps like Amber are Android-only.
+    /// Overridden on Android to launch an intent.
+    /// </summary>
+    public virtual bool LaunchSignerUri(string uri) => false;
 }

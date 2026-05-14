@@ -60,4 +60,41 @@ public class MobileAndroidLauncher : AvaloniaLauncher
             _logger.LogError(ex, "Failed to share file {Path}", filePath);
         }
     }
+
+    /// <summary>
+    /// Launches a nostrconnect:// URI via Android's intent system to open
+    /// an external signer app like Amber.
+    /// </summary>
+    public override bool LaunchSignerUri(string uri)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(uri))
+                return false;
+
+            var context = Android.App.Application.Context;
+            if (context == null)
+            {
+                _logger.LogWarning("Cannot launch signer URI: no Android context available");
+                return false;
+            }
+
+            var intent = new Intent(Intent.ActionView, Android.Net.Uri.Parse(uri));
+            intent.AddFlags(ActivityFlags.NewTask);
+            context.StartActivity(intent);
+
+            _logger.LogInformation("Launched signer app intent for nostrconnect URI");
+            return true;
+        }
+        catch (Android.Content.ActivityNotFoundException)
+        {
+            _logger.LogWarning("No signer app found to handle nostrconnect URI");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to launch signer app intent");
+            return false;
+        }
+    }
 }
