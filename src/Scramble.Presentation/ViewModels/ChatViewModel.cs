@@ -153,6 +153,13 @@ public partial class ChatViewModel : ViewModelBase
     /// </summary>
     public static Func<Task<(byte[] Data, string FileName, string MimeType)?>>? FilePickerFunc { get; set; }
 
+    /// <summary>
+    /// Platform-specific runtime permission request. Accepts an array of permission strings
+    /// (e.g. Android manifest permissions) and returns true if all were granted.
+    /// On platforms that don't need runtime permissions (desktop), leave null — the check is skipped.
+    /// </summary>
+    public static Func<string[], Task<bool>>? PermissionRequestFunc { get; set; }
+
     public ChatViewModel(IMessageService messageService, IStorageService storageService, INostrService nostrService, IMlsService mlsService, IPlatformClipboard clipboard, PlatformContext? platform = null, IMediaDownloadService? mediaDownloadService = null)
     {
         _logger = LoggingConfiguration.CreateLogger<ChatViewModel>();
@@ -1123,6 +1130,17 @@ public partial class ChatViewModel : ViewModelBase
         {
             _logger.LogWarning("Audio recording service not available");
             return;
+        }
+
+        // Request RECORD_AUDIO permission at runtime if the platform requires it
+        if (PermissionRequestFunc != null)
+        {
+            var granted = await PermissionRequestFunc(new[] { "android.permission.RECORD_AUDIO" });
+            if (!granted)
+            {
+                _logger.LogWarning("RECORD_AUDIO permission denied by user");
+                return;
+            }
         }
 
         try

@@ -54,6 +54,15 @@ public partial class App : Avalonia.Application
             ChatViewModel.AudioPlaybackService = new MobileAndroidAudioPlaybackService(context);
             ChatViewModel.MediaUploadService = new BlossomUploadService();
 
+            // Runtime permission request delegate — Android 6+ requires runtime consent
+            // for dangerous permissions (RECORD_AUDIO, etc.) even if declared in the manifest.
+            ChatViewModel.PermissionRequestFunc = async permissions =>
+            {
+                var activity = MainActivity.Current;
+                if (activity == null) return false;
+                return await activity.RequestPermissionsAsync(permissions);
+            };
+
             var shellViewModel = new ShellViewModel(
                 nostrService, secureStorage, clipboard, qrCodeGenerator, launcher, platform);
 
