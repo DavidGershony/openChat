@@ -120,10 +120,11 @@ public interface IMessageService
     /// Add a peer device (same Nostr identity, different MLS leaf) to all groups
     /// where the current device is a member. Uses a specific KeyPackage from the
     /// peer device rather than fetching the newest KP for the pubkey.
+    /// Only auto-adds to groups where the current user is admin. Non-admin groups
+    /// are skipped and reported in the result so the UI can inform the user.
     /// </summary>
     /// <param name="peerKeyPackage">The peer device's KeyPackage (different slot ID from local device).</param>
-    /// <returns>The number of groups the peer device was successfully added to.</returns>
-    Task<int> AddPeerDeviceToGroupsAsync(KeyPackage peerKeyPackage);
+    Task<PeerDeviceAddResult> AddPeerDeviceToGroupsAsync(KeyPackage peerKeyPackage);
 
     /// <summary>
     /// Remove a member from a group.
@@ -274,4 +275,20 @@ public class LoadOlderMessagesResult
     public List<Message> Messages { get; set; } = new();
     public DateTimeOffset NewBoundary { get; set; }
     public bool HasMore { get; set; } = true;
+}
+
+/// <summary>
+/// Result of adding a peer device to groups, distinguishing admin (auto-added)
+/// from non-admin (skipped) groups.
+/// </summary>
+public class PeerDeviceAddResult
+{
+    /// <summary>Number of admin groups where the peer device was successfully added.</summary>
+    public int AddedCount { get; set; }
+
+    /// <summary>Names of non-admin groups that were skipped (user should ask the admin).</summary>
+    public List<string> SkippedNonAdminGroups { get; set; } = new();
+
+    /// <summary>Number of groups where the add failed due to an error.</summary>
+    public int FailedCount { get; set; }
 }

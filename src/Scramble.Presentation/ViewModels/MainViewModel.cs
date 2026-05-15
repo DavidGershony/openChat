@@ -48,6 +48,19 @@ public partial class MainViewModel : ViewModelBase
     /// </summary>
     [Reactive] public partial bool ShowNoInternet { get; set; }
 
+    /// <summary>
+    /// True when this device was just linked to an existing identity (detected peer
+    /// device KPs). Shown once to inform the user that old messages are not available
+    /// due to MLS forward secrecy.
+    /// </summary>
+    [Reactive] public partial bool ShowForwardSecrecyBanner { get; set; }
+
+    /// <summary>
+    /// Names of non-admin groups that the peer device was not auto-added to.
+    /// Shown alongside the forward-secrecy banner so the user knows to ask the admin.
+    /// </summary>
+    [Reactive] public partial string? SkippedNonAdminGroupsText { get; set; }
+
     // My Profile Dialog
     [Reactive] public partial bool ShowMyProfileDialog { get; set; }
     [Reactive] public partial string? MyNpub { get; set; }
@@ -81,6 +94,7 @@ public partial class MainViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> ReconnectCommand { get; }
     public ReactiveCommand<RelayStatusViewModel, Unit> ReconnectRelayCommand { get; }
     public ReactiveCommand<Unit, Unit> ToggleRelayListCommand { get; }
+    public ReactiveCommand<Unit, Unit> DismissForwardSecrecyBannerCommand { get; }
 
     public MainViewModel(IMessageService messageService, INostrService nostrService, IStorageService storageService, IMlsService mlsService,
         IPlatformClipboard clipboard, IQrCodeGenerator qrCodeGenerator, IPlatformLauncher launcher, PlatformContext? platform = null,
@@ -261,6 +275,20 @@ public partial class MainViewModel : ViewModelBase
         ToggleRelayListCommand = ReactiveCommand.Create(() =>
         {
             IsRelayListExpanded = !IsRelayListExpanded;
+        });
+
+        DismissForwardSecrecyBannerCommand = ReactiveCommand.CreateFromTask(async () =>
+        {
+            ShowForwardSecrecyBanner = false;
+            SkippedNonAdminGroupsText = null;
+            try
+            {
+                await _storageService.SaveSettingAsync("forward_secrecy_banner_dismissed", "true");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to persist forward-secrecy banner dismissal");
+            }
         });
 
         // Subscribe to chat selection
@@ -826,19 +854,37 @@ public partial class MainViewModel : ViewModelBase
                             {
                                 _logger.LogInformation("Detected {Count} peer device KeyPackage(s), adding to groups",
                                     peerKps.Count);
+
+                                var allSkippedGroups = new List<string>();
+
                                 foreach (var peerKp in peerKps)
                                 {
                                     try
                                     {
-                                        var added = await _messageService.AddPeerDeviceToGroupsAsync(peerKp);
-                                        _logger.LogInformation("Peer device (slot={SlotId}) added to {Count} group(s)",
-                                            peerKp.SlotId?[..Math.Min(16, peerKp.SlotId?.Length ?? 0)], added);
+                                        var addResult = await _messageService.AddPeerDeviceToGroupsAsync(peerKp);
+                                        _logger.LogInformation(
+                                            "Peer device (slot={SlotId}): added to {Added} group(s), {Skipped} non-admin skipped",
+                                            peerKp.SlotId?[..Math.Min(16, peerKp.SlotId?.Length ?? 0)],
+                                            addResult.AddedCount, addResult.SkippedNonAdminGroups.Count);
+
+                                        allSkippedGroups.AddRange(addResult.SkippedNonAdminGroups);
                                     }
                                     catch (Exception peerEx)
                                     {
                                         _logger.LogWarning(peerEx, "Failed to add peer device (slot={SlotId}) to groups",
                                             peerKp.SlotId?[..Math.Min(16, peerKp.SlotId?.Length ?? 0)]);
                                     }
+                                }
+
+                                // Show forward-secrecy banner if not previously dismissed
+                                var dismissed = await _storageService.GetSettingAsync("forward_secrecy_banner_dismissed");
+                                if (dismissed != "true")
+                                {
+                                    if (allSkippedGroups.Count > 0)
+                                    {
+                                        SkippedNonAdminGroupsText = string.Join(", ", allSkippedGroups.Distinct());
+                                    }
+                                    ShowForwardSecrecyBanner = true;
                                 }
                             }
                         }

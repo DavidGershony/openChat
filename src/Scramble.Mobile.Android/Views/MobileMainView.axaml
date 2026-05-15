@@ -125,6 +125,29 @@
                                    VerticalAlignment="Center" />
                     </StackPanel>
                 </Border>
+
+                <!-- Forward-secrecy disclosure banner (multi-device) -->
+                <Border IsVisible="{Binding ShowForwardSecrecyBanner}"
+                        Background="{DynamicResource StatusWarningBrush}"
+                        Padding="10,8" VerticalAlignment="Top"
+                        ZIndex="9" Margin="0,40,0,0">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Grid.Column="0" Spacing="2">
+                            <TextBlock Text="New device linked"
+                                       Foreground="White" FontSize="13" FontWeight="SemiBold" />
+                            <TextBlock Text="Messages sent before linking are not available on this device due to forward secrecy."
+                                       Foreground="White" FontSize="12" TextWrapping="Wrap" Opacity="0.9" />
+                            <TextBlock Text="{Binding SkippedNonAdminGroupsText, StringFormat='Ask admins to add your device to: {0}'}"
+                                       IsVisible="{Binding SkippedNonAdminGroupsText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                       Foreground="White" FontSize="12" TextWrapping="Wrap" Opacity="0.85" FontStyle="Italic" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Classes="secondary"
+                                Command="{Binding DismissForwardSecrecyBannerCommand}"
+                                Content="Dismiss" FontSize="12" Padding="10,4"
+                                VerticalAlignment="Top" Margin="8,0,0,0" />
+                    </Grid>
+                </Border>
+
                 <!-- Chat list (default view).
                      Outer Panel hides the list whenever the settings overlay is open (CurrentView != null);
                      inner IsVisible additionally hides it when an active chat is open.

@@ -863,12 +863,14 @@ public class MessageService : IMessageService, IDisposable
         }
     }
 
-    public async Task<int> AddPeerDeviceToGroupsAsync(KeyPackage peerKeyPackage)
+    public async Task<PeerDeviceAddResult> AddPeerDeviceToGroupsAsync(KeyPackage peerKeyPackage)
     {
         if (_currentUser == null)
             throw new InvalidOperationException("Not logged in");
 
-        _logger.LogInformation("AddPeerDevice: adding peer device (slot={SlotId}) to all groups",
+        var result = new PeerDeviceAddResult();
+
+        _logger.LogInformation("AddPeerDevice: adding peer device (slot={SlotId}) to admin groups",
             peerKeyPackage.SlotId?[..Math.Min(16, peerKeyPackage.SlotId?.Length ?? 0)] ?? "none");
 
         var chats = await _storageService.GetAllChatsAsync();
@@ -879,17 +881,30 @@ public class MessageService : IMessageService, IDisposable
         if (groupChats.Count == 0)
         {
             _logger.LogInformation("AddPeerDevice: no group chats to add peer device to");
-            return 0;
+            return result;
         }
-
-        int successCount = 0;
 
         foreach (var chat in groupChats)
         {
             try
             {
                 var groupIdHex = Convert.ToHexString(chat.MlsGroupId!).ToLowerInvariant();
-                _logger.LogInformation("AddPeerDevice: adding to group {GroupId} ({Name})",
+
+                // Only auto-add to groups where this device is admin.
+                // For non-admin groups, the group admin should add the new device.
+                var adminPubkeys = _mlsService.GetAdminPubkeys(chat.MlsGroupId!);
+                var isAdmin = adminPubkeys.Any(pk =>
+                    string.Equals(pk, _currentUser.PublicKeyHex, StringComparison.OrdinalIgnoreCase));
+
+                if (!isAdmin)
+                {
+                    _logger.LogInformation("AddPeerDevice: skipping non-admin group {GroupId} ({Name})",
+                        groupIdHex[..Math.Min(16, groupIdHex.Length)], chat.Name);
+                    result.SkippedNonAdminGroups.Add(chat.Name ?? groupIdHex[..Math.Min(16, groupIdHex.Length)]);
+                    continue;
+                }
+
+                _logger.LogInformation("AddPeerDevice: adding to admin group {GroupId} ({Name})",
                     groupIdHex[..Math.Min(16, groupIdHex.Length)], chat.Name);
 
                 // Stage the add-member commit with the specific peer device KP
@@ -931,7 +946,7 @@ public class MessageService : IMessageService, IDisposable
                     _logger.LogInformation("AddPeerDevice: Welcome sent for group {GroupId}, event {EventId}",
                         groupIdHex[..Math.Min(16, groupIdHex.Length)], welcomeEventId);
 
-                    successCount++;
+                    result.AddedCount++;
                 }
             }
             catch (Exception ex)
@@ -939,6 +954,7 @@ public class MessageService : IMessageService, IDisposable
                 var groupIdHex = Convert.ToHexString(chat.MlsGroupId!).ToLowerInvariant();
                 _logger.LogWarning(ex, "AddPeerDevice: failed to add peer device to group {GroupId} — skipping",
                     groupIdHex[..Math.Min(16, groupIdHex.Length)]);
+                result.FailedCount++;
 
                 // Attempt to clear staged commit if it exists
                 try { await _mlsService.ClearStagedAsync(chat.MlsGroupId!); }
@@ -946,9 +962,9 @@ public class MessageService : IMessageService, IDisposable
             }
         }
 
-        _logger.LogInformation("AddPeerDevice: added peer device to {Count}/{Total} groups",
-            successCount, groupChats.Count);
-        return successCount;
+        _logger.LogInformation("AddPeerDevice: added={Added}, skipped={Skipped} non-admin, failed={Failed}",
+            result.AddedCount, result.SkippedNonAdminGroups.Count, result.FailedCount);
+        return result;
     }
 
     public async Task RemoveMemberAsync(string chatId, string memberPublicKey)
