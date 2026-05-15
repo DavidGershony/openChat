@@ -62,7 +62,7 @@ public partial class MessageBubble : UserControl
     {
         while (control != null)
         {
-            if (control is Button)
+            if (control is Avalonia.Controls.Button)
                 return true;
             control = control.Parent as Control;
         }
