@@ -418,18 +418,50 @@
             </StackPanel>
         </Border>
 
-            <!-- Empty State (hidden while loading) -->
+            <!-- Empty State (hidden while loading, only on main Chats tab) -->
             <StackPanel Grid.Row="4" VerticalAlignment="Center" HorizontalAlignment="Center"
                         Spacing="8">
                 <StackPanel.IsVisible>
                     <MultiBinding Converter="{x:Static BoolConverters.And}">
                         <Binding Path="!Chats.Count" />
                         <Binding Path="!IsLoading" />
+                        <Binding Path="!ShowAgentsSection" />
+                        <Binding Path="!ShowArchivedSection" />
                     </MultiBinding>
                 </StackPanel.IsVisible>
                 <PathIcon Data="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"
                           Width="48" Height="48" Foreground="{DynamicResource TextMutedBrush}" />
                 <TextBlock Text="No chats yet" Classes="secondary" HorizontalAlignment="Center" />
+            </StackPanel>
+
+            <!-- Agents Empty State -->
+            <StackPanel Grid.Row="4" VerticalAlignment="Center" HorizontalAlignment="Center"
+                        Spacing="8">
+                <StackPanel.IsVisible>
+                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                        <Binding Path="!AgentChats.Count" />
+                        <Binding Path="!IsLoading" />
+                        <Binding Path="ShowAgentsSection" />
+                    </MultiBinding>
+                </StackPanel.IsVisible>
+                <PathIcon Data="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"
+                          Width="48" Height="48" Foreground="{DynamicResource TextMutedBrush}" />
+                <TextBlock Text="No agent chats yet" Classes="secondary" HorizontalAlignment="Center" />
+            </StackPanel>
+
+            <!-- Archived Empty State -->
+            <StackPanel Grid.Row="4" VerticalAlignment="Center" HorizontalAlignment="Center"
+                        Spacing="8">
+                <StackPanel.IsVisible>
+                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                        <Binding Path="!ArchivedChats.Count" />
+                        <Binding Path="!IsLoading" />
+                        <Binding Path="ShowArchivedSection" />
+                    </MultiBinding>
+                </StackPanel.IsVisible>
+                <PathIcon Data="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"
+                          Width="48" Height="48" Foreground="{DynamicResource TextMutedBrush}" />
+                <TextBlock Text="No archived chats" Classes="secondary" HorizontalAlignment="Center" />
             </StackPanel>
 
             <!-- Agents (DVM) Chat List -->
