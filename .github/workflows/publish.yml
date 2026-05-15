@@ -200,13 +200,33 @@ jobs:
             exit 1
           fi
           echo "Using signed APK: $APK"
-          mv "$APK" ./publish/android/Scramble.apk
-          echo "APK_PATH=./publish/android/Scramble.apk" >> "$GITHUB_OUTPUT"
+          # Include version in filename so Obtainium and download managers can
+          # distinguish releases without parsing the GitHub release page.
+          VERSIONED_NAME="Scramble-${{ steps.version.outputs.VERSION }}.apk"
+          mv "$APK" "./publish/android/$VERSIONED_NAME"
+          echo "APK_PATH=./publish/android/$VERSIONED_NAME" >> "$GITHUB_OUTPUT"
+          echo "APK_NAME=$VERSIONED_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Verify APK signing certificate
+        run: |
+          APK="${{ steps.apk.outputs.APK_PATH }}"
+          echo "=== APK signing certificate (for cross-release consistency check) ==="
+          # Find apksigner — bundled with Android build-tools on ubuntu runners.
+          APKSIGNER=$(find /usr/local/lib/android/sdk/build-tools -name apksigner 2>/dev/null | sort -V | tail -1)
+          if [ -n "$APKSIGNER" ]; then
+            "$APKSIGNER" verify --print-certs "$APK"
+          else
+            # Fall back to keytool if apksigner isn't on PATH yet.
+            echo "apksigner not found, using keytool to show keystore cert:"
+            keytool -list -v -keystore "${{ github.workspace }}/scramble-release.keystore" \
+              -storepass "${{ secrets.ANDROID_KEYSTORE_PASSWORD || secrets.ANDROID_SIGNING_PASSWORD }}" 2>/dev/null | \
+              grep -E "Alias|SHA|Owner|Issuer|Valid" || true
+          fi
 
       - name: Upload Android artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Scramble.apk
+          name: ${{ steps.apk.outputs.APK_NAME }}
           path: ${{ steps.apk.outputs.APK_PATH }}
 
   release:
@@ -230,4 +250,4 @@ jobs:
             ./artifacts/Scramble-win-x64*/Scramble-win-x64*
             ./artifacts/Scramble-linux-x64*/Scramble-linux-x64*
             ./artifacts/Scramble-macos-arm64*/Scramble-macos-arm64*
-            ./artifacts/Scramble.apk/Scramble.apk
+            ./artifacts/Scramble-*/Scramble-*.apk
