@@ -5,7 +5,7 @@
     <application android:label="Scramble" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round">
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="app.scramble.chat.avalonia.fileprovider"
+            android:authorities="app.scramble.chat.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data
