@@ -57,6 +57,18 @@ public partial class SettingsViewModel : ViewModelBase
     [Reactive] public partial string NewKpRelayUrl { get; set; } = string.Empty;
     [Reactive] public partial bool ShowDmRelaySection { get; set; }
     [Reactive] public partial bool ShowKpRelaySection { get; set; }
+    [Reactive] public partial bool ShowGeneralRelaySection { get; set; }
+
+    // Relay picker — add from popular list or custom input
+    [Reactive] public partial string CustomRelayDomain { get; set; } = string.Empty;
+    [Reactive] public partial bool AddToGeneral { get; set; } = true;
+    [Reactive] public partial bool AddToDm { get; set; }
+    [Reactive] public partial bool AddToKp { get; set; }
+
+    // NIP-65 published relay list (fetched from network)
+    [Reactive] public partial bool IsFetchingNip65 { get; set; }
+    [Reactive] public partial string? Nip65Status { get; set; }
+    public ObservableCollection<RelayViewModel> Nip65Relays { get; } = new();
 
     // Profile editing (hidden when using external signer — no private key to sign kind 0)
     [Reactive] public partial bool CanEditProfile { get; set; }
@@ -98,6 +110,22 @@ public partial class SettingsViewModel : ViewModelBase
     public ObservableCollection<RelayViewModel> Relays { get; } = new();
     public ObservableCollection<string> DmRelays { get; } = new();
     public ObservableCollection<string> KpRelays { get; } = new();
+    public ObservableCollection<RelayPickerItem> PopularRelays { get; } = new();
+
+    /// <summary>Popular relay domains shown in the relay picker.</summary>
+    internal static readonly string[] PopularRelayDomains =
+    {
+        "relay.damus.io",
+        "nos.lol",
+        "relay.nostr.band",
+        "relay.snort.social",
+        "relay.primal.net",
+        "nostr.wine",
+        "relay.angor.io",
+        "relay2.angor.io",
+        "purplepag.es",
+        "relay.nsec.app",
+    };
 
     public ReactiveCommand<Unit, Unit> SaveProfileCommand { get; }
     public ReactiveCommand<Unit, Unit> ConfirmPublishProfileCommand { get; }
@@ -110,6 +138,10 @@ public partial class SettingsViewModel : ViewModelBase
     public ReactiveCommand<string, Unit> RemoveKpRelayCommand { get; }
     public ReactiveCommand<Unit, Unit> ToggleDmRelaySectionCommand { get; }
     public ReactiveCommand<Unit, Unit> ToggleKpRelaySectionCommand { get; }
+    public ReactiveCommand<Unit, Unit> ToggleGeneralRelaySectionCommand { get; }
+    public ReactiveCommand<Unit, Unit> AddPickedRelaysCommand { get; }
+    public ReactiveCommand<Unit, Unit> AddCustomRelayCommand { get; }
+    public ReactiveCommand<Unit, Unit> FetchNip65Command { get; }
     public ReactiveCommand<Unit, Unit> ViewLogsCommand { get; }
     public ReactiveCommand<Unit, Unit> CloseLogViewerCommand { get; }
     public ReactiveCommand<Unit, Unit> RefreshLogsCommand { get; }
@@ -169,6 +201,20 @@ public partial class SettingsViewModel : ViewModelBase
         RemoveKpRelayCommand = ReactiveCommand.CreateFromTask<string>(RemoveKpRelayAsync);
         ToggleDmRelaySectionCommand = ReactiveCommand.Create(() => { ShowDmRelaySection = !ShowDmRelaySection; });
         ToggleKpRelaySectionCommand = ReactiveCommand.Create(() => { ShowKpRelaySection = !ShowKpRelaySection; });
+        ToggleGeneralRelaySectionCommand = ReactiveCommand.Create(() => { ShowGeneralRelaySection = !ShowGeneralRelaySection; });
+
+        // Relay picker commands
+        AddPickedRelaysCommand = ReactiveCommand.CreateFromTask(AddPickedRelaysAsync);
+        var canAddCustom = this.WhenAnyValue(x => x.CustomRelayDomain,
+            d => !string.IsNullOrWhiteSpace(d) && IsValidDomain(d));
+        AddCustomRelayCommand = ReactiveCommand.CreateFromTask(AddCustomRelayAsync, canAddCustom);
+
+        // NIP-65 fetch
+        FetchNip65Command = ReactiveCommand.CreateFromTask(FetchNip65Async);
+
+        // Populate the popular relay picker
+        foreach (var domain in PopularRelayDomains)
+            PopularRelays.Add(new RelayPickerItem { Domain = domain });
 
         // Log viewer commands
         ViewLogsCommand = ReactiveCommand.Create(() =>
@@ -599,6 +645,94 @@ public partial class SettingsViewModel : ViewModelBase
         _logger.LogInformation("Saved purpose relay lists: {DmCount} DM, {KpCount} KP", DmRelays.Count, KpRelays.Count);
     }
 
+    // ── Relay picker ──
+
+    private async Task AddPickedRelaysAsync()
+    {
+        var selected = PopularRelays.Where(r => r.IsSelected).ToList();
+        if (selected.Count == 0) return;
+
+        foreach (var item in selected)
+        {
+            var url = NormalizeRelayUrl(item.Domain);
+            await AddRelayToListsAsync(url);
+            item.IsSelected = false;
+        }
+    }
+
+    private async Task AddCustomRelayAsync()
+    {
+        if (string.IsNullOrWhiteSpace(CustomRelayDomain)) return;
+        var url = NormalizeRelayUrl(CustomRelayDomain);
+        await AddRelayToListsAsync(url);
+        CustomRelayDomain = string.Empty;
+    }
+
+    private async Task AddRelayToListsAsync(string url)
+    {
+        if (AddToGeneral)
+        {
+            if (!Relays.Any(r => r.Url == url))
+            {
+                Relays.Add(new RelayViewModel { Url = url, IsConnected = false });
+                await _nostrService.ConnectAsync(url);
+            }
+            await SaveRelayListAsync();
+        }
+
+        if (AddToDm)
+        {
+            if (!DmRelays.Contains(url))
+                DmRelays.Add(url);
+        }
+
+        if (AddToKp)
+        {
+            if (!KpRelays.Contains(url))
+                KpRelays.Add(url);
+        }
+
+        if (AddToDm || AddToKp)
+            await SavePurposeRelaysAsync();
+    }
+
+    // ── NIP-65 fetch ──
+
+    private async Task FetchNip65Async()
+    {
+        if (string.IsNullOrEmpty(PublicKeyHex)) return;
+
+        try
+        {
+            IsFetchingNip65 = true;
+            Nip65Status = "Fetching...";
+            Nip65Relays.Clear();
+
+            var relayList = await _nostrService.FetchRelayListAsync(PublicKeyHex);
+
+            if (relayList.Count == 0)
+            {
+                Nip65Status = "No NIP-65 relay list found on network";
+                return;
+            }
+
+            foreach (var rp in relayList)
+                Nip65Relays.Add(new RelayViewModel { Url = rp.Url, Usage = rp.Usage, IsConnected = false });
+
+            Nip65Status = $"Found {relayList.Count} relays published on network";
+            _logger.LogInformation("Fetched NIP-65 relay list: {Count} relays", relayList.Count);
+        }
+        catch (Exception ex)
+        {
+            Nip65Status = $"Failed: {ex.Message}";
+            _logger.LogError(ex, "Failed to fetch NIP-65 relay list");
+        }
+        finally
+        {
+            IsFetchingNip65 = false;
+        }
+    }
+
     private async Task PublishRelayListAsync()
     {
         if (string.IsNullOrEmpty(PublicKeyHex))
@@ -990,4 +1124,10 @@ public partial class RelayViewModel : ViewModelBase
             })
             .ToProperty(this, x => x.UsageLabel);
     }
+}
+
+public partial class RelayPickerItem : ViewModelBase
+{
+    [Reactive] public partial string Domain { get; set; } = string.Empty;
+    [Reactive] public partial bool IsSelected { get; set; }
 }
