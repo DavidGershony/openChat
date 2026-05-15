@@ -57,12 +57,14 @@ public partial class App : Avalonia.Application
 
             // Runtime permission request delegate — Android 6+ requires runtime consent
             // for dangerous permissions (RECORD_AUDIO, etc.) even if declared in the manifest.
-            ChatViewModel.PermissionRequestFunc = async permissions =>
+            Func<string[], Task<bool>> requestPermissions = async permissions =>
             {
                 var activity = MainActivity.Current;
                 if (activity == null) return false;
                 return await activity.RequestPermissionsAsync(permissions);
             };
+            ChatViewModel.PermissionRequestFunc = requestPermissions;
+            SettingsViewModel.PermissionRequestFunc = requestPermissions;
 
             var shellViewModel = new ShellViewModel(
                 nostrService, secureStorage, clipboard, qrCodeGenerator, launcher, platform);

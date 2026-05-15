@@ -212,6 +212,11 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+
+                        <!-- Reconnect only offline relays -->
+                        <Button Classes="secondary" Content="Reconnect offline relays"
+                                Command="{Binding ReconnectDisconnectedCommand}"
+                                HorizontalAlignment="Left" />
                     </StackPanel>
                 </StackPanel>
             </Border>
@@ -523,6 +528,78 @@
                 </StackPanel>
             </Border>
 
+            <!-- Notifications Section -->
+            <Border Classes="card">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Notifications" FontWeight="SemiBold" FontSize="16" />
+
+                    <!-- Mode selection -->
+                    <StackPanel Spacing="8">
+                        <RadioButton Content="Background service (keep relay connections alive)"
+                                     IsChecked="{Binding NotificationModeBackground}" />
+                        <TextBlock Text="The app keeps relay connections open in the background. Uses more battery but works without a notification server."
+                                   Classes="muted" FontSize="12"
+                                   IsVisible="{Binding NotificationModeBackground}" />
+                        <RadioButton Content="UnifiedPush (via ntfy)"
+                                     IsChecked="{Binding NotificationModePush}" />
+                    </StackPanel>
+
+                    <!-- Push mode settings -->
+                    <StackPanel Spacing="12" IsVisible="{Binding NotificationModePush}">
+                        <TextBlock Text="Register with a notification server to receive push notifications. Lower battery usage."
+                                   Classes="muted" FontSize="12" />
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Server npub" Classes="muted" FontSize="12" />
+                            <TextBox Text="{Binding NotificationServerNpub}"
+                                     FontFamily="Consolas,monospace" FontSize="13"
+                                     PlaceholderText="npub1..." />
+                        </StackPanel>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Server relay" Classes="muted" FontSize="12" />
+                            <TextBox Text="{Binding NotificationServerRelay}"
+                                     FontFamily="Consolas,monospace" FontSize="13"
+                                     PlaceholderText="wss://relay.example.com" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Push URL" Classes="muted" FontSize="12" />
+                            <TextBox Text="{Binding NotificationPushUrl}"
+                                     FontFamily="Consolas,monospace" FontSize="13"
+                                     PlaceholderText="https://ntfy.sh/your-topic" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Classes="secondary" Content="Generate topic"
+                                    Command="{Binding GeneratePushTopicCommand}" />
+                            <Button Classes="secondary" Content="Open in ntfy"
+                                    Command="{Binding SubscribeInNtfyCommand}" />
+                        </StackPanel>
+
+                        <Button Classes="primary" Content="Register"
+                                Command="{Binding RegisterNotificationsCommand}"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center" />
+
+                        <!-- Verification code (visible after registration) -->
+                        <Grid ColumnDefinitions="*,Auto"
+                              IsVisible="{Binding NotificationAwaitingVerification}">
+                            <TextBox Grid.Column="0" Text="{Binding NotificationVerifyCode}"
+                                     PlaceholderText="6-digit code"
+                                     FontFamily="Consolas,monospace" FontSize="16" />
+                            <Button Grid.Column="1" Classes="secondary" Content="Verify"
+                                    Command="{Binding VerifyNotificationsCommand}"
+                                    Margin="8,0,0,0" />
+                        </Grid>
+
+                        <TextBlock Text="{Binding NotificationRegistrationStatus}"
+                                   IsVisible="{Binding NotificationRegistrationStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                   Classes="muted" FontSize="13" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
             <!-- Developer Section -->
             <Border Classes="card">
                 <StackPanel Spacing="16">
@@ -559,8 +636,8 @@
             <!-- Logout -->
             <Button Content="Log Out" HorizontalAlignment="Stretch" Height="44"
                     Background="{DynamicResource DangerButtonBrush}" Foreground="White" FontWeight="SemiBold"
-                    HorizontalContentAlignment="Center"
-                    Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).MainViewModel.LogoutCommand}" />
+                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                    Command="{Binding LogoutCommand}" />
         </StackPanel>
     </ScrollViewer>
 
@@ -604,14 +681,17 @@
                 </Border>
 
                 <!-- Footer -->
-                <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="12"
-                            HorizontalAlignment="Right" Margin="0,16,0,0">
+                <StackPanel Grid.Row="2" Spacing="8" Margin="0,16,0,0">
                     <Button Classes="secondary" Content="Export Logs"
-                            Command="{Binding ExportLogsCommand}" />
-                    <Button Classes="secondary" Content="Open Log Folder"
-                            Command="{Binding OpenLogFolderCommand}" />
-                    <Button Classes="primary" Content="Close"
-                            Command="{Binding CloseLogViewerCommand}" />
+                            Command="{Binding ExportLogsCommand}"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center" />
+                    <Grid ColumnDefinitions="Auto,*,Auto">
+                        <Button Grid.Column="0" Classes="secondary" Content="Open Log Folder"
+                                Command="{Binding OpenLogFolderCommand}" />
+                        <Button Grid.Column="2" Classes="primary" Content="Close"
+                                Command="{Binding CloseLogViewerCommand}" />
+                    </Grid>
                 </StackPanel>
             </Grid>
         </Border>

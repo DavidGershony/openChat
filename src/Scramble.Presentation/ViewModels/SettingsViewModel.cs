@@ -98,6 +98,12 @@ public partial class SettingsViewModel : ViewModelBase
     [Reactive] public partial string? NotificationRegistrationStatus { get; set; }
     [Reactive] public partial bool NotificationAwaitingVerification { get; set; }
 
+    /// <summary>
+    /// Platform-specific delegate to request runtime permissions.
+    /// Set by the Android host in App.axaml.cs. Null on platforms that don't need it.
+    /// </summary>
+    public static Func<string[], Task<bool>>? PermissionRequestFunc { get; set; }
+
     // Library versions
     public string MarmotCsVersion { get; } = GetPackageVersion("MarmotCs.Core");
     public string DotnetMlsVersion { get; } = GetPackageVersion("DotnetMls");
@@ -158,15 +164,19 @@ public partial class SettingsViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> SaveBlossomCommand { get; }
     public ReactiveCommand<Unit, Unit> EditBlossomCommand { get; }
     public ReactiveCommand<Unit, Unit> CancelEditBlossomCommand { get; }
+    public ReactiveCommand<Unit, Unit> ReconnectDisconnectedCommand { get; }
 
     /// <summary>
-    /// Command invoked when the user taps the back arrow in the settings header.
-    /// Assigned by the parent (<see cref="MainViewModel"/>) after construction so
-    /// SettingsView does not have to reach across the visual tree to find the
-    /// shell-level navigation command. Shell-agnostic: works in both desktop
-    /// (Window-hosted) and mobile (single-view) layouts.
+    /// Assigned by the parent (<see cref="MainViewModel"/>) — shell-agnostic navigation
+    /// back to the chat list. Works in both Window-hosted (desktop) and overlay (mobile) layouts.
     /// </summary>
     [Reactive] public partial ReactiveCommand<Unit, Unit>? BackCommand { get; set; }
+
+    /// <summary>
+    /// Assigned by the parent (<see cref="MainViewModel"/>) so SettingsView does not need
+    /// a <c>$parent[Window]</c> visual-tree walk that breaks in the Avalonia mobile shell.
+    /// </summary>
+    [Reactive] public partial ReactiveCommand<Unit, Unit>? LogoutCommand { get; set; }
 
     public SettingsViewModel(INostrService nostrService, IStorageService storageService, IMlsService mlsService, IMessageService messageService, IPlatformLauncher launcher, PlatformContext? platform = null)
     {
@@ -288,6 +298,17 @@ public partial class SettingsViewModel : ViewModelBase
         EditBlossomCommand = ReactiveCommand.Create(() => { IsEditingBlossom = true; BlossomStatus = null; });
         CancelEditBlossomCommand = ReactiveCommand.Create(() => { IsEditingBlossom = false; BlossomStatus = null; });
 
+        // Reconnect only relays that are currently offline
+        ReconnectDisconnectedCommand = ReactiveCommand.CreateFromTask(async () =>
+        {
+            var disconnected = Relays.Where(r => !r.IsConnected).Select(r => r.Url).ToList();
+            foreach (var url in disconnected)
+            {
+                try { await _nostrService.ReconnectRelayAsync(url); }
+                catch (Exception ex) { _logger.LogError(ex, "Failed to reconnect to {Url}", url); }
+            }
+        });
+
         // Add default relays (will be replaced by saved relays in LoadSettingsAsync)
         foreach (var relay in NostrConstants.DefaultRelays)
             Relays.Add(new RelayViewModel { Url = relay, IsConnected = false });
@@ -328,13 +349,21 @@ public partial class SettingsViewModel : ViewModelBase
                 }
             });
 
-        // Persist notification mode
+        // Persist notification mode; request POST_NOTIFICATIONS when switching to background service
         this.WhenAnyValue(x => x.NotificationModePush)
             .Skip(1)
             .Subscribe(async push =>
             {
                 try { await _storageService.SaveSettingAsync("notification_mode", push ? "push" : "background"); }
                 catch (Exception ex) { _logger.LogError(ex, "Failed to save notification mode"); }
+
+                if (!push && PermissionRequestFunc != null)
+                {
+                    // Android 13+ requires POST_NOTIFICATIONS for any notification display
+                    const string postNotifications = "android.permission.POST_NOTIFICATIONS";
+                    var granted = await PermissionRequestFunc(new[] { postNotifications });
+                    _logger.LogInformation("POST_NOTIFICATIONS permission {Result}", granted ? "granted" : "denied");
+                }
             });
 
         // Persist notification settings

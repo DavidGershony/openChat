@@ -152,6 +152,7 @@ public partial class MainViewModel : ViewModelBase
         }
 
         LogoutCommand = ReactiveCommand.CreateFromTask(LogoutAsync);
+        SettingsViewModel.LogoutCommand = LogoutCommand;
 
         ShowMyProfileCommand = ReactiveCommand.CreateFromTask(async () =>
         {
