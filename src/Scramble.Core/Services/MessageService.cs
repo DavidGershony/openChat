@@ -863,6 +863,94 @@ public class MessageService : IMessageService, IDisposable
         }
     }
 
+    public async Task<int> AddPeerDeviceToGroupsAsync(KeyPackage peerKeyPackage)
+    {
+        if (_currentUser == null)
+            throw new InvalidOperationException("Not logged in");
+
+        _logger.LogInformation("AddPeerDevice: adding peer device (slot={SlotId}) to all groups",
+            peerKeyPackage.SlotId?[..Math.Min(16, peerKeyPackage.SlotId?.Length ?? 0)] ?? "none");
+
+        var chats = await _storageService.GetAllChatsAsync();
+        var groupChats = chats
+            .Where(c => c.Type == ChatType.Group && c.MlsGroupId != null && c.MlsGroupId.Length > 0)
+            .ToList();
+
+        if (groupChats.Count == 0)
+        {
+            _logger.LogInformation("AddPeerDevice: no group chats to add peer device to");
+            return 0;
+        }
+
+        int successCount = 0;
+
+        foreach (var chat in groupChats)
+        {
+            try
+            {
+                var groupIdHex = Convert.ToHexString(chat.MlsGroupId!).ToLowerInvariant();
+                _logger.LogInformation("AddPeerDevice: adding to group {GroupId} ({Name})",
+                    groupIdHex[..Math.Min(16, groupIdHex.Length)], chat.Name);
+
+                // Stage the add-member commit with the specific peer device KP
+                var staged = await _mlsService.StageAddMemberAsync(chat.MlsGroupId!, peerKeyPackage);
+
+                // Publish commit and wait for relay confirmation
+                var nostrGroupId = _mlsService.GetNostrGroupId(chat.MlsGroupId!);
+                var commitGroupId = nostrGroupId != null
+                    ? Convert.ToHexString(nostrGroupId).ToLowerInvariant()
+                    : groupIdHex;
+
+                if (staged.CommitData != null && staged.CommitData.Length > 0)
+                {
+                    var commitEventId = await _nostrService.PublishCommitAsync(
+                        staged.CommitData, commitGroupId, _currentUser.PrivateKeyHex);
+                    _logger.LogInformation("AddPeerDevice: commit confirmed for group {GroupId}, event {EventId}",
+                        groupIdHex[..Math.Min(16, groupIdHex.Length)], commitEventId);
+
+                    // Advance local MLS state
+                    await _mlsService.MergeStagedAsync(chat.MlsGroupId!);
+
+                    // Mark commit as processed
+                    await _storageService.SaveMessageAsync(new Message
+                    {
+                        Id = Guid.NewGuid().ToString(),
+                        ChatId = chat.Id,
+                        Content = "[peer device added]",
+                        SenderPublicKey = _currentUser.PublicKeyHex,
+                        NostrEventId = commitEventId,
+                        Timestamp = DateTime.UtcNow,
+                        Type = MessageType.System,
+                        Status = MessageStatus.Sent
+                    });
+
+                    // Send Welcome to peer device
+                    var welcomeEventId = await _nostrService.PublishWelcomeAsync(
+                        staged.WelcomeData, staged.RecipientPublicKey, _currentUser.PrivateKeyHex,
+                        staged.KeyPackageEventId);
+                    _logger.LogInformation("AddPeerDevice: Welcome sent for group {GroupId}, event {EventId}",
+                        groupIdHex[..Math.Min(16, groupIdHex.Length)], welcomeEventId);
+
+                    successCount++;
+                }
+            }
+            catch (Exception ex)
+            {
+                var groupIdHex = Convert.ToHexString(chat.MlsGroupId!).ToLowerInvariant();
+                _logger.LogWarning(ex, "AddPeerDevice: failed to add peer device to group {GroupId} — skipping",
+                    groupIdHex[..Math.Min(16, groupIdHex.Length)]);
+
+                // Attempt to clear staged commit if it exists
+                try { await _mlsService.ClearStagedAsync(chat.MlsGroupId!); }
+                catch { /* best-effort cleanup */ }
+            }
+        }
+
+        _logger.LogInformation("AddPeerDevice: added peer device to {Count}/{Total} groups",
+            successCount, groupChats.Count);
+        return successCount;
+    }
+
     public async Task RemoveMemberAsync(string chatId, string memberPublicKey)
     {
         var chat = await _storageService.GetChatAsync(chatId)

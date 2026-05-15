@@ -185,6 +185,14 @@ public interface IMlsService
     byte[] GetMediaExporterSecret(byte[] groupId);
 
     /// <summary>
+    /// Get the local device's KeyPackage slot ID (d-tag for kind 30443 events).
+    /// Returns null if no KeyPackage has been published yet on this device.
+    /// Used for multi-device detection: KPs from the same pubkey with a different
+    /// slot ID belong to a peer device.
+    /// </summary>
+    string? GetLocalKeyPackageSlotId();
+
+    /// <summary>
     /// MIP-03 encrypt raw commit/proposal bytes using the group's current exporter secret
     /// and wrap in a signed kind 445 event with ephemeral key.
     /// Must be called BEFORE the local state advances (use pre-commit exporter secret).

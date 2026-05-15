@@ -2102,6 +2102,10 @@ public class NostrService : INostrService, IDisposable
                                 ushort.TryParse(csTag[1][2..], System.Globalization.NumberStyles.HexNumber, null, out var parsed))
                                 ciphersuiteId = parsed;
 
+                            // Extract d-tag (slot ID) for multi-device differentiation
+                            var dTagValue = tagsArray
+                                .FirstOrDefault(t => t.Length >= 2 && t[0] == "d")?[1];
+
                             var keyPackage = new KeyPackage
                             {
                                 Id = eventId ?? Guid.NewGuid().ToString(),
@@ -2110,6 +2114,7 @@ public class NostrService : INostrService, IDisposable
                                 EventJson = eventData.GetRawText(),
                                 NostrEventId = eventId,
                                 CiphersuiteId = ciphersuiteId,
+                                SlotId = dTagValue,
                                 CreatedAt = DateTimeOffset.FromUnixTimeSeconds(createdAt).UtcDateTime,
                                 ExpiresAt = DateTimeOffset.FromUnixTimeSeconds(createdAt).UtcDateTime.AddDays(30),
                                 RelayUrls = parsedRelays.Length > 0

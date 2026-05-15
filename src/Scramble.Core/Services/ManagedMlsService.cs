@@ -1255,6 +1255,8 @@ public class ManagedMlsService : IMlsService
         return result;
     }
 
+    public string? GetLocalKeyPackageSlotId() => _keyPackageSlotId;
+
     // ---- Persistence helpers ----
 
     private async Task SaveServiceStateAsync()

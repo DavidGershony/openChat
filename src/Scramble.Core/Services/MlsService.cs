@@ -349,6 +349,12 @@ public class MlsService : IMlsService
         throw new NotSupportedException("MIP-04 media exporter secret is not available with the Rust MDK backend. Use the managed (C#) backend instead.");
     }
 
+    public string? GetLocalKeyPackageSlotId()
+    {
+        // Rust MDK manages KeyPackage slots internally — slot ID not accessible from C#.
+        return null;
+    }
+
     public Task<byte[]> EncryptCommitAsync(byte[] groupId, byte[] mip03EncryptedCommitData)
     {
         _logger.LogDebug("EncryptCommitAsync: Rust backend does not support MIP-03 commit wrapping");

@@ -117,6 +117,15 @@ public interface IMessageService
     Task AddMemberAsync(string chatId, string memberPublicKey);
 
     /// <summary>
+    /// Add a peer device (same Nostr identity, different MLS leaf) to all groups
+    /// where the current device is a member. Uses a specific KeyPackage from the
+    /// peer device rather than fetching the newest KP for the pubkey.
+    /// </summary>
+    /// <param name="peerKeyPackage">The peer device's KeyPackage (different slot ID from local device).</param>
+    /// <returns>The number of groups the peer device was successfully added to.</returns>
+    Task<int> AddPeerDeviceToGroupsAsync(KeyPackage peerKeyPackage);
+
+    /// <summary>
     /// Remove a member from a group.
     /// </summary>
     Task RemoveMemberAsync(string chatId, string memberPublicKey);

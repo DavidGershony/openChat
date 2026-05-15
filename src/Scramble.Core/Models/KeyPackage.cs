@@ -99,6 +99,13 @@ public class KeyPackage
     public KeyPackageStatus Status { get; set; } = KeyPackageStatus.Active;
 
     /// <summary>
+    /// The d-tag (slot ID) from the kind 30443 addressable event.
+    /// Each device uses a unique, stable slot ID so multiple devices can publish
+    /// KeyPackages under the same Nostr identity without overwriting each other.
+    /// </summary>
+    public string? SlotId { get; set; }
+
+    /// <summary>
     /// Relay URLs where this KeyPackage was published.
     /// </summary>
     public List<string> RelayUrls { get; set; } = new();

@@ -811,6 +811,37 @@ public partial class MainViewModel : ViewModelBase
                             _logger.LogInformation("No KeyPackage found on relays — auto-publishing one");
                             await _messageService.AutoPublishKeyPackageIfNeededAsync();
                         }
+
+                        // Multi-device: detect peer device KeyPackages (same pubkey, different slot ID)
+                        var localSlotId = _mlsService.GetLocalKeyPackageSlotId();
+                        if (!string.IsNullOrEmpty(localSlotId))
+                        {
+                            var peerKps = myKeyPackages
+                                .Where(kp => kp.IsCipherSuiteSupported
+                                    && !string.IsNullOrEmpty(kp.SlotId)
+                                    && kp.SlotId != localSlotId)
+                                .ToList();
+
+                            if (peerKps.Count > 0)
+                            {
+                                _logger.LogInformation("Detected {Count} peer device KeyPackage(s), adding to groups",
+                                    peerKps.Count);
+                                foreach (var peerKp in peerKps)
+                                {
+                                    try
+                                    {
+                                        var added = await _messageService.AddPeerDeviceToGroupsAsync(peerKp);
+                                        _logger.LogInformation("Peer device (slot={SlotId}) added to {Count} group(s)",
+                                            peerKp.SlotId?[..Math.Min(16, peerKp.SlotId?.Length ?? 0)], added);
+                                    }
+                                    catch (Exception peerEx)
+                                    {
+                                        _logger.LogWarning(peerEx, "Failed to add peer device (slot={SlotId}) to groups",
+                                            peerKp.SlotId?[..Math.Min(16, peerKp.SlotId?.Length ?? 0)]);
+                                    }
+                                }
+                            }
+                        }
                     }
                     catch (Exception ex)
                     {
