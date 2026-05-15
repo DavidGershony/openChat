@@ -549,7 +549,7 @@ public class NostrService : INostrService, IDisposable
                     // Route Marmot-specific events
                     // Allow unwrapping when either local private key OR external signer is available
                     if (nostrEvent.Kind == 1059 &&
-                        (!string.IsNullOrEmpty(_subscribedUserPrivKey) || _externalSigner?.IsConnected == true))
+                        (!string.IsNullOrEmpty(_subscribedUserPrivKey) || _externalSigner != null))
                     {
                         // NIP-59 Gift Wrap — unwrap to find the inner rumor
                         var rumor = await UnwrapGiftWrapAsync(nostrEvent);
@@ -660,9 +660,9 @@ public class NostrService : INostrService, IDisposable
                 // The SerializeEventMessage returns ["EVENT", {...}], we need ["AUTH", {...}]
                 authEventMessage = authEventMessage.Replace("[\"EVENT\",", "[\"AUTH\",");
             }
-            else if (_externalSigner?.IsConnected == true)
+            else if (_externalSigner != null)
             {
-                // Sign via external signer
+                // Sign via external signer (auto-reconnects if WebSocket dropped)
                 _logger.LogInformation("NIP-42: using external signer for AUTH on {RelayUrl}", relayUrl);
                 var unsignedEvent = new UnsignedNostrEvent
                 {
@@ -1363,7 +1363,7 @@ public class NostrService : INostrService, IDisposable
             senderPrivateKeyHex = privateKeyHex;
             senderPublicKeyHex = Convert.ToHexString(DerivePublicKey(Convert.FromHexString(privateKeyHex))).ToLowerInvariant();
         }
-        else if (_externalSigner?.IsConnected == true)
+        else if (_externalSigner != null)
         {
             senderPublicKeyHex = _externalSigner.PublicKeyHex
                 ?? throw new InvalidOperationException("External signer connected but public key not available.");
@@ -1613,7 +1613,7 @@ public class NostrService : INostrService, IDisposable
 
             _logger.LogDebug("Created seal locally: id={SealId}", sealId[..16]);
         }
-        else if (_externalSigner?.IsConnected == true)
+        else if (_externalSigner != null)
         {
             // External signer path: delegate NIP-44 encrypt and event signing
             _logger.LogDebug("Creating seal via external signer");
@@ -1687,7 +1687,7 @@ public class NostrService : INostrService, IDisposable
                     Convert.FromHexString(_subscribedUserPrivKey), Convert.FromHexString(sealPubkey));
                 rumorJson = Nip44Encryption.Decrypt(sealContent, sealConvKey2);
             }
-            else if (_externalSigner?.IsConnected == true)
+            else if (_externalSigner != null)
             {
                 // External signer path: delegate NIP-44 decrypt
                 _logger.LogDebug("Unwrapping gift wrap via external signer");
@@ -2206,7 +2206,7 @@ public class NostrService : INostrService, IDisposable
                 var eventData = doc.RootElement;
                 var nostrEvent = ParseNostrEvent(eventData, relayUrl);
                 if (nostrEvent != null && nostrEvent.Kind == 1059 &&
-                    (!string.IsNullOrEmpty(_subscribedUserPrivKey) || _externalSigner?.IsConnected == true))
+                    (!string.IsNullOrEmpty(_subscribedUserPrivKey) || _externalSigner != null))
                 {
                     var rumor = await UnwrapGiftWrapAsync(nostrEvent);
                     if (rumor != null && rumor.Kind == wantedInnerKind)
@@ -2895,7 +2895,7 @@ public class NostrService : INostrService, IDisposable
 
     public async Task<string> Nip44EncryptAsync(string plaintext, string recipientPubKey)
     {
-        if (_externalSigner?.IsConnected == true)
+        if (_externalSigner != null)
         {
             _logger.LogDebug("Delegating NIP-44 encrypt to external signer for recipient {Recipient}",
                 recipientPubKey[..Math.Min(16, recipientPubKey.Length)]);
@@ -2917,7 +2917,7 @@ public class NostrService : INostrService, IDisposable
 
     public async Task<string> Nip44DecryptAsync(string ciphertext, string senderPubKey)
     {
-        if (_externalSigner?.IsConnected == true)
+        if (_externalSigner != null)
         {
             _logger.LogDebug("Delegating NIP-44 decrypt to external signer for sender {Sender}",
                 senderPubKey[..Math.Min(16, senderPubKey.Length)]);
@@ -2969,7 +2969,7 @@ public class NostrService : INostrService, IDisposable
 
             eventMessage = SerializeEventMessage(eventId, publicKeyHex, createdAt, kind, tags, content, signatureHex);
         }
-        else if (_externalSigner?.IsConnected == true)
+        else if (_externalSigner != null)
         {
             // Sign via external signer (NIP-46)
             _logger.LogInformation("Using external signer to sign kind {Kind} event", kind);
