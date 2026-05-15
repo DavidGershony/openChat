@@ -420,9 +420,13 @@
 
                             <!-- Manual relay panel -->
                             <StackPanel Spacing="4" IsVisible="{Binding BotRelayModeManual}">
-                                <TextBox Text="{Binding BotManualRelay}"
-                                         PlaceholderText="wss://relay.example.com"
-                                         AcceptsReturn="False" />
+                                <Grid ColumnDefinitions="Auto,*">
+                                    <TextBlock Grid.Column="0" Text="wss://" FontFamily="Consolas,monospace"
+                                               FontSize="13" VerticalAlignment="Center" Opacity="0.5" Margin="0,0,2,0" />
+                                    <TextBox Grid.Column="1" Text="{Binding BotManualRelay}"
+                                             PlaceholderText="relay.example.com"
+                                             AcceptsReturn="False" />
+                                </Grid>
                             </StackPanel>
                         </StackPanel>
 

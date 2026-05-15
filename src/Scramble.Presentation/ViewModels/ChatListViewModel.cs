@@ -1424,12 +1424,12 @@ public partial class ChatListViewModel : ViewModelBase
             else if (BotRelayModeManual)
             {
                 var manual = BotManualRelay.Trim();
-                if (string.IsNullOrEmpty(manual) || (!manual.StartsWith("wss://") && !manual.StartsWith("ws://")))
+                if (string.IsNullOrEmpty(manual))
                 {
-                    AddBotError = "Enter a valid relay URL (wss://...)";
+                    AddBotError = "Enter a relay domain (e.g. relay.example.com)";
                     return;
                 }
-                relayUrls.Add(manual);
+                relayUrls.Add(SettingsViewModel.NormalizeRelayUrl(manual));
             }
 
             // Try to fetch profile for name resolution

@@ -58,7 +58,7 @@ public partial class LoginViewModel : ViewModelBase
     [Reactive] public partial string? NostrConnectUri { get; set; }
     /// <summary>QR code as PNG bytes (platform-neutral). Views convert to their image type.</summary>
     [Reactive] public partial byte[]? NostrConnectQrPngBytes { get; set; }
-    [Reactive] public partial string SignerRelayInput { get; set; } = "wss://nos.lol";
+    [Reactive] public partial string SignerRelayInput { get; set; } = "nos.lol";
 
     // Login method selection
     [Reactive] public partial LoginMethod SelectedLoginMethod { get; set; } = LoginMethod.PrivateKey;
@@ -226,7 +226,8 @@ public partial class LoginViewModel : ViewModelBase
     {
         try
         {
-            var signerRelay = string.IsNullOrWhiteSpace(SignerRelayInput) ? "wss://relay.damus.io" : SignerRelayInput.Trim();
+            var rawInput = string.IsNullOrWhiteSpace(SignerRelayInput) ? "relay.damus.io" : SignerRelayInput.Trim();
+            var signerRelay = SettingsViewModel.NormalizeRelayUrl(rawInput);
             var relays = new[] { signerRelay, "wss://relay.nsec.app" }.Distinct().ToList();
             var uri = await ExternalSigner!.GenerateAndListenForConnectionAsync(relays);
             NostrConnectUri = uri;

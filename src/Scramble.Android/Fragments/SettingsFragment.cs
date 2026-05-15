@@ -220,12 +220,12 @@ public class SettingsFragment : Fragment
             ViewModel.IsMip04Enabled = true;
         };
 
-        // Blossom server URL
-        blossomInput.Text = ViewModel.BlossomServerUrl;
+        // Blossom server URL — domain only, backend adds https://
+        blossomInput.Text = ViewModel.BlossomServerDomain;
         blossomInput.FocusChange += (s, e) =>
         {
             if (!e.HasFocus && !string.IsNullOrWhiteSpace(blossomInput.Text))
-                ViewModel.BlossomServerUrl = blossomInput.Text!.Trim();
+                ViewModel.BlossomServerDomain = blossomInput.Text!.Trim();
         };
 
         // Notification mode switching
@@ -421,12 +421,12 @@ public class SettingsFragment : Fragment
             .DisposeWith(_disposables);
 
         // Blossom server sync
-        ViewModel.WhenAnyValue(x => x.BlossomServerUrl)
+        ViewModel.WhenAnyValue(x => x.BlossomServerDomain)
             .ObserveOn(RxSchedulers.MainThreadScheduler)
-            .Subscribe(url =>
+            .Subscribe(domain =>
             {
-                if (blossomInput.Text != url)
-                    blossomInput.Text = url;
+                if (blossomInput.Text != domain)
+                    blossomInput.Text = domain;
             })
             .DisposeWith(_disposables);
 

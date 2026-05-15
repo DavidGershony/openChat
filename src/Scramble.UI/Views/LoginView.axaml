@@ -199,11 +199,13 @@
 
                         <!-- Signer relay -->
                         <TextBlock Text="Signer relay:" FontSize="12" Margin="0,4,0,0" />
-                        <Grid ColumnDefinitions="*,Auto" Margin="0">
-                            <TextBox Grid.Column="0" Text="{Binding SignerRelayInput}"
-                                     PlaceholderText="wss://relay.damus.io"
+                        <Grid ColumnDefinitions="Auto,*,Auto" Margin="0">
+                            <TextBlock Grid.Column="0" Text="wss://" FontFamily="Consolas,monospace"
+                                       FontSize="13" VerticalAlignment="Center" Opacity="0.5" Margin="0,0,2,0" />
+                            <TextBox Grid.Column="1" Text="{Binding SignerRelayInput}"
+                                     PlaceholderText="relay.damus.io"
                                      FontSize="13" />
-                            <Button Grid.Column="1" Margin="8,0,0,0"
+                            <Button Grid.Column="2" Margin="8,0,0,0"
                                     Command="{Binding RefreshSignerRelayCommand}"
                                     ToolTip.Tip="Regenerate QR code with new relay"
                                     Padding="8,6">

@@ -70,9 +70,11 @@ public partial class SettingsViewModel : ViewModelBase
     [Reactive] public partial bool IsMip04Enabled { get; set; }
     [Reactive] public partial string? Mip04DependencyWarning { get; set; }
 
-    // Blossom server
-    [Reactive] public partial string BlossomServerUrl { get; set; } = "https://blossom.primal.net";
+    // Blossom server — user edits domain only; full URL is https://{domain}
+    [Reactive] public partial string BlossomServerDomain { get; set; } = "blossom.primal.net";
+    [Reactive] public partial bool IsEditingBlossom { get; set; }
     [Reactive] public partial string? BlossomStatus { get; set; }
+    [Reactive] public partial bool BlossomStatusIsError { get; set; }
 
     // Notifications
     [Reactive] public partial bool NotificationModeBackground { get; set; } = true;
@@ -121,6 +123,9 @@ public partial class SettingsViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> VerifyNotificationsCommand { get; }
     public ReactiveCommand<Unit, Unit> GeneratePushTopicCommand { get; }
     public ReactiveCommand<Unit, Unit> SubscribeInNtfyCommand { get; }
+    public ReactiveCommand<Unit, Unit> SaveBlossomCommand { get; }
+    public ReactiveCommand<Unit, Unit> EditBlossomCommand { get; }
+    public ReactiveCommand<Unit, Unit> CancelEditBlossomCommand { get; }
 
     /// <summary>
     /// Command invoked when the user taps the back arrow in the settings header.
@@ -145,17 +150,18 @@ public partial class SettingsViewModel : ViewModelBase
         ConfirmPublishProfileCommand = ReactiveCommand.CreateFromTask(PublishProfileAsync);
         CancelPublishProfileCommand = ReactiveCommand.Create(() => { ShowPublishConfirmation = false; });
 
+        // Relay add validation — user enters domain only, we prepend wss://
         var canAddRelay = this.WhenAnyValue(x => x.NewRelayUrl,
-            url => !string.IsNullOrWhiteSpace(url) && Uri.TryCreate(url, UriKind.Absolute, out _));
+            url => !string.IsNullOrWhiteSpace(url) && IsValidDomain(url));
 
         AddRelayCommand = ReactiveCommand.CreateFromTask(AddRelayAsync, canAddRelay);
         RemoveRelayCommand = ReactiveCommand.Create<RelayViewModel>(RemoveRelay);
 
         // Per-purpose relay commands
         var canAddDmRelay = this.WhenAnyValue(x => x.NewDmRelayUrl,
-            url => !string.IsNullOrWhiteSpace(url) && Uri.TryCreate(url, UriKind.Absolute, out _));
+            url => !string.IsNullOrWhiteSpace(url) && IsValidDomain(url));
         var canAddKpRelay = this.WhenAnyValue(x => x.NewKpRelayUrl,
-            url => !string.IsNullOrWhiteSpace(url) && Uri.TryCreate(url, UriKind.Absolute, out _));
+            url => !string.IsNullOrWhiteSpace(url) && IsValidDomain(url));
 
         AddDmRelayCommand = ReactiveCommand.CreateFromTask(AddDmRelayAsync, canAddDmRelay);
         RemoveDmRelayCommand = ReactiveCommand.CreateFromTask<string>(RemoveDmRelayAsync);
@@ -231,29 +237,14 @@ public partial class SettingsViewModel : ViewModelBase
         GeneratePushTopicCommand = ReactiveCommand.Create(GeneratePushTopic);
         SubscribeInNtfyCommand = ReactiveCommand.Create(SubscribeInNtfy);
 
+        // Blossom server edit/save
+        SaveBlossomCommand = ReactiveCommand.CreateFromTask(SaveBlossomAsync);
+        EditBlossomCommand = ReactiveCommand.Create(() => { IsEditingBlossom = true; BlossomStatus = null; });
+        CancelEditBlossomCommand = ReactiveCommand.Create(() => { IsEditingBlossom = false; BlossomStatus = null; });
+
         // Add default relays (will be replaced by saved relays in LoadSettingsAsync)
         foreach (var relay in NostrConstants.DefaultRelays)
             Relays.Add(new RelayViewModel { Url = relay, IsConnected = false });
-
-        // Persist Blossom server URL changes and sync with upload service
-        this.WhenAnyValue(x => x.BlossomServerUrl)
-            .Skip(1)
-            .Where(url => !string.IsNullOrWhiteSpace(url))
-            .Subscribe(async url =>
-            {
-                try
-                {
-                    var normalized = url.Trim().ToLowerInvariant();
-                    await _storageService.SaveSettingAsync("blossom_server_url", normalized);
-                    if (ChatViewModel.MediaUploadService is BlossomUploadService blossom)
-                        blossom.BlossomServerUrl = normalized;
-                    _logger.LogInformation("Blossom server URL updated: {Url}", normalized);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to save Blossom server URL");
-                }
-            });
 
         // Persist MIP-04 toggle changes and check dependencies
         this.WhenAnyValue(x => x.IsMip04Enabled)
@@ -391,15 +382,15 @@ public partial class SettingsViewModel : ViewModelBase
         if (IsMip04Enabled)
             Mip04DependencyWarning = ChatViewModel.AudioRecordingService?.CheckDependencies();
 
-        // Load Blossom server URL
+        // Load Blossom server URL — stored as full URL, display as domain only
         var blossomUrl = await _storageService.GetSettingAsync("blossom_server_url");
         if (!string.IsNullOrEmpty(blossomUrl))
         {
-            BlossomServerUrl = blossomUrl;
+            BlossomServerDomain = StripScheme(blossomUrl);
             if (ChatViewModel.MediaUploadService is BlossomUploadService blossom)
                 blossom.BlossomServerUrl = blossomUrl;
         }
-        _logger.LogInformation("Loaded Blossom server: {Url}", BlossomServerUrl);
+        _logger.LogInformation("Loaded Blossom server domain: {Domain}", BlossomServerDomain);
 
         // Load notification settings
         var notifMode = await _storageService.GetSettingAsync("notification_mode");
@@ -519,10 +510,11 @@ public partial class SettingsViewModel : ViewModelBase
     {
         if (string.IsNullOrWhiteSpace(NewRelayUrl)) return;
 
-        var relay = new RelayViewModel { Url = NewRelayUrl, IsConnected = false };
+        var url = NormalizeRelayUrl(NewRelayUrl);
+        var relay = new RelayViewModel { Url = url, IsConnected = false };
         Relays.Add(relay);
 
-        await _nostrService.ConnectAsync(NewRelayUrl);
+        await _nostrService.ConnectAsync(url);
         NewRelayUrl = string.Empty;
         await SaveRelayListAsync();
     }
@@ -567,8 +559,9 @@ public partial class SettingsViewModel : ViewModelBase
     private async Task AddDmRelayAsync()
     {
         if (string.IsNullOrWhiteSpace(NewDmRelayUrl)) return;
-        if (!DmRelays.Contains(NewDmRelayUrl))
-            DmRelays.Add(NewDmRelayUrl);
+        var url = NormalizeRelayUrl(NewDmRelayUrl);
+        if (!DmRelays.Contains(url))
+            DmRelays.Add(url);
         NewDmRelayUrl = string.Empty;
         await SavePurposeRelaysAsync();
     }
@@ -582,8 +575,9 @@ public partial class SettingsViewModel : ViewModelBase
     private async Task AddKpRelayAsync()
     {
         if (string.IsNullOrWhiteSpace(NewKpRelayUrl)) return;
-        if (!KpRelays.Contains(NewKpRelayUrl))
-            KpRelays.Add(NewKpRelayUrl);
+        var url = NormalizeRelayUrl(NewKpRelayUrl);
+        if (!KpRelays.Contains(url))
+            KpRelays.Add(url);
         NewKpRelayUrl = string.Empty;
         await SavePurposeRelaysAsync();
     }
@@ -876,6 +870,102 @@ public partial class SettingsViewModel : ViewModelBase
             return "not loaded";
         }
         catch { return "error"; }
+    }
+
+    // ── URL helpers ──
+
+    /// <summary>
+    /// Normalizes user input to a full wss:// relay URL.
+    /// Accepts bare domain ("relay.damus.io"), domain with path, or full URL.
+    /// </summary>
+    internal static string NormalizeRelayUrl(string input)
+    {
+        var trimmed = input.Trim().TrimEnd('/');
+        if (trimmed.StartsWith("wss://", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("ws://", StringComparison.OrdinalIgnoreCase))
+            return trimmed.ToLowerInvariant();
+        return $"wss://{trimmed}".ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Validates that the input looks like a domain (or domain/path).
+    /// Strips any wss:// prefix before checking so users who paste full URLs still pass.
+    /// </summary>
+    internal static bool IsValidDomain(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input)) return false;
+        var trimmed = input.Trim();
+
+        // Accept full URLs too (backward compat for paste)
+        if (trimmed.StartsWith("wss://", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("ws://", StringComparison.OrdinalIgnoreCase))
+            return Uri.TryCreate(trimmed, UriKind.Absolute, out _);
+
+        // Bare domain: must contain a dot, no spaces, valid as URI when prefixed
+        return trimmed.Contains('.') && !trimmed.Contains(' ') &&
+               Uri.TryCreate($"wss://{trimmed}", UriKind.Absolute, out _);
+    }
+
+    /// <summary>
+    /// Strips https:// or http:// scheme from a URL, returning the domain/path.
+    /// </summary>
+    internal static string StripScheme(string url)
+    {
+        var trimmed = url.Trim().TrimEnd('/');
+        if (trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            return trimmed[8..];
+        if (trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+            return trimmed[7..];
+        if (trimmed.StartsWith("wss://", StringComparison.OrdinalIgnoreCase))
+            return trimmed[6..];
+        if (trimmed.StartsWith("ws://", StringComparison.OrdinalIgnoreCase))
+            return trimmed[5..];
+        return trimmed;
+    }
+
+    /// <summary>
+    /// Saves the blossom server domain after validation.
+    /// </summary>
+    private async Task SaveBlossomAsync()
+    {
+        try
+        {
+            var domain = BlossomServerDomain.Trim().ToLowerInvariant();
+
+            // Strip scheme if user pasted a full URL
+            domain = StripScheme(domain).TrimEnd('/');
+
+            if (string.IsNullOrWhiteSpace(domain) || !domain.Contains('.') || domain.Contains(' '))
+            {
+                BlossomStatus = "Invalid domain";
+                BlossomStatusIsError = true;
+                return;
+            }
+
+            var fullUrl = $"https://{domain}";
+            if (!Uri.TryCreate(fullUrl, UriKind.Absolute, out _))
+            {
+                BlossomStatus = "Invalid domain";
+                BlossomStatusIsError = true;
+                return;
+            }
+
+            BlossomServerDomain = domain;
+            await _storageService.SaveSettingAsync("blossom_server_url", fullUrl);
+            if (ChatViewModel.MediaUploadService is BlossomUploadService blossom)
+                blossom.BlossomServerUrl = fullUrl;
+
+            BlossomStatus = "Saved";
+            BlossomStatusIsError = false;
+            IsEditingBlossom = false;
+            _logger.LogInformation("Blossom server URL updated: {Url}", fullUrl);
+        }
+        catch (Exception ex)
+        {
+            BlossomStatus = $"Error: {ex.Message}";
+            BlossomStatusIsError = true;
+            _logger.LogError(ex, "Failed to save Blossom server URL");
+        }
     }
 }
 

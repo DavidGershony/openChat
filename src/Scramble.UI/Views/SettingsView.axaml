@@ -156,14 +156,16 @@
                     </ItemsControl>
 
                     <!-- Add Relay -->
-                    <Grid ColumnDefinitions="*,Auto">
-                        <TextBox Grid.Column="0" Text="{Binding NewRelayUrl}"
-                                 PlaceholderText="wss://relay.example.com">
+                    <Grid ColumnDefinitions="Auto,*,Auto">
+                        <TextBlock Grid.Column="0" Text="wss://" FontFamily="Consolas,monospace"
+                                   FontSize="13" VerticalAlignment="Center" Opacity="0.5" Margin="0,0,2,0" />
+                        <TextBox Grid.Column="1" Text="{Binding NewRelayUrl}"
+                                 PlaceholderText="relay.example.com">
                             <TextBox.KeyBindings>
                                 <KeyBinding Gesture="Enter" Command="{Binding AddRelayCommand}" />
                             </TextBox.KeyBindings>
                         </TextBox>
-                        <Button Grid.Column="1" Classes="primary" Content="Add"
+                        <Button Grid.Column="2" Classes="primary" Content="Add"
                                 Command="{Binding AddRelayCommand}" Margin="8,0,0,0" />
                     </Grid>
 
@@ -225,14 +227,16 @@
                         </ItemsControl>
 
                         <!-- Add DM relay -->
-                        <Grid ColumnDefinitions="*,Auto">
-                            <TextBox Grid.Column="0" Text="{Binding NewDmRelayUrl}"
-                                     PlaceholderText="wss://relay.example.com" FontSize="12">
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <TextBlock Grid.Column="0" Text="wss://" FontFamily="Consolas,monospace"
+                                       FontSize="12" VerticalAlignment="Center" Opacity="0.5" Margin="0,0,2,0" />
+                            <TextBox Grid.Column="1" Text="{Binding NewDmRelayUrl}"
+                                     PlaceholderText="relay.example.com" FontSize="12">
                                 <TextBox.KeyBindings>
                                     <KeyBinding Gesture="Enter" Command="{Binding AddDmRelayCommand}" />
                                 </TextBox.KeyBindings>
                             </TextBox>
-                            <Button Grid.Column="1" Classes="primary" Content="Add"
+                            <Button Grid.Column="2" Classes="primary" Content="Add"
                                     Command="{Binding AddDmRelayCommand}" Margin="8,0,0,0" />
                         </Grid>
                     </StackPanel>
@@ -288,14 +292,16 @@
                         </ItemsControl>
 
                         <!-- Add KP relay -->
-                        <Grid ColumnDefinitions="*,Auto">
-                            <TextBox Grid.Column="0" Text="{Binding NewKpRelayUrl}"
-                                     PlaceholderText="wss://relay.example.com" FontSize="12">
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <TextBlock Grid.Column="0" Text="wss://" FontFamily="Consolas,monospace"
+                                       FontSize="12" VerticalAlignment="Center" Opacity="0.5" Margin="0,0,2,0" />
+                            <TextBox Grid.Column="1" Text="{Binding NewKpRelayUrl}"
+                                     PlaceholderText="relay.example.com" FontSize="12">
                                 <TextBox.KeyBindings>
                                     <KeyBinding Gesture="Enter" Command="{Binding AddKpRelayCommand}" />
                                 </TextBox.KeyBindings>
                             </TextBox>
-                            <Button Grid.Column="1" Classes="primary" Content="Add"
+                            <Button Grid.Column="2" Classes="primary" Content="Add"
                                     Command="{Binding AddKpRelayCommand}" Margin="8,0,0,0" />
                         </Grid>
                     </StackPanel>
@@ -413,9 +419,55 @@
                         <TextBlock Text="Blossom media server" FontSize="14" />
                         <TextBlock Text="Server for uploading encrypted voice messages and media"
                                    Classes="muted" FontSize="12" />
-                        <TextBox Text="{Binding BlossomServerUrl}"
-                                 PlaceholderText="https://blossom.nostr.build"
-                                 FontFamily="Consolas,monospace" FontSize="13" />
+
+                        <!-- Display mode: label showing current domain -->
+                        <StackPanel IsVisible="{Binding !IsEditingBlossom}" Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="https://" FontFamily="Consolas,monospace" FontSize="13"
+                                       VerticalAlignment="Center" Opacity="0.5" />
+                            <TextBlock Text="{Binding BlossomServerDomain}" FontFamily="Consolas,monospace"
+                                       FontSize="13" VerticalAlignment="Center" Cursor="Hand" />
+                            <Button Classes="icon" Command="{Binding EditBlossomCommand}"
+                                    ToolTip.Tip="Edit" Padding="4">
+                                <PathIcon Data="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1.003 1.003 0 0 0 0-1.42l-2.34-2.34a1.003 1.003 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.82z"
+                                          Width="14" Height="14" />
+                            </Button>
+                        </StackPanel>
+
+                        <!-- Edit mode: input + save/cancel -->
+                        <StackPanel IsVisible="{Binding IsEditingBlossom}" Spacing="4">
+                            <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                                <TextBlock Grid.Column="0" Text="https://" FontFamily="Consolas,monospace"
+                                           FontSize="13" VerticalAlignment="Center" Opacity="0.5" Margin="0,0,2,0" />
+                                <TextBox Grid.Column="1" Text="{Binding BlossomServerDomain}"
+                                         PlaceholderText="blossom.example.com"
+                                         FontFamily="Consolas,monospace" FontSize="13">
+                                    <TextBox.KeyBindings>
+                                        <KeyBinding Gesture="Enter" Command="{Binding SaveBlossomCommand}" />
+                                    </TextBox.KeyBindings>
+                                </TextBox>
+                                <Button Grid.Column="2" Classes="primary" Content="Save"
+                                        Command="{Binding SaveBlossomCommand}" Margin="8,0,0,0" />
+                                <Button Grid.Column="3" Classes="secondary" Content="Cancel"
+                                        Command="{Binding CancelEditBlossomCommand}" Margin="4,0,0,0" />
+                            </Grid>
+                        </StackPanel>
+
+                        <!-- Validation status -->
+                        <TextBlock Text="{Binding BlossomStatus}"
+                                   IsVisible="{Binding BlossomStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                   Foreground="{DynamicResource StatusOnlineBrush}"
+                                   FontSize="12" FontWeight="SemiBold">
+                            <TextBlock.IsVisible>
+                                <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                    <Binding Path="BlossomStatus" Converter="{x:Static StringConverters.IsNotNullOrEmpty}" />
+                                    <Binding Path="!BlossomStatusIsError" />
+                                </MultiBinding>
+                            </TextBlock.IsVisible>
+                        </TextBlock>
+                        <TextBlock Text="{Binding BlossomStatus}"
+                                   IsVisible="{Binding BlossomStatusIsError}"
+                                   Foreground="{DynamicResource StatusErrorBrush}"
+                                   FontSize="12" FontWeight="SemiBold" />
                     </StackPanel>
                 </StackPanel>
             </Border>
