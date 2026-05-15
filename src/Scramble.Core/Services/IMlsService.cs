@@ -193,6 +193,15 @@ public interface IMlsService
     string? GetLocalKeyPackageSlotId();
 
     /// <summary>
+    /// Try to reconcile the local slot ID from relay-fetched KeyPackages.
+    /// When the local slot ID is null (v3 state migration or pre-multi-device),
+    /// matches locally stored KP bytes against relay KPs to adopt the correct
+    /// d-tag. This prevents the device from appearing as a "new peer" to itself.
+    /// Returns true if a slot ID was adopted, false if already set or no match found.
+    /// </summary>
+    bool TryReconcileSlotId(IEnumerable<KeyPackage> relayKeyPackages);
+
+    /// <summary>
     /// MIP-03 encrypt raw commit/proposal bytes using the group's current exporter secret
     /// and wrap in a signed kind 445 event with ephemeral key.
     /// Must be called BEFORE the local state advances (use pre-commit exporter secret).

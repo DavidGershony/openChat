@@ -1257,6 +1257,50 @@ public class ManagedMlsService : IMlsService
 
     public string? GetLocalKeyPackageSlotId() => _keyPackageSlotId;
 
+    public bool TryReconcileSlotId(IEnumerable<KeyPackage> relayKeyPackages)
+    {
+        if (!string.IsNullOrEmpty(_keyPackageSlotId))
+        {
+            _logger.LogDebug("TryReconcileSlotId: slot ID already set ({SlotId}), no reconciliation needed",
+                _keyPackageSlotId[..Math.Min(16, _keyPackageSlotId.Length)]);
+            return false;
+        }
+
+        if (_storedKeyPackages.Count == 0)
+        {
+            _logger.LogDebug("TryReconcileSlotId: no stored KeyPackages locally, cannot match");
+            return false;
+        }
+
+        // Find a relay KP whose MLS bytes match one of our locally stored KPs.
+        // This identifies our own published KP and lets us adopt its d-tag (slot ID).
+        foreach (var relayKp in relayKeyPackages)
+        {
+            if (string.IsNullOrEmpty(relayKp.SlotId) || relayKp.Data == null || relayKp.Data.Length == 0)
+                continue;
+
+            if (HasKeyMaterialForKeyPackage(relayKp.Data))
+            {
+                _keyPackageSlotId = relayKp.SlotId;
+                _logger.LogInformation(
+                    "TryReconcileSlotId: adopted slot ID {SlotId} from relay KP (matched local key material)",
+                    _keyPackageSlotId[..Math.Min(16, _keyPackageSlotId.Length)]);
+
+                // Persist the updated state so the slot ID survives restart
+                _ = Task.Run(async () =>
+                {
+                    try { await SaveServiceStateAsync(); }
+                    catch (Exception ex) { _logger.LogWarning(ex, "Failed to persist reconciled slot ID"); }
+                });
+
+                return true;
+            }
+        }
+
+        _logger.LogDebug("TryReconcileSlotId: no relay KP matched locally stored key material");
+        return false;
+    }
+
     // ---- Persistence helpers ----
 
     private async Task SaveServiceStateAsync()

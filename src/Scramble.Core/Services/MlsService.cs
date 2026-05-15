@@ -355,6 +355,12 @@ public class MlsService : IMlsService
         return null;
     }
 
+    public bool TryReconcileSlotId(IEnumerable<KeyPackage> relayKeyPackages)
+    {
+        // Rust MDK manages KeyPackage slots internally — reconciliation not applicable.
+        return false;
+    }
+
     public Task<byte[]> EncryptCommitAsync(byte[] groupId, byte[] mip03EncryptedCommitData)
     {
         _logger.LogDebug("EncryptCommitAsync: Rust backend does not support MIP-03 commit wrapping");

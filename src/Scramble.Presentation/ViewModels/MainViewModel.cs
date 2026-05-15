@@ -831,28 +831,37 @@ public partial class MainViewModel : ViewModelBase
                     try
                     {
                         var myKeyPackages = await _nostrService.FetchKeyPackagesAsync(CurrentUser.PublicKeyHex);
-                        if (!myKeyPackages.Any())
-                        {
-                            // No KeyPackage on relays — auto-publish one so others can invite this user
-                            // immediately (covers freshly-created identities and recovered keys with no
-                            // prior publish). Idempotent: if a local unused KP already exists, no-op.
-                            _logger.LogInformation("No KeyPackage found on relays — auto-publishing one");
-                            await _messageService.AutoPublishKeyPackageIfNeededAsync();
-                        }
 
-                        // Multi-device: detect peer device KeyPackages (same pubkey, different slot ID)
+                        // Always ensure this device has a published KeyPackage, regardless of
+                        // whether other KPs exist on the relay (they may belong to other devices).
+                        // Idempotent: no-ops if a local unused KP already exists.
+                        await _messageService.AutoPublishKeyPackageIfNeededAsync();
+
+                        // If we don't have a local slot ID yet (v3 state migration or pre-multi-device),
+                        // try to adopt the d-tag from a relay KP that matches our local key material.
+                        // This prevents the device from seeing its own KP as a "peer device".
+                        _mlsService.TryReconcileSlotId(myKeyPackages);
+
+                        // Multi-device: detect peer device KeyPackages (same pubkey, different slot ID).
+                        // Only process genuinely new peer devices — skip slot IDs we've already seen.
                         var localSlotId = _mlsService.GetLocalKeyPackageSlotId();
                         if (!string.IsNullOrEmpty(localSlotId))
                         {
+                            // Load the set of peer slot IDs we've already processed
+                            var seenRaw = await _storageService.GetSettingAsync("seen_peer_slot_ids");
+                            var seenSlotIds = new HashSet<string>(
+                                seenRaw?.Split(',', StringSplitOptions.RemoveEmptyEntries) ?? Array.Empty<string>());
+
                             var peerKps = myKeyPackages
                                 .Where(kp => kp.IsCipherSuiteSupported
                                     && !string.IsNullOrEmpty(kp.SlotId)
-                                    && kp.SlotId != localSlotId)
+                                    && kp.SlotId != localSlotId
+                                    && !seenSlotIds.Contains(kp.SlotId!))
                                 .ToList();
 
                             if (peerKps.Count > 0)
                             {
-                                _logger.LogInformation("Detected {Count} peer device KeyPackage(s), adding to groups",
+                                _logger.LogInformation("Detected {Count} NEW peer device KeyPackage(s), adding to groups",
                                     peerKps.Count);
 
                                 var allSkippedGroups = new List<string>();
@@ -874,7 +883,15 @@ public partial class MainViewModel : ViewModelBase
                                         _logger.LogWarning(peerEx, "Failed to add peer device (slot={SlotId}) to groups",
                                             peerKp.SlotId?[..Math.Min(16, peerKp.SlotId?.Length ?? 0)]);
                                     }
+
+                                    // Mark this slot ID as seen regardless of success/failure,
+                                    // so we don't repeatedly attempt to add dead/orphan devices.
+                                    seenSlotIds.Add(peerKp.SlotId!);
                                 }
+
+                                // Persist updated seen set
+                                await _storageService.SaveSettingAsync("seen_peer_slot_ids",
+                                    string.Join(",", seenSlotIds));
 
                                 // Show forward-secrecy banner if not previously dismissed
                                 var dismissed = await _storageService.GetSettingAsync("forward_secrecy_banner_dismissed");
