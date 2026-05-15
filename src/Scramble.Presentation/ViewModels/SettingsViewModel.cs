@@ -90,6 +90,14 @@ public partial class SettingsViewModel : ViewModelBase
 
     // Notifications
     [Reactive] public partial bool NotificationModeBackground { get; set; } = true;
+
+    // My Devices
+    [Reactive] public partial bool ShowDeviceSection { get; set; } = true;
+    [Reactive] public partial bool IsFetchingDevices { get; set; }
+    [Reactive] public partial string? DeviceStatus { get; set; }
+    [Reactive] public partial string? LocalSlotId { get; set; }
+    [Reactive] public partial string? LocalSlotIdShort { get; set; }
+    public ObservableCollection<DeviceViewModel> MyDevices { get; } = new();
     [Reactive] public partial bool NotificationModePush { get; set; }
     [Reactive] public partial string NotificationServerNpub { get; set; } = string.Empty;
     [Reactive] public partial string NotificationServerRelay { get; set; } = string.Empty;
@@ -165,6 +173,8 @@ public partial class SettingsViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> EditBlossomCommand { get; }
     public ReactiveCommand<Unit, Unit> CancelEditBlossomCommand { get; }
     public ReactiveCommand<Unit, Unit> ReconnectDisconnectedCommand { get; }
+    public ReactiveCommand<Unit, Unit> FetchDevicesCommand { get; }
+    public ReactiveCommand<Unit, Unit> ToggleDeviceSectionCommand { get; }
 
     /// <summary>
     /// Assigned by the parent (<see cref="MainViewModel"/>) — shell-agnostic navigation
@@ -308,6 +318,10 @@ public partial class SettingsViewModel : ViewModelBase
                 catch (Exception ex) { _logger.LogError(ex, "Failed to reconnect to {Url}", url); }
             }
         });
+
+        // My Devices
+        FetchDevicesCommand = ReactiveCommand.CreateFromTask(FetchDevicesAsync);
+        ToggleDeviceSectionCommand = ReactiveCommand.Create(() => { ShowDeviceSection = !ShowDeviceSection; });
 
         // Add default relays (will be replaced by saved relays in LoadSettingsAsync)
         foreach (var relay in NostrConstants.DefaultRelays)
@@ -524,6 +538,15 @@ public partial class SettingsViewModel : ViewModelBase
         }
 
         _logger.LogInformation("Loaded purpose relay lists: {DmCount} DM, {KpCount} KP", DmRelays.Count, KpRelays.Count);
+
+        // Load local device slot ID
+        var slotId = _mlsService.GetLocalKeyPackageSlotId();
+        LocalSlotId = slotId;
+        LocalSlotIdShort = slotId != null && slotId.Length >= 8 ? slotId[..8] : slotId;
+        _logger.LogInformation("Local device slot ID: {SlotId}", LocalSlotIdShort ?? "(none)");
+
+        // Auto-fetch devices from relays
+        _ = FetchDevicesAsync();
     }
 
     private async Task SaveProfileAsync()
@@ -1130,6 +1153,83 @@ public partial class SettingsViewModel : ViewModelBase
             _logger.LogError(ex, "Failed to save Blossom server URL");
         }
     }
+
+    private async Task FetchDevicesAsync()
+    {
+        if (string.IsNullOrEmpty(PublicKeyHex))
+        {
+            DeviceStatus = "No account loaded";
+            return;
+        }
+
+        try
+        {
+            IsFetchingDevices = true;
+            DeviceStatus = "Fetching devices from relays...";
+            MyDevices.Clear();
+
+            var keyPackages = (await _nostrService.FetchKeyPackagesAsync(PublicKeyHex)).ToList();
+            var localSlotId = _mlsService.GetLocalKeyPackageSlotId();
+
+            if (keyPackages.Count == 0)
+            {
+                DeviceStatus = "No KeyPackages found on relays. Publish a KeyPackage first.";
+                return;
+            }
+
+            // Group by slot ID — each unique slot ID is a device
+            var deviceGroups = keyPackages
+                .Where(kp => !string.IsNullOrEmpty(kp.SlotId))
+                .GroupBy(kp => kp.SlotId!)
+                .OrderByDescending(g => g.Key == localSlotId) // This device first
+                .ThenByDescending(g => g.Max(kp => kp.CreatedAt))
+                .ToList();
+
+            foreach (var group in deviceGroups)
+            {
+                var latestKp = group.OrderByDescending(kp => kp.CreatedAt).First();
+                var isThisDevice = group.Key == localSlotId;
+
+                MyDevices.Add(new DeviceViewModel
+                {
+                    ShortSlotId = group.Key.Length >= 8 ? group.Key[..8] : group.Key,
+                    FullSlotId = group.Key,
+                    CreatedAt = latestKp.CreatedAt,
+                    IsThisDevice = isThisDevice,
+                    CipherSuite = latestKp.CipherSuiteName,
+                    IsSupported = latestKp.IsCipherSuiteSupported,
+                });
+            }
+
+            // Also add KPs without a slot ID (legacy, pre-multi-device)
+            var noSlotKps = keyPackages.Where(kp => string.IsNullOrEmpty(kp.SlotId)).ToList();
+            foreach (var kp in noSlotKps)
+            {
+                MyDevices.Add(new DeviceViewModel
+                {
+                    ShortSlotId = "(legacy)",
+                    FullSlotId = "",
+                    CreatedAt = kp.CreatedAt,
+                    IsThisDevice = string.IsNullOrEmpty(localSlotId), // likely this device if we have no local slot
+                    CipherSuite = kp.CipherSuiteName,
+                    IsSupported = kp.IsCipherSuiteSupported,
+                });
+            }
+
+            DeviceStatus = $"Found {MyDevices.Count} device(s) on relays";
+            _logger.LogInformation("FetchDevices: found {Count} device(s), local slot={LocalSlot}",
+                MyDevices.Count, localSlotId?[..Math.Min(8, localSlotId?.Length ?? 0)]);
+        }
+        catch (Exception ex)
+        {
+            DeviceStatus = $"Error: {ex.Message}";
+            _logger.LogError(ex, "Failed to fetch devices");
+        }
+        finally
+        {
+            IsFetchingDevices = false;
+        }
+    }
 }
 
 public partial class RelayViewModel : ViewModelBase
@@ -1159,4 +1259,28 @@ public partial class RelayPickerItem : ViewModelBase
 {
     [Reactive] public partial string Domain { get; set; } = string.Empty;
     [Reactive] public partial bool IsSelected { get; set; }
+}
+
+public partial class DeviceViewModel : ViewModelBase
+{
+    /// <summary>Short display label: first 8 chars of slot ID.</summary>
+    [Reactive] public partial string ShortSlotId { get; set; } = string.Empty;
+
+    /// <summary>Full 64-char slot ID hex string.</summary>
+    public string FullSlotId { get; set; } = string.Empty;
+
+    /// <summary>When the KeyPackage was published (from Nostr event created_at).</summary>
+    [Reactive] public partial DateTime CreatedAt { get; set; }
+
+    /// <summary>True if this is the current device.</summary>
+    [Reactive] public partial bool IsThisDevice { get; set; }
+
+    /// <summary>Display label: "This device" or "Peer device".</summary>
+    public string DeviceLabel => IsThisDevice ? "This device" : "Peer device";
+
+    /// <summary>Cipher suite name from the KeyPackage.</summary>
+    [Reactive] public partial string CipherSuite { get; set; } = string.Empty;
+
+    /// <summary>Whether the KP uses a supported cipher suite.</summary>
+    [Reactive] public partial bool IsSupported { get; set; } = true;
 }

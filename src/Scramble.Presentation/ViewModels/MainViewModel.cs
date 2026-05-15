@@ -61,6 +61,15 @@ public partial class MainViewModel : ViewModelBase
     /// </summary>
     [Reactive] public partial string? SkippedNonAdminGroupsText { get; set; }
 
+    /// <summary>True while sending device-add request DMs to group admins.</summary>
+    [Reactive] public partial bool IsRequestingDeviceAdd { get; set; }
+
+    /// <summary>
+    /// Detailed info for each skipped non-admin group (admin pubkeys, chat IDs).
+    /// Populated during peer device detection and consumed by RequestDeviceAddCommand.
+    /// </summary>
+    private List<SkippedGroupInfo> _skippedGroupDetails = new();
+
     // My Profile Dialog
     [Reactive] public partial bool ShowMyProfileDialog { get; set; }
     [Reactive] public partial string? MyNpub { get; set; }
@@ -95,6 +104,7 @@ public partial class MainViewModel : ViewModelBase
     public ReactiveCommand<RelayStatusViewModel, Unit> ReconnectRelayCommand { get; }
     public ReactiveCommand<Unit, Unit> ToggleRelayListCommand { get; }
     public ReactiveCommand<Unit, Unit> DismissForwardSecrecyBannerCommand { get; }
+    public ReactiveCommand<Unit, Unit> RequestDeviceAddCommand { get; }
 
     public MainViewModel(IMessageService messageService, INostrService nostrService, IStorageService storageService, IMlsService mlsService,
         IPlatformClipboard clipboard, IQrCodeGenerator qrCodeGenerator, IPlatformLauncher launcher, PlatformContext? platform = null,
@@ -282,6 +292,7 @@ public partial class MainViewModel : ViewModelBase
         {
             ShowForwardSecrecyBanner = false;
             SkippedNonAdminGroupsText = null;
+            _skippedGroupDetails.Clear();
             try
             {
                 await _storageService.SaveSettingAsync("forward_secrecy_banner_dismissed", "true");
@@ -291,6 +302,8 @@ public partial class MainViewModel : ViewModelBase
                 _logger.LogWarning(ex, "Failed to persist forward-secrecy banner dismissal");
             }
         });
+
+        RequestDeviceAddCommand = ReactiveCommand.CreateFromTask(RequestDeviceAddAsync);
 
         // Subscribe to chat selection
         ChatListViewModel.WhenAnyValue(x => x.SelectedChat)
@@ -866,6 +879,7 @@ public partial class MainViewModel : ViewModelBase
                                     peerKps.Count);
 
                                 var allSkippedGroups = new List<string>();
+                                var allSkippedDetails = new List<SkippedGroupInfo>();
 
                                 foreach (var peerKp in peerKps)
                                 {
@@ -878,6 +892,7 @@ public partial class MainViewModel : ViewModelBase
                                             addResult.AddedCount, addResult.SkippedNonAdminGroups.Count);
 
                                         allSkippedGroups.AddRange(addResult.SkippedNonAdminGroups);
+                                        allSkippedDetails.AddRange(addResult.SkippedGroupDetails);
                                     }
                                     catch (Exception peerEx)
                                     {
@@ -901,6 +916,7 @@ public partial class MainViewModel : ViewModelBase
                                     if (allSkippedGroups.Count > 0)
                                     {
                                         SkippedNonAdminGroupsText = string.Join(", ", allSkippedGroups.Distinct());
+                                        _skippedGroupDetails = allSkippedDetails;
                                     }
                                     ShowForwardSecrecyBanner = true;
                                 }
@@ -1008,6 +1024,107 @@ public partial class MainViewModel : ViewModelBase
 
         _onLogoutRequested?.Invoke();
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Send NIP-17 DMs to the admins of each skipped non-admin group, asking them
+    /// to add this device. Deduplicates messages so each admin receives at most one
+    /// DM listing all groups they administer.
+    /// </summary>
+    private async Task RequestDeviceAddAsync()
+    {
+        if (_skippedGroupDetails.Count == 0 || CurrentUser == null)
+            return;
+
+        IsRequestingDeviceAdd = true;
+        try
+        {
+            // Build a map: admin pubkey -> list of group names they administer
+            var adminToGroups = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var group in _skippedGroupDetails)
+            {
+                foreach (var adminPubkey in group.AdminPubkeys)
+                {
+                    // Don't send a message to ourselves
+                    if (string.Equals(adminPubkey, CurrentUser.PublicKeyHex, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    if (!adminToGroups.TryGetValue(adminPubkey, out var groups))
+                    {
+                        groups = new List<string>();
+                        adminToGroups[adminPubkey] = groups;
+                    }
+                    if (!groups.Contains(group.GroupName))
+                        groups.Add(group.GroupName);
+                }
+            }
+
+            if (adminToGroups.Count == 0)
+            {
+                _logger.LogWarning("RequestDeviceAdd: no admin pubkeys to message (all are self)");
+                // Still dismiss since there's nothing actionable
+                await DismissForwardSecrecyBannerCommand.Execute();
+                return;
+            }
+
+            var sentCount = 0;
+            foreach (var (adminPubkey, groupNames) in adminToGroups)
+            {
+                try
+                {
+                    var groupList = string.Join(", ", groupNames);
+                    var content = groupNames.Count == 1
+                        ? $"Hi, I've linked a new device to my account. Could you re-add me to \"{groupNames[0]}\" so my new device can receive messages? Thanks!"
+                        : $"Hi, I've linked a new device to my account. Could you re-add me to these groups so my new device can receive messages: {groupList}. Thanks!";
+
+                    var rumorTags = new List<List<string>> { new() { "p", adminPubkey } };
+
+                    await _nostrService.PublishGiftWrapAsync(
+                        rumorKind: 14,
+                        content: content,
+                        rumorTags: rumorTags,
+                        senderPrivateKeyHex: CurrentUser.PrivateKeyHex,
+                        senderPublicKeyHex: CurrentUser.PublicKeyHex,
+                        recipientPublicKeyHex: adminPubkey);
+
+                    sentCount++;
+                    _logger.LogInformation("Sent device-add request DM to admin {Admin} for {Count} group(s)",
+                        adminPubkey[..Math.Min(16, adminPubkey.Length)], groupNames.Count);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to send device-add request to admin {Admin}",
+                        adminPubkey[..Math.Min(16, adminPubkey.Length)]);
+                }
+            }
+
+            _logger.LogInformation("Device-add requests sent to {Count} admin(s)", sentCount);
+
+            // Update banner text to confirm requests were sent, then auto-dismiss
+            SkippedNonAdminGroupsText = $"Requests sent to {sentCount} admin(s). They will re-add you when they see the message.";
+            _skippedGroupDetails.Clear();
+
+            // Auto-dismiss after a short delay so user sees the confirmation
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(5000);
+                ShowForwardSecrecyBanner = false;
+                SkippedNonAdminGroupsText = null;
+                try
+                {
+                    await _storageService.SaveSettingAsync("forward_secrecy_banner_dismissed", "true");
+                }
+                catch { /* best-effort */ }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send device-add requests");
+        }
+        finally
+        {
+            IsRequestingDeviceAdd = false;
+        }
     }
 }
 

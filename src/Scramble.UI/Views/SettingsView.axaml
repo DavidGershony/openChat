@@ -423,6 +423,101 @@
                 </StackPanel>
             </Border>
 
+            <!-- ── My Devices ── -->
+            <Border Classes="card" Padding="0">
+                <StackPanel>
+                    <Button Classes="icon" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                            Padding="16,12" Command="{Binding ToggleDeviceSectionCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <PathIcon Data="M480 -120 160 -440l64 -64 256 256 256 -256 64 64 -320 320Z"
+                                      Width="14" Height="14" IsVisible="{Binding ShowDeviceSection}" />
+                            <PathIcon Data="M560 -240 320 -480l64 -64 256 256 256 -256 64 64 -400 400Z"
+                                      Width="14" Height="14" IsVisible="{Binding !ShowDeviceSection}">
+                                <PathIcon.RenderTransform>
+                                    <RotateTransform Angle="-90" />
+                                </PathIcon.RenderTransform>
+                            </PathIcon>
+                            <TextBlock Text="My Devices" FontWeight="SemiBold" FontSize="13" />
+                            <TextBlock Text="{Binding MyDevices.Count, StringFormat='({0})'}"
+                                       Classes="muted" FontSize="12" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <StackPanel IsVisible="{Binding ShowDeviceSection}" Spacing="8" Margin="16,0,16,16">
+                        <TextBlock Text="Devices linked to your Nostr identity. Each device has a unique MLS KeyPackage slot on relays."
+                                   Classes="muted" FontSize="11" TextWrapping="Wrap" />
+
+                        <!-- This device's slot ID -->
+                        <Border Background="{DynamicResource SurfaceSecondaryBrush}"
+                                CornerRadius="6" Padding="12,8"
+                                IsVisible="{Binding LocalSlotId, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="This Device Slot ID" FontWeight="SemiBold" FontSize="12" />
+                                <TextBlock Text="{Binding LocalSlotId}" FontFamily="Consolas" FontSize="11"
+                                           TextWrapping="Wrap" Opacity="0.85" />
+                            </StackPanel>
+                        </Border>
+                        <TextBlock Text="No slot ID yet — publish a KeyPackage first"
+                                   Classes="muted" FontSize="12"
+                                   IsVisible="{Binding LocalSlotId, Converter={x:Static StringConverters.IsNullOrEmpty}}" />
+
+                        <Button Classes="secondary" Content="Refresh from Relays"
+                                Command="{Binding FetchDevicesCommand}"
+                                IsEnabled="{Binding !IsFetchingDevices}"
+                                HorizontalAlignment="Left" />
+
+                        <StackPanel Orientation="Horizontal" Spacing="8"
+                                    IsVisible="{Binding IsFetchingDevices}">
+                            <TextBlock Text="Fetching..." Classes="muted" FontSize="13" />
+                        </StackPanel>
+
+                        <TextBlock Text="{Binding DeviceStatus}"
+                                   Classes="muted" FontSize="12"
+                                   IsVisible="{Binding DeviceStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                        <ItemsControl x:Name="DevicesItemsControl" ItemsSource="{Binding MyDevices}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:DeviceViewModel">
+                                    <Border Background="{DynamicResource SurfaceSecondaryBrush}"
+                                            CornerRadius="6" Padding="10,8" Margin="0,2">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
+                                            <!-- Device status dot -->
+                                            <Panel Grid.Column="0" Grid.RowSpan="2" Width="10" Height="10"
+                                                   Margin="0,0,10,0" VerticalAlignment="Center">
+                                                <Ellipse Fill="{DynamicResource StatusOnlineBrush}" IsVisible="{Binding IsThisDevice}" />
+                                                <Ellipse Fill="{DynamicResource TextMutedBrush}" IsVisible="{Binding !IsThisDevice}" />
+                                            </Panel>
+
+                                            <!-- Slot ID + label -->
+                                            <StackPanel Grid.Column="1" Grid.Row="0" Orientation="Horizontal" Spacing="8">
+                                                <TextBlock Text="{Binding ShortSlotId}" FontFamily="Consolas" FontSize="12" />
+                                                <Border Background="{DynamicResource NostrPurpleBrush}"
+                                                        CornerRadius="4" Padding="6,1"
+                                                        IsVisible="{Binding IsThisDevice}">
+                                                    <TextBlock Text="This device" FontSize="10" Foreground="White" />
+                                                </Border>
+                                            </StackPanel>
+
+                                            <!-- Date -->
+                                            <TextBlock Grid.Column="1" Grid.Row="1"
+                                                       Text="{Binding CreatedAt, StringFormat='{}{0:yyyy-MM-dd HH:mm}'}"
+                                                       Classes="muted" FontSize="11" />
+
+                                            <!-- Unsupported indicator -->
+                                            <TextBlock Grid.Column="2" Grid.RowSpan="2"
+                                                       Text="Unsupported" FontSize="10"
+                                                       Foreground="{DynamicResource StatusErrorBrush}"
+                                                       VerticalAlignment="Center"
+                                                       IsVisible="{Binding !IsSupported}" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
             <!-- Privacy Section -->
             <Border Classes="card">
                 <StackPanel Spacing="16">

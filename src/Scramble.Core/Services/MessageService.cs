@@ -901,6 +901,12 @@ public class MessageService : IMessageService, IDisposable
                     _logger.LogInformation("AddPeerDevice: skipping non-admin group {GroupId} ({Name})",
                         groupIdHex[..Math.Min(16, groupIdHex.Length)], chat.Name);
                     result.SkippedNonAdminGroups.Add(chat.Name ?? groupIdHex[..Math.Min(16, groupIdHex.Length)]);
+                    result.SkippedGroupDetails.Add(new SkippedGroupInfo
+                    {
+                        GroupName = chat.Name ?? groupIdHex[..Math.Min(16, groupIdHex.Length)],
+                        ChatId = chat.Id,
+                        AdminPubkeys = adminPubkeys.ToList(),
+                    });
                     continue;
                 }
 

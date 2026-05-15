@@ -289,6 +289,25 @@ public class PeerDeviceAddResult
     /// <summary>Names of non-admin groups that were skipped (user should ask the admin).</summary>
     public List<string> SkippedNonAdminGroups { get; set; } = new();
 
+    /// <summary>Detailed info for each skipped non-admin group (for device-add requests).</summary>
+    public List<SkippedGroupInfo> SkippedGroupDetails { get; set; } = new();
+
     /// <summary>Number of groups where the add failed due to an error.</summary>
     public int FailedCount { get; set; }
+}
+
+/// <summary>
+/// Information about a non-admin group that was skipped during peer device addition.
+/// Used to send device-add requests to group admins.
+/// </summary>
+public class SkippedGroupInfo
+{
+    /// <summary>Display name of the group.</summary>
+    public string GroupName { get; set; } = string.Empty;
+
+    /// <summary>Chat ID (for local reference).</summary>
+    public string ChatId { get; set; } = string.Empty;
+
+    /// <summary>Admin public keys (hex) for this group.</summary>
+    public List<string> AdminPubkeys { get; set; } = new();
 }
