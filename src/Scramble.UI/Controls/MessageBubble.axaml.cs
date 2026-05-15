@@ -44,8 +44,29 @@ public partial class MessageBubble : UserControl
         // Desktop keeps the existing hover behavior via OnPointerEntered/Exited.
         if (PlatformContext.IsMobileGlobal && DataContext is MessageViewModel vm)
         {
+            // Don't toggle when the tap lands on a button inside the action bar —
+            // PointerReleased bubbles up before Click fires, so toggling here would
+            // hide the button and swallow its Click event (the "reply not working" bug).
+            if (e.Source is Control source && IsInsideButton(source))
+                return;
+
             vm.IsHovering = !vm.IsHovering;
         }
+    }
+
+    /// <summary>
+    /// Walks up from a control to check if it's inside a Button.
+    /// Used to prevent the tap-to-toggle from swallowing button clicks.
+    /// </summary>
+    private static bool IsInsideButton(Control? control)
+    {
+        while (control != null)
+        {
+            if (control is Button)
+                return true;
+            control = control.Parent as Control;
+        }
+        return false;
     }
 
     private void OnReplyClick(object? sender, RoutedEventArgs e)

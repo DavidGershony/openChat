@@ -280,11 +280,11 @@
                 <StackPanel Orientation="Horizontal" Spacing="2"
                             IsVisible="{Binding IsHovering}"
                             HorizontalAlignment="Right" Margin="0,2,0,0">
-                    <Button Content="↩" Classes="icon" Padding="4,2" FontSize="14"
+                    <Button Content="↩" Classes="emoji" FontFamily="default"
                             ToolTip.Tip="Reply"
                             Tag="{Binding}"
                             Click="OnReplyClick" />
-                    <Button Content="📋" Classes="icon" Padding="4,2" FontSize="14"
+                    <Button Content="📋" Classes="emoji"
                             ToolTip.Tip="Copy text"
                             Tag="{Binding}"
                             IsVisible="{Binding IsTextMessage}"
@@ -555,11 +555,11 @@
                 <StackPanel Orientation="Horizontal" Spacing="2"
                             IsVisible="{Binding IsHovering}"
                             HorizontalAlignment="Right" Margin="0,2,0,0">
-                    <Button Content="↩" Classes="icon" Padding="4,2" FontSize="14"
+                    <Button Content="↩" Classes="emoji" FontFamily="default"
                             ToolTip.Tip="Reply"
                             Tag="{Binding}"
                             Click="OnReplyClick" />
-                    <Button Content="📋" Classes="icon" Padding="4,2" FontSize="14"
+                    <Button Content="📋" Classes="emoji"
                             ToolTip.Tip="Copy text"
                             Tag="{Binding}"
                             IsVisible="{Binding IsTextMessage}"
