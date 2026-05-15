@@ -20,6 +20,12 @@
     <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
   </PropertyGroup>
 
+  <!-- Release signing: activated when the keystore path is supplied via -p:AndroidSigningKeyStore=... (CI only).
+       Without AndroidKeyStore=true the SDK ignores the signing properties and falls back to debug signing. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release' and '$(AndroidSigningKeyStore)' != ''">
+    <AndroidKeyStore>true</AndroidKeyStore>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.0.3" />
     <PackageReference Include="Avalonia.Android" Version="12.0.3" />
