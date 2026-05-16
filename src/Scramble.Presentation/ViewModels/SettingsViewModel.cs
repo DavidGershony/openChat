@@ -98,6 +98,12 @@ public partial class SettingsViewModel : ViewModelBase
     [Reactive] public partial string? LocalSlotId { get; set; }
     [Reactive] public partial string? LocalSlotIdShort { get; set; }
     public ObservableCollection<DeviceViewModel> MyDevices { get; } = new();
+
+    // Device sync
+    [Reactive] public partial string SyncRelayDomain { get; set; } = string.Empty;
+    [Reactive] public partial bool IsEditingSyncRelay { get; set; }
+    [Reactive] public partial string? SyncRelayStatus { get; set; }
+    [Reactive] public partial bool ShowDeviceSyncChat { get; set; }
     [Reactive] public partial bool NotificationModePush { get; set; }
     [Reactive] public partial string NotificationServerNpub { get; set; } = string.Empty;
     [Reactive] public partial string NotificationServerRelay { get; set; } = string.Empty;
@@ -176,6 +182,9 @@ public partial class SettingsViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> FetchDevicesCommand { get; }
     public ReactiveCommand<Unit, Unit> ToggleDeviceSectionCommand { get; }
     public ReactiveCommand<DeviceViewModel, Unit> MarkDeviceAsLostCommand { get; }
+    public ReactiveCommand<Unit, Unit> SaveSyncRelayCommand { get; }
+    public ReactiveCommand<Unit, Unit> EditSyncRelayCommand { get; }
+    public ReactiveCommand<Unit, Unit> CancelEditSyncRelayCommand { get; }
 
     /// <summary>
     /// Assigned by the parent (<see cref="MainViewModel"/>) — shell-agnostic navigation
@@ -324,6 +333,22 @@ public partial class SettingsViewModel : ViewModelBase
         FetchDevicesCommand = ReactiveCommand.CreateFromTask(FetchDevicesAsync);
         ToggleDeviceSectionCommand = ReactiveCommand.Create(() => { ShowDeviceSection = !ShowDeviceSection; });
         MarkDeviceAsLostCommand = ReactiveCommand.CreateFromTask<DeviceViewModel>(MarkDeviceAsLostAsync);
+        SaveSyncRelayCommand = ReactiveCommand.CreateFromTask(SaveSyncRelayAsync);
+        EditSyncRelayCommand = ReactiveCommand.Create(() => { IsEditingSyncRelay = true; });
+        CancelEditSyncRelayCommand = ReactiveCommand.Create(() => { IsEditingSyncRelay = false; });
+
+        // Persist show/hide device-sync chat toggle
+        this.WhenAnyValue(x => x.ShowDeviceSyncChat)
+            .Skip(1)
+            .Subscribe(async show =>
+            {
+                try
+                {
+                    await _storageService.SaveSettingAsync("show_device_sync_chat", show ? "true" : "false");
+                    _logger.LogInformation("Device-sync chat visibility {Status}", show ? "enabled" : "disabled");
+                }
+                catch (Exception ex) { _logger.LogError(ex, "Failed to save device-sync chat visibility"); }
+            });
 
         // Add default relays (will be replaced by saved relays in LoadSettingsAsync)
         foreach (var relay in NostrConstants.DefaultRelays)
@@ -565,6 +590,15 @@ public partial class SettingsViewModel : ViewModelBase
         LocalSlotId = slotId;
         LocalSlotIdShort = slotId != null && slotId.Length >= 8 ? slotId[..8] : slotId;
         _logger.LogInformation("Local device slot ID: {SlotId}", LocalSlotIdShort ?? "(none)");
+
+        // Load sync relay
+        var syncRelayUrl = await _storageService.GetSettingAsync("sync_relay_url");
+        if (!string.IsNullOrEmpty(syncRelayUrl))
+            SyncRelayDomain = StripScheme(syncRelayUrl);
+
+        // Load device-sync chat visibility
+        var showSync = await _storageService.GetSettingAsync("show_device_sync_chat");
+        ShowDeviceSyncChat = showSync == "true";
 
         // Auto-fetch devices from relays
         _ = FetchDevicesAsync();
@@ -824,6 +858,15 @@ public partial class SettingsViewModel : ViewModelBase
             // otherwise fall back to the general relay list
             var dmRelayUrls = DmRelays.Count > 0 ? DmRelays.ToList() : relayUrls;
             var kpRelayUrls = KpRelays.Count > 0 ? KpRelays.ToList() : relayUrls;
+
+            // Include sync relay in KP relay list so all devices can discover each other
+            var syncRelayUrl = await _storageService.GetSettingAsync("sync_relay_url");
+            if (!string.IsNullOrEmpty(syncRelayUrl) &&
+                !kpRelayUrls.Any(r => string.Equals(r.TrimEnd('/'), syncRelayUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase)))
+            {
+                kpRelayUrls.Add(syncRelayUrl);
+            }
+
             await _nostrService.PublishDmRelayListAsync(dmRelayUrls, PrivateKeyHex);
             await _nostrService.PublishKeyPackageRelayListAsync(kpRelayUrls, PrivateKeyHex);
             await _storageService.SaveUserRelayListAsync(PublicKeyHex, relayPrefs);
@@ -1319,6 +1362,56 @@ public partial class SettingsViewModel : ViewModelBase
         {
             DeviceStatus = $"Failed to mark device as lost: {ex.Message}";
             _logger.LogError(ex, "Failed to mark device {SlotId} as lost", device.FullSlotId);
+        }
+    }
+
+    private async Task SaveSyncRelayAsync()
+    {
+        var domain = SyncRelayDomain?.Trim() ?? "";
+        if (string.IsNullOrEmpty(domain))
+        {
+            // Clear sync relay
+            await _storageService.SaveSettingAsync("sync_relay_url", "");
+            SyncRelayStatus = "Cleared";
+            IsEditingSyncRelay = false;
+            _logger.LogInformation("Sync relay cleared");
+            return;
+        }
+
+        // Strip scheme if user pasted a full URL, then build wss:// URL
+        domain = StripScheme(domain);
+        var fullUrl = $"wss://{domain}";
+
+        try
+        {
+            // Validate it looks like a valid URL
+            if (!Uri.TryCreate(fullUrl, UriKind.Absolute, out _))
+            {
+                SyncRelayStatus = "Invalid relay domain";
+                return;
+            }
+
+            await _storageService.SaveSettingAsync("sync_relay_url", fullUrl);
+            SyncRelayDomain = domain;
+
+            // Connect to the sync relay immediately
+            try
+            {
+                await _nostrService.ConnectAsync(fullUrl);
+                SyncRelayStatus = "Saved and connected";
+            }
+            catch
+            {
+                SyncRelayStatus = "Saved (connection failed — will retry on next login)";
+            }
+
+            IsEditingSyncRelay = false;
+            _logger.LogInformation("Sync relay saved: {Url}", fullUrl);
+        }
+        catch (Exception ex)
+        {
+            SyncRelayStatus = $"Error: {ex.Message}";
+            _logger.LogError(ex, "Failed to save sync relay");
         }
     }
 }

@@ -109,5 +109,11 @@ public enum ChatType
 {
     DirectMessage,
     Group,
-    Bot
+    Bot,
+    /// <summary>
+    /// Internal device-sync group ("Private Notes"). Created automatically on login,
+    /// used to sync metadata between devices and verify device liveness.
+    /// Hidden from the chat list unless the user opts in via Settings.
+    /// </summary>
+    DeviceSync
 }

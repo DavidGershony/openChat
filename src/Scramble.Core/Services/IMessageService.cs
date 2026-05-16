@@ -112,6 +112,21 @@ public interface IMessageService
     Task<Chat> GetOrCreateBotChatAsync(string botPublicKey, List<string>? relayUrls = null);
 
     /// <summary>
+    /// Get or create the internal device-sync group ("Private Notes").
+    /// Created automatically on login — used to sync metadata between devices
+    /// and verify device liveness via invite acceptance.
+    /// </summary>
+    Task<Chat> GetOrCreateDeviceSyncGroupAsync();
+
+    /// <summary>
+    /// Invite a peer device to the device-sync group.
+    /// The peer is expected to auto-accept within 3 days to prove the device is alive.
+    /// </summary>
+    /// <param name="peerKeyPackage">The peer device's KeyPackage.</param>
+    /// <param name="syncChatId">The chat ID of the device-sync group.</param>
+    Task InvitePeerToSyncGroupAsync(KeyPackage peerKeyPackage, string syncChatId);
+
+    /// <summary>
     /// Add a member to a group.
     /// </summary>
     Task AddMemberAsync(string chatId, string memberPublicKey);

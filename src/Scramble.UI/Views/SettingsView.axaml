@@ -360,8 +360,67 @@
                                 </Border>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
+                        </ItemsControl>
+
+                        <!-- Sync Relay -->
+                        <StackPanel Spacing="6" Margin="0,8,0,0">
+                            <TextBlock Text="Sync Relay" FontWeight="SemiBold" FontSize="13" />
+                            <TextBlock Text="A dedicated relay for device sync. All devices connect to this relay to discover each other and exchange KeyPackages."
+                                       Classes="muted" FontSize="11" TextWrapping="Wrap" />
+
+                            <!-- Display mode -->
+                            <Grid ColumnDefinitions="*,Auto"
+                                  IsVisible="{Binding !IsEditingSyncRelay}">
+                                <TextBlock Grid.Column="0" FontSize="13" VerticalAlignment="Center">
+                                    <TextBlock.Text>
+                                        <MultiBinding StringFormat="wss://{0}">
+                                            <Binding Path="SyncRelayDomain" />
+                                        </MultiBinding>
+                                    </TextBlock.Text>
+                                    <TextBlock.IsVisible>
+                                        <Binding Path="SyncRelayDomain"
+                                                 Converter="{x:Static StringConverters.IsNotNullOrEmpty}" />
+                                    </TextBlock.IsVisible>
+                                </TextBlock>
+                                <TextBlock Grid.Column="0" Text="Not configured"
+                                           Classes="muted" FontSize="13" VerticalAlignment="Center"
+                                           IsVisible="{Binding SyncRelayDomain, Converter={x:Static StringConverters.IsNullOrEmpty}}" />
+                                <Button Grid.Column="1" Classes="secondary" Content="Edit" Padding="8,4"
+                                        Command="{Binding EditSyncRelayCommand}" />
+                            </Grid>
+
+                            <!-- Edit mode -->
+                            <StackPanel Spacing="6"
+                                        IsVisible="{Binding IsEditingSyncRelay}">
+                                <Grid ColumnDefinitions="Auto,*">
+                                    <TextBlock Grid.Column="0" Text="wss://" FontSize="13"
+                                               VerticalAlignment="Center" Opacity="0.6" Margin="0,0,2,0" />
+                                    <TextBox Grid.Column="1" Text="{Binding SyncRelayDomain}"
+                                             PlaceholderText="relay.example.com" FontSize="13" />
+                                </Grid>
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <Button Classes="primary" Content="Save" Padding="12,4"
+                                            Command="{Binding SaveSyncRelayCommand}" />
+                                    <Button Classes="secondary" Content="Cancel" Padding="12,4"
+                                            Command="{Binding CancelEditSyncRelayCommand}" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding SyncRelayStatus}"
+                                           Classes="muted" FontSize="11"
+                                           IsVisible="{Binding SyncRelayStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Show Private Notes toggle -->
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,8,0,0">
+                            <StackPanel Grid.Column="0" Spacing="2">
+                                <TextBlock Text="Show Private Notes in chat list" FontSize="13" />
+                                <TextBlock Text="Pins the device-sync group as &quot;Private Notes&quot; at the top of your chat list"
+                                           Classes="muted" FontSize="11" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding ShowDeviceSyncChat}"
+                                          VerticalAlignment="Center" />
+                        </Grid>
+                    </StackPanel>
             </Border>
 
             <!-- Marmot Protocol Section -->

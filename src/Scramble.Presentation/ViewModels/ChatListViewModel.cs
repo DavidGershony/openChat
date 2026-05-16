@@ -484,6 +484,13 @@ public partial class ChatListViewModel : ViewModelBase
 
                 if (chat.Type == Core.Models.ChatType.Bot)
                     AgentChats.Add(chatItem);
+                else if (chat.Type == Core.Models.ChatType.DeviceSync)
+                {
+                    // Show device-sync chat only if user opted in via Settings
+                    var showSync = await _storageService.GetSettingAsync("show_device_sync_chat");
+                    if (showSync == "true")
+                        Chats.Insert(0, chatItem); // always at top (pinned)
+                }
                 else
                     Chats.Add(chatItem);
             }

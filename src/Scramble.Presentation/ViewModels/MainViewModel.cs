@@ -684,6 +684,21 @@ public partial class MainViewModel : ViewModelBase
             _logger.LogInformation("Connecting to {Count} relays", relaysToConnect.Count);
             await _nostrService.ConnectAsync(relaysToConnect);
 
+            // 2b. Connect to the dedicated sync relay (if configured)
+            try
+            {
+                var syncRelayUrl = await _storageService.GetSettingAsync("sync_relay_url");
+                if (!string.IsNullOrEmpty(syncRelayUrl))
+                {
+                    _logger.LogInformation("Connecting to sync relay: {Url}", syncRelayUrl);
+                    await _nostrService.ConnectAsync(syncRelayUrl);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to connect to sync relay");
+            }
+
             // 3. Publish default NIP-65 relay list for new keys (must happen after connect)
             if (shouldPublishNip65)
             {
@@ -926,6 +941,38 @@ public partial class MainViewModel : ViewModelBase
                                     }
                                     ShowForwardSecrecyBanner = true;
                                 }
+                            }
+
+                            // ── Device-sync group: create/load and invite new peer devices ──
+                            // This runs regardless of whether new peers were detected, so that
+                            // the sync group is always created on login if it doesn't exist.
+                            try
+                            {
+                                var syncChat = await _messageService.GetOrCreateDeviceSyncGroupAsync();
+                                _logger.LogInformation("Device-sync group ready: {ChatId}", syncChat.Id);
+
+                                // Invite newly-detected peers to the sync group
+                                if (peerKps.Count > 0)
+                                {
+                                    foreach (var peerKp in peerKps)
+                                    {
+                                        try
+                                        {
+                                            await _messageService.InvitePeerToSyncGroupAsync(peerKp, syncChat.Id);
+                                            _logger.LogInformation("Invited peer device (slot={SlotId}) to sync group",
+                                                peerKp.SlotId?[..Math.Min(16, peerKp.SlotId?.Length ?? 0)]);
+                                        }
+                                        catch (Exception syncEx)
+                                        {
+                                            _logger.LogWarning(syncEx, "Failed to invite peer device (slot={SlotId}) to sync group",
+                                                peerKp.SlotId?[..Math.Min(16, peerKp.SlotId?.Length ?? 0)]);
+                                        }
+                                    }
+                                }
+                            }
+                            catch (Exception syncEx)
+                            {
+                                _logger.LogWarning(syncEx, "Failed to create/load device-sync group");
                             }
                         }
                     }

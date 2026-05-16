@@ -584,6 +584,148 @@ public class MessageService : IMessageService, IDisposable
         return chat;
     }
 
+    /// <summary>
+    /// Internal group name prefix used to identify device-sync groups in MLS state.
+    /// Checked during welcome processing to trigger auto-accept.
+    /// </summary>
+    internal const string DeviceSyncGroupNamePrefix = "__device_sync__";
+
+    public async Task<Chat> GetOrCreateDeviceSyncGroupAsync()
+    {
+        if (_currentUser == null)
+            throw new InvalidOperationException("User not logged in");
+
+        // Check if we already have a device-sync group
+        var syncChatId = await _storageService.GetSettingAsync("device_sync_chat_id");
+        if (!string.IsNullOrEmpty(syncChatId))
+        {
+            var existing = await _storageService.GetChatAsync(syncChatId);
+            if (existing != null)
+            {
+                _logger.LogInformation("GetOrCreateDeviceSyncGroup: found existing sync group {ChatId}", syncChatId);
+                return existing;
+            }
+            // Chat was deleted but setting remains — recreate
+            _logger.LogWarning("GetOrCreateDeviceSyncGroup: sync chat {ChatId} not found in storage, recreating", syncChatId);
+        }
+
+        // Also check by ChatType in case the setting was lost
+        var allChats = await _storageService.GetAllChatsAsync();
+        var existingSync = allChats.FirstOrDefault(c => c.Type == ChatType.DeviceSync);
+        if (existingSync != null)
+        {
+            await _storageService.SaveSettingAsync("device_sync_chat_id", existingSync.Id);
+            _logger.LogInformation("GetOrCreateDeviceSyncGroup: recovered sync group {ChatId} from chat list", existingSync.Id);
+            return existingSync;
+        }
+
+        // Create a new MLS group for device sync
+        // Include the sync relay (if configured) to ensure all devices can discover each other
+        var relayList = _nostrService.ConnectedRelayUrls.ToList();
+        var syncRelayUrl = await _storageService.GetSettingAsync("sync_relay_url");
+        if (!string.IsNullOrEmpty(syncRelayUrl) &&
+            !relayList.Any(r => string.Equals(r.TrimEnd('/'), syncRelayUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase)))
+        {
+            relayList.Insert(0, syncRelayUrl); // prioritize sync relay
+        }
+        var relayUrls = relayList.ToArray();
+        if (relayUrls.Length == 0)
+            throw new InvalidOperationException("Cannot create device-sync group: no relays connected");
+
+        var groupInfo = await _mlsService.CreateGroupAsync(DeviceSyncGroupNamePrefix, relayUrls);
+        var groupIdHex = Convert.ToHexString(groupInfo.GroupId).ToLowerInvariant();
+        _logger.LogInformation("GetOrCreateDeviceSyncGroup: MLS group created {GroupId}", groupIdHex[..Math.Min(16, groupIdHex.Length)]);
+
+        byte[]? nostrGroupId = null;
+        try { nostrGroupId = _mlsService.GetNostrGroupId(groupInfo.GroupId); }
+        catch { _logger.LogWarning("GetOrCreateDeviceSyncGroup: NostrGroupId not available"); }
+
+        var adminPubkeys = _mlsService.GetAdminPubkeys(groupInfo.GroupId);
+        if (adminPubkeys.Count == 0)
+            adminPubkeys = new List<string> { _currentUser.PublicKeyHex.ToLowerInvariant() };
+
+        var chat = new Chat
+        {
+            Id = Guid.NewGuid().ToString(),
+            Name = "Private Notes",
+            Type = ChatType.DeviceSync,
+            MlsGroupId = groupInfo.GroupId,
+            NostrGroupId = nostrGroupId,
+            MlsEpoch = groupInfo.Epoch,
+            ParticipantPublicKeys = new List<string> { _currentUser.PublicKeyHex },
+            AdminPublicKeys = adminPubkeys,
+            CreatorPublicKey = _currentUser.PublicKeyHex,
+            RelayUrls = relayUrls.ToList(),
+            CreatedAt = DateTime.UtcNow,
+            LastActivityAt = DateTime.UtcNow,
+            IsPinned = true
+        };
+
+        await _storageService.SaveChatAsync(chat);
+        await _storageService.SaveSettingAsync("device_sync_chat_id", chat.Id);
+        _logger.LogInformation("GetOrCreateDeviceSyncGroup: created sync chat {ChatId}", chat.Id);
+
+        return chat;
+    }
+
+    public async Task InvitePeerToSyncGroupAsync(KeyPackage peerKeyPackage, string syncChatId)
+    {
+        if (_currentUser == null)
+            throw new InvalidOperationException("Not logged in");
+
+        var chat = await _storageService.GetChatAsync(syncChatId)
+            ?? throw new ArgumentException("Sync group chat not found", nameof(syncChatId));
+
+        if (chat.MlsGroupId == null)
+            throw new InvalidOperationException("Sync group has no MLS group ID");
+
+        var groupIdHex = Convert.ToHexString(chat.MlsGroupId).ToLowerInvariant();
+        _logger.LogInformation("InvitePeerToSyncGroup: inviting peer (slot={SlotId}) to sync group {GroupId}",
+            peerKeyPackage.SlotId?[..Math.Min(16, peerKeyPackage.SlotId?.Length ?? 0)] ?? "none",
+            groupIdHex[..Math.Min(16, groupIdHex.Length)]);
+
+        // Stage the add-member commit with the specific peer device KP
+        var staged = await _mlsService.StageAddMemberAsync(chat.MlsGroupId, peerKeyPackage);
+
+        // Publish commit and wait for relay confirmation
+        var nostrGroupId = _mlsService.GetNostrGroupId(chat.MlsGroupId);
+        var commitGroupId = nostrGroupId != null
+            ? Convert.ToHexString(nostrGroupId).ToLowerInvariant()
+            : groupIdHex;
+
+        if (staged.CommitData != null && staged.CommitData.Length > 0)
+        {
+            var commitEventId = await _nostrService.PublishCommitAsync(
+                staged.CommitData, commitGroupId, _currentUser.PrivateKeyHex);
+            _logger.LogInformation("InvitePeerToSyncGroup: commit confirmed, event {EventId}", commitEventId);
+
+            await _mlsService.MergeStagedAsync(chat.MlsGroupId);
+
+            // Mark commit as processed
+            await _storageService.SaveMessageAsync(new Message
+            {
+                Id = Guid.NewGuid().ToString(),
+                ChatId = syncChatId,
+                Content = "[peer device added to sync group]",
+                SenderPublicKey = _currentUser.PublicKeyHex,
+                NostrEventId = commitEventId,
+                Timestamp = DateTime.UtcNow,
+                Type = MessageType.System,
+                Status = MessageStatus.Sent
+            });
+
+            // Send Welcome to peer device
+            var welcomeEventId = await _nostrService.PublishWelcomeAsync(
+                staged.WelcomeData, staged.RecipientPublicKey, _currentUser.PrivateKeyHex,
+                staged.KeyPackageEventId);
+            _logger.LogInformation("InvitePeerToSyncGroup: Welcome sent, event {EventId}", welcomeEventId);
+
+            // Track invite timestamp for 3-day liveness window
+            await _storageService.SaveSettingAsync(
+                $"sync_invite_{peerKeyPackage.SlotId}", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString());
+        }
+    }
+
     public async Task<Chat> GetOrCreateDirectMessageAsync(string recipientPublicKey)
     {
         if (_currentUser == null)
@@ -1389,6 +1531,179 @@ public class MessageService : IMessageService, IDisposable
         // Extract group ID from tags (h or g tag — not part of MIP-02 parser, added by some clients)
         var groupTag = nostrEvent.Tags.FirstOrDefault(t => t.Count > 1 && (t[0] == "h" || t[0] == "g"));
         var groupId = groupTag?[1];
+
+        // ── Device-sync auto-accept ──
+        // If this welcome is for a device-sync group (group name starts with "__device_sync__"),
+        // auto-accept it immediately — no pending invite, no user interaction.
+        // The sender is our own pubkey (another device), so the welcome proves device liveness.
+        if (string.Equals(nostrEvent.PublicKey, _currentUser?.PublicKeyHex, StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var groupInfo = await _mlsService.ProcessWelcomeAsync(welcomeData, nostrEvent.EventId);
+                if (groupInfo.GroupName?.StartsWith(DeviceSyncGroupNamePrefix, StringComparison.Ordinal) == true)
+                {
+                    _logger.LogInformation("HandleWelcome: auto-accepting device-sync welcome {EventId}",
+                        nostrEvent.EventId[..Math.Min(16, nostrEvent.EventId.Length)]);
+
+                    // Check for existing chat
+                    var groupIdHex2 = Convert.ToHexString(groupInfo.GroupId).ToLowerInvariant();
+                    var existingChats2 = await _storageService.GetAllChatsAsync();
+                    var existingSync = existingChats2.FirstOrDefault(c =>
+                        c.MlsGroupId != null &&
+                        Convert.ToHexString(c.MlsGroupId).Equals(groupIdHex2, StringComparison.OrdinalIgnoreCase));
+
+                    if (existingSync != null)
+                    {
+                        _logger.LogInformation("HandleWelcome: device-sync chat already exists {ChatId}", existingSync.Id);
+                        await _storageService.DismissWelcomeEventAsync(nostrEvent.EventId);
+                        return;
+                    }
+
+                    var nostrGroupId2 = _mlsService.GetNostrGroupId(groupInfo.GroupId);
+                    var adminPubkeys2 = _mlsService.GetAdminPubkeys(groupInfo.GroupId);
+                    var creatorPubkey2 = adminPubkeys2.Count > 0 ? adminPubkeys2[0] : nostrEvent.PublicKey;
+                    if (adminPubkeys2.Count == 0 && !string.IsNullOrEmpty(creatorPubkey2))
+                        adminPubkeys2 = new List<string> { creatorPubkey2.ToLowerInvariant() };
+
+                    var syncChat = new Chat
+                    {
+                        Id = Guid.NewGuid().ToString(),
+                        Name = "Private Notes",
+                        Type = ChatType.DeviceSync,
+                        MlsGroupId = groupInfo.GroupId,
+                        NostrGroupId = nostrGroupId2,
+                        MlsEpoch = groupInfo.Epoch,
+                        ParticipantPublicKeys = groupInfo.MemberPublicKeys,
+                        AdminPublicKeys = adminPubkeys2,
+                        CreatorPublicKey = creatorPubkey2,
+                        RelayUrls = relayUrls,
+                        WelcomeNostrEventId = nostrEvent.EventId,
+                        CreatedAt = DateTime.UtcNow,
+                        LastActivityAt = DateTime.UtcNow,
+                        IsPinned = true
+                    };
+
+                    // Connect to relay if needed
+                    if (relayUrls.Count > 0)
+                    {
+                        var connectedUrls = _nostrService.ConnectedRelayUrls;
+                        var hasOverlap = relayUrls.Any(r =>
+                            connectedUrls.Any(c => string.Equals(c.TrimEnd('/'), r.TrimEnd('/'), StringComparison.OrdinalIgnoreCase)));
+                        if (!hasOverlap)
+                        {
+                            try { await _nostrService.ConnectAsync(relayUrls[0]); }
+                            catch (Exception ex2) { _logger.LogWarning(ex2, "DeviceSync: failed to connect to relay"); }
+                        }
+                    }
+
+                    await _storageService.SaveChatAsync(syncChat);
+                    await _storageService.SaveSettingAsync("device_sync_chat_id", syncChat.Id);
+                    await _storageService.DismissWelcomeEventAsync(nostrEvent.EventId);
+                    _chatUpdates.OnNext(syncChat);
+
+                    // Mark consumed KeyPackage as used
+                    if (!string.IsNullOrEmpty(keyPackageEventId))
+                    {
+                        var consumedKp = await _storageService.GetKeyPackageByNostrEventIdAsync(keyPackageEventId);
+                        if (consumedKp != null)
+                        {
+                            await _storageService.MarkKeyPackageUsedAsync(consumedKp.Id);
+                            _ = AutoPublishKeyPackageIfNeededAsync();
+                        }
+                    }
+
+                    _pendingSelfUpdates[groupIdHex2] = DateTime.UtcNow;
+                    _logger.LogInformation("HandleWelcome: device-sync group auto-accepted, chat {ChatId}", syncChat.Id);
+                    return;
+                }
+                else
+                {
+                    // Not a device-sync group — we already processed the welcome (joined the group).
+                    // Continue to create a regular pending invite so the user can see it.
+                    // BUT: we already called ProcessWelcomeAsync which joined the MLS group,
+                    // so we need to create the chat directly instead of a pending invite.
+                    _logger.LogInformation("HandleWelcome: self-sent welcome for regular group '{Name}', creating chat directly",
+                        groupInfo.GroupName);
+
+                    var groupIdHex3 = Convert.ToHexString(groupInfo.GroupId).ToLowerInvariant();
+                    var existingChats3 = await _storageService.GetAllChatsAsync();
+                    var existingChat3 = existingChats3.FirstOrDefault(c =>
+                        c.MlsGroupId != null &&
+                        Convert.ToHexString(c.MlsGroupId).Equals(groupIdHex3, StringComparison.OrdinalIgnoreCase));
+
+                    if (existingChat3 != null)
+                    {
+                        await _storageService.DismissWelcomeEventAsync(nostrEvent.EventId);
+                        return;
+                    }
+
+                    var nostrGroupId3 = _mlsService.GetNostrGroupId(groupInfo.GroupId);
+                    var adminPubkeys3 = _mlsService.GetAdminPubkeys(groupInfo.GroupId);
+                    var creatorPubkey3 = adminPubkeys3.Count > 0 ? adminPubkeys3[0] : nostrEvent.PublicKey;
+                    if (adminPubkeys3.Count == 0)
+                        adminPubkeys3 = new List<string> { creatorPubkey3.ToLowerInvariant() };
+
+                    var autoChat = new Chat
+                    {
+                        Id = Guid.NewGuid().ToString(),
+                        Name = !string.IsNullOrWhiteSpace(groupInfo.GroupName)
+                            ? groupInfo.GroupName : "Group Chat",
+                        Type = ChatType.Group,
+                        MlsGroupId = groupInfo.GroupId,
+                        NostrGroupId = nostrGroupId3,
+                        MlsEpoch = groupInfo.Epoch,
+                        ParticipantPublicKeys = groupInfo.MemberPublicKeys,
+                        AdminPublicKeys = adminPubkeys3,
+                        CreatorPublicKey = creatorPubkey3,
+                        RelayUrls = relayUrls,
+                        WelcomeNostrEventId = nostrEvent.EventId,
+                        CreatedAt = DateTime.UtcNow,
+                        LastActivityAt = DateTime.UtcNow
+                    };
+
+                    if (relayUrls.Count > 0)
+                    {
+                        var connectedUrls = _nostrService.ConnectedRelayUrls;
+                        var hasOverlap = relayUrls.Any(r =>
+                            connectedUrls.Any(c => string.Equals(c.TrimEnd('/'), r.TrimEnd('/'), StringComparison.OrdinalIgnoreCase)));
+                        if (!hasOverlap)
+                        {
+                            try { await _nostrService.ConnectAsync(relayUrls[0]); }
+                            catch (Exception ex2) { _logger.LogWarning(ex2, "Auto-accept: failed to connect to relay"); }
+                        }
+                    }
+
+                    await _storageService.SaveChatAsync(autoChat);
+                    await _storageService.DismissWelcomeEventAsync(nostrEvent.EventId);
+                    _chatUpdates.OnNext(autoChat);
+
+                    if (!string.IsNullOrEmpty(keyPackageEventId))
+                    {
+                        var consumedKp = await _storageService.GetKeyPackageByNostrEventIdAsync(keyPackageEventId);
+                        if (consumedKp != null)
+                        {
+                            await _storageService.MarkKeyPackageUsedAsync(consumedKp.Id);
+                            _ = AutoPublishKeyPackageIfNeededAsync();
+                        }
+                    }
+
+                    _pendingSelfUpdates[groupIdHex3] = DateTime.UtcNow;
+                    _logger.LogInformation("HandleWelcome: self-sent regular group auto-accepted, chat {ChatId}", autoChat.Id);
+                    return;
+                }
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("KeyPackage"))
+            {
+                _logger.LogWarning(ex, "HandleWelcome: KeyPackage mismatch for self-sent welcome, falling through to normal flow");
+                // Fall through to normal pending-invite path
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "HandleWelcome: failed to auto-accept self-sent welcome, falling through to normal flow");
+                // Fall through to normal pending-invite path
+            }
+        }
 
         // Fetch and cache sender profile
         string? senderDisplayName = null;
