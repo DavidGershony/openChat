@@ -866,11 +866,17 @@ public partial class MainViewModel : ViewModelBase
                             var seenSlotIds = new HashSet<string>(
                                 seenRaw?.Split(',', StringSplitOptions.RemoveEmptyEntries) ?? Array.Empty<string>());
 
+                            // Also skip devices the user has explicitly marked as lost
+                            var lostRaw = await _storageService.GetSettingAsync("lost_slot_ids");
+                            var lostSlotIds = new HashSet<string>(
+                                lostRaw?.Split(',', StringSplitOptions.RemoveEmptyEntries) ?? Array.Empty<string>());
+
                             var peerKps = myKeyPackages
                                 .Where(kp => kp.IsCipherSuiteSupported
                                     && !string.IsNullOrEmpty(kp.SlotId)
                                     && kp.SlotId != localSlotId
-                                    && !seenSlotIds.Contains(kp.SlotId!))
+                                    && !seenSlotIds.Contains(kp.SlotId!)
+                                    && !lostSlotIds.Contains(kp.SlotId!))
                                 .ToList();
 
                             if (peerKps.Count > 0)

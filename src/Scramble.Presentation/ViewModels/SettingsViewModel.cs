@@ -88,8 +88,8 @@ public partial class SettingsViewModel : ViewModelBase
     [Reactive] public partial string? BlossomStatus { get; set; }
     [Reactive] public partial bool BlossomStatusIsError { get; set; }
 
-    // Notifications
-    [Reactive] public partial bool NotificationModeBackground { get; set; } = true;
+    // Notifications — both default to false (opt-in only)
+    [Reactive] public partial bool NotificationModeBackground { get; set; }
 
     // My Devices
     [Reactive] public partial bool ShowDeviceSection { get; set; } = true;
@@ -175,6 +175,7 @@ public partial class SettingsViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> ReconnectDisconnectedCommand { get; }
     public ReactiveCommand<Unit, Unit> FetchDevicesCommand { get; }
     public ReactiveCommand<Unit, Unit> ToggleDeviceSectionCommand { get; }
+    public ReactiveCommand<DeviceViewModel, Unit> MarkDeviceAsLostCommand { get; }
 
     /// <summary>
     /// Assigned by the parent (<see cref="MainViewModel"/>) — shell-agnostic navigation
@@ -322,6 +323,7 @@ public partial class SettingsViewModel : ViewModelBase
         // My Devices
         FetchDevicesCommand = ReactiveCommand.CreateFromTask(FetchDevicesAsync);
         ToggleDeviceSectionCommand = ReactiveCommand.Create(() => { ShowDeviceSection = !ShowDeviceSection; });
+        MarkDeviceAsLostCommand = ReactiveCommand.CreateFromTask<DeviceViewModel>(MarkDeviceAsLostAsync);
 
         // Add default relays (will be replaced by saved relays in LoadSettingsAsync)
         foreach (var relay in NostrConstants.DefaultRelays)
@@ -363,21 +365,34 @@ public partial class SettingsViewModel : ViewModelBase
                 }
             });
 
-        // Persist notification mode; request POST_NOTIFICATIONS when switching to background service
+        // Persist notification mode; request POST_NOTIFICATIONS only when user explicitly
+        // enables background service mode (opt-in, not on startup).
+        this.WhenAnyValue(x => x.NotificationModeBackground)
+            .Skip(1) // skip initial value
+            .Subscribe(async isBackground =>
+            {
+                if (isBackground)
+                {
+                    try { await _storageService.SaveSettingAsync("notification_mode", "background"); }
+                    catch (Exception ex) { _logger.LogError(ex, "Failed to save notification mode"); }
+
+                    if (PermissionRequestFunc != null)
+                    {
+                        // Android 13+ requires POST_NOTIFICATIONS for the foreground service notification
+                        const string postNotifications = "android.permission.POST_NOTIFICATIONS";
+                        var granted = await PermissionRequestFunc(new[] { postNotifications });
+                        _logger.LogInformation("POST_NOTIFICATIONS permission {Result}", granted ? "granted" : "denied");
+                    }
+                }
+            });
+
         this.WhenAnyValue(x => x.NotificationModePush)
             .Skip(1)
-            .Subscribe(async push =>
+            .Where(push => push) // only persist when toggled ON
+            .Subscribe(async _ =>
             {
-                try { await _storageService.SaveSettingAsync("notification_mode", push ? "push" : "background"); }
+                try { await _storageService.SaveSettingAsync("notification_mode", "push"); }
                 catch (Exception ex) { _logger.LogError(ex, "Failed to save notification mode"); }
-
-                if (!push && PermissionRequestFunc != null)
-                {
-                    // Android 13+ requires POST_NOTIFICATIONS for any notification display
-                    const string postNotifications = "android.permission.POST_NOTIFICATIONS";
-                    var granted = await PermissionRequestFunc(new[] { postNotifications });
-                    _logger.LogInformation("POST_NOTIFICATIONS permission {Result}", granted ? "granted" : "denied");
-                }
             });
 
         // Persist notification settings
@@ -481,13 +496,19 @@ public partial class SettingsViewModel : ViewModelBase
         }
         _logger.LogInformation("Loaded Blossom server domain: {Domain}", BlossomServerDomain);
 
-        // Load notification settings
+        // Load notification settings — both modes default to off (opt-in)
         var notifMode = await _storageService.GetSettingAsync("notification_mode");
         if (notifMode == "push")
         {
             NotificationModePush = true;
             NotificationModeBackground = false;
         }
+        else if (notifMode == "background")
+        {
+            NotificationModeBackground = true;
+            NotificationModePush = false;
+        }
+        // else: both remain false — user hasn't opted in yet
         var notifNpub = await _storageService.GetSettingAsync("notification_server_npub");
         if (!string.IsNullOrEmpty(notifNpub))
             NotificationServerNpub = notifNpub;
@@ -1171,6 +1192,11 @@ public partial class SettingsViewModel : ViewModelBase
             var keyPackages = (await _nostrService.FetchKeyPackagesAsync(PublicKeyHex)).ToList();
             var localSlotId = _mlsService.GetLocalKeyPackageSlotId();
 
+            // Load lost slot IDs to mark devices accordingly
+            var lostRaw = await _storageService.GetSettingAsync("lost_slot_ids");
+            var lostSlotIds = new HashSet<string>(
+                lostRaw?.Split(',', StringSplitOptions.RemoveEmptyEntries) ?? Array.Empty<string>());
+
             if (keyPackages.Count == 0)
             {
                 DeviceStatus = "No KeyPackages found on relays. Publish a KeyPackage first.";
@@ -1196,8 +1222,14 @@ public partial class SettingsViewModel : ViewModelBase
                     FullSlotId = group.Key,
                     CreatedAt = latestKp.CreatedAt,
                     IsThisDevice = isThisDevice,
+                    IsLost = lostSlotIds.Contains(group.Key),
                     CipherSuite = latestKp.CipherSuiteName,
                     IsSupported = latestKp.IsCipherSuiteSupported,
+                    NostrEventIds = group
+                        .Where(kp => !string.IsNullOrEmpty(kp.NostrEventId))
+                        .Select(kp => kp.NostrEventId!)
+                        .Distinct()
+                        .ToList(),
                 });
             }
 
@@ -1213,6 +1245,9 @@ public partial class SettingsViewModel : ViewModelBase
                     IsThisDevice = string.IsNullOrEmpty(localSlotId), // likely this device if we have no local slot
                     CipherSuite = kp.CipherSuiteName,
                     IsSupported = kp.IsCipherSuiteSupported,
+                    NostrEventIds = !string.IsNullOrEmpty(kp.NostrEventId)
+                        ? new List<string> { kp.NostrEventId! }
+                        : new List<string>(),
                 });
             }
 
@@ -1228,6 +1263,62 @@ public partial class SettingsViewModel : ViewModelBase
         finally
         {
             IsFetchingDevices = false;
+        }
+    }
+
+    /// <summary>
+    /// Mark a peer device as lost/obsolete. Persists the slot ID to a local blocklist
+    /// so it is never auto-added to groups, and adds it to seen_peer_slot_ids.
+    /// Attempts NIP-09 event deletion for the KeyPackage events on relays.
+    /// </summary>
+    private async Task MarkDeviceAsLostAsync(DeviceViewModel device)
+    {
+        if (device.IsThisDevice || string.IsNullOrEmpty(device.FullSlotId))
+            return;
+
+        try
+        {
+            device.IsLost = true;
+
+            // Persist to lost_slot_ids
+            var lostRaw = await _storageService.GetSettingAsync("lost_slot_ids");
+            var lostSet = new HashSet<string>(
+                lostRaw?.Split(',', StringSplitOptions.RemoveEmptyEntries) ?? Array.Empty<string>());
+            lostSet.Add(device.FullSlotId);
+            await _storageService.SaveSettingAsync("lost_slot_ids", string.Join(",", lostSet));
+
+            // Also add to seen_peer_slot_ids to prevent re-detection
+            var seenRaw = await _storageService.GetSettingAsync("seen_peer_slot_ids");
+            var seenSet = new HashSet<string>(
+                seenRaw?.Split(',', StringSplitOptions.RemoveEmptyEntries) ?? Array.Empty<string>());
+            seenSet.Add(device.FullSlotId);
+            await _storageService.SaveSettingAsync("seen_peer_slot_ids", string.Join(",", seenSet));
+
+            // Attempt NIP-09 deletion of the KeyPackage events on relays.
+            // This is best-effort — the user owns the pubkey so they can sign deletion events.
+            if (device.NostrEventIds.Count > 0 && !string.IsNullOrEmpty(PrivateKeyHex))
+            {
+                foreach (var eventId in device.NostrEventIds)
+                {
+                    try
+                    {
+                        await _nostrService.PublishDeletionAsync(eventId, "Device marked as lost");
+                        _logger.LogInformation("Published NIP-09 deletion for KP event {EventId}", eventId);
+                    }
+                    catch (Exception delEx)
+                    {
+                        _logger.LogWarning(delEx, "Failed to delete KP event {EventId} from relays", eventId);
+                    }
+                }
+            }
+
+            DeviceStatus = $"Device {device.ShortSlotId} marked as lost";
+            _logger.LogInformation("Marked device as lost: slot={SlotId}", device.FullSlotId[..Math.Min(16, device.FullSlotId.Length)]);
+        }
+        catch (Exception ex)
+        {
+            DeviceStatus = $"Failed to mark device as lost: {ex.Message}";
+            _logger.LogError(ex, "Failed to mark device {SlotId} as lost", device.FullSlotId);
         }
     }
 }
@@ -1275,12 +1366,18 @@ public partial class DeviceViewModel : ViewModelBase
     /// <summary>True if this is the current device.</summary>
     [Reactive] public partial bool IsThisDevice { get; set; }
 
-    /// <summary>Display label: "This device" or "Peer device".</summary>
-    public string DeviceLabel => IsThisDevice ? "This device" : "Peer device";
+    /// <summary>True if the device has been marked as lost/obsolete by the user.</summary>
+    [Reactive] public partial bool IsLost { get; set; }
+
+    /// <summary>Display label: "This device", "Lost", or "Peer device".</summary>
+    public string DeviceLabel => IsThisDevice ? "This device" : IsLost ? "Lost" : "Peer device";
 
     /// <summary>Cipher suite name from the KeyPackage.</summary>
     [Reactive] public partial string CipherSuite { get; set; } = string.Empty;
 
     /// <summary>Whether the KP uses a supported cipher suite.</summary>
     [Reactive] public partial bool IsSupported { get; set; } = true;
+
+    /// <summary>Nostr event IDs for the KeyPackage events in this slot (for NIP-09 deletion).</summary>
+    public List<string> NostrEventIds { get; set; } = new();
 }

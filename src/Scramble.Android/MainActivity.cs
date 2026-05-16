@@ -419,16 +419,17 @@ public class MainActivity : AppCompatActivity, IActivatableView
 
     private void StartRelayServiceIfEnabled(MainViewModel mainVm)
     {
-        // SettingsViewModel loads notification_mode in its constructor (LoadSettingsAsync).
-        // Give it a moment to load, then check the mode.
+        // React to notification mode changes (including the initial load from storage).
+        // Service starts when user opts in to background mode, stops when they opt out.
         var settingsVm = mainVm.SettingsViewModel;
         settingsVm.WhenAnyValue(x => x.NotificationModeBackground)
-            .Take(1)
             .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(isBackground =>
             {
                 if (isBackground)
                     Services.RelayForegroundService.Start(this);
+                else
+                    Services.RelayForegroundService.Stop(this);
             })
             .DisposeWith(_disposables);
     }

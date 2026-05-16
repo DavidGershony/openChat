@@ -1578,6 +1578,17 @@ public class NostrService : INostrService, IDisposable
         return giftWrapMessage.EventId;
     }
 
+    /// <inheritdoc />
+    public async Task PublishDeletionAsync(string eventId, string? reason = null)
+    {
+        _logger.LogInformation("Publishing NIP-09 deletion for event {EventId}", eventId);
+
+        var tags = new List<List<string>> { new() { "e", eventId } };
+        var content = reason ?? "";
+
+        await PublishEventAsync(5, content, tags, _subscribedUserPrivKey);
+    }
+
     /// <summary>
     /// Creates a NIP-59 Gift Wrap: Rumor → Seal (kind 13) → Gift Wrap (kind 1059).
     /// When senderPrivateKeyHex is null, delegates NIP-44 encrypt and seal signing to the external signer.

@@ -485,7 +485,15 @@
                                             <Panel Grid.Column="0" Grid.RowSpan="2" Width="10" Height="10"
                                                    Margin="0,0,10,0" VerticalAlignment="Center">
                                                 <Ellipse Fill="{DynamicResource StatusOnlineBrush}" IsVisible="{Binding IsThisDevice}" />
-                                                <Ellipse Fill="{DynamicResource TextMutedBrush}" IsVisible="{Binding !IsThisDevice}" />
+                                                <Ellipse Fill="{DynamicResource StatusErrorBrush}" IsVisible="{Binding IsLost}" />
+                                                <Ellipse Fill="{DynamicResource TextMutedBrush}">
+                                                    <Ellipse.IsVisible>
+                                                        <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                                            <Binding Path="!IsThisDevice" />
+                                                            <Binding Path="!IsLost" />
+                                                        </MultiBinding>
+                                                    </Ellipse.IsVisible>
+                                                </Ellipse>
                                             </Panel>
 
                                             <!-- Slot ID + label -->
@@ -496,6 +504,11 @@
                                                         IsVisible="{Binding IsThisDevice}">
                                                     <TextBlock Text="This device" FontSize="10" Foreground="White" />
                                                 </Border>
+                                                <Border Background="{DynamicResource StatusErrorBrush}"
+                                                        CornerRadius="4" Padding="6,1"
+                                                        IsVisible="{Binding IsLost}">
+                                                    <TextBlock Text="Lost" FontSize="10" Foreground="White" />
+                                                </Border>
                                             </StackPanel>
 
                                             <!-- Date -->
@@ -503,12 +516,27 @@
                                                        Text="{Binding CreatedAt, StringFormat='{}{0:yyyy-MM-dd HH:mm}'}"
                                                        Classes="muted" FontSize="11" />
 
-                                            <!-- Unsupported indicator -->
-                                            <TextBlock Grid.Column="2" Grid.RowSpan="2"
-                                                       Text="Unsupported" FontSize="10"
-                                                       Foreground="{DynamicResource StatusErrorBrush}"
-                                                       VerticalAlignment="Center"
-                                                       IsVisible="{Binding !IsSupported}" />
+                                            <!-- Actions column -->
+                                            <StackPanel Grid.Column="2" Grid.RowSpan="2"
+                                                        VerticalAlignment="Center" Orientation="Horizontal" Spacing="6">
+                                                <!-- Unsupported indicator -->
+                                                <TextBlock Text="Unsupported" FontSize="10"
+                                                           Foreground="{DynamicResource StatusErrorBrush}"
+                                                           VerticalAlignment="Center"
+                                                           IsVisible="{Binding !IsSupported}" />
+                                                <!-- Mark as Lost button: only for peer devices not already lost -->
+                                                <Button Classes="secondary" FontSize="10" Padding="6,2"
+                                                        Content="Mark as Lost"
+                                                        Command="{ReflectionBinding DataContext.MarkDeviceAsLostCommand, ElementName=DevicesItemsControl}"
+                                                        CommandParameter="{Binding}">
+                                                    <Button.IsVisible>
+                                                        <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                                            <Binding Path="!IsThisDevice" />
+                                                            <Binding Path="!IsLost" />
+                                                        </MultiBinding>
+                                                    </Button.IsVisible>
+                                                </Button>
+                                            </StackPanel>
                                         </Grid>
                                     </Border>
                                 </DataTemplate>
@@ -627,12 +655,14 @@
             <Border Classes="card">
                 <StackPanel Spacing="16">
                     <TextBlock Text="Notifications" FontWeight="SemiBold" FontSize="16" />
+                    <TextBlock Text="Choose how you want to receive notifications. Both options are off by default."
+                               Classes="muted" FontSize="12" />
 
                     <!-- Mode selection -->
                     <StackPanel Spacing="8">
                         <RadioButton Content="Background service (keep relay connections alive)"
                                      IsChecked="{Binding NotificationModeBackground}" />
-                        <TextBlock Text="The app keeps relay connections open in the background. Uses more battery but works without a notification server."
+                        <TextBlock Text="The app keeps relay connections open in the background. Uses more battery but works without a notification server. Requires notification permission on Android 13+."
                                    Classes="muted" FontSize="12"
                                    IsVisible="{Binding NotificationModeBackground}" />
                         <RadioButton Content="UnifiedPush (via ntfy)"

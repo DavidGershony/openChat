@@ -300,6 +300,14 @@ public interface INostrService
         int rumorKind, string content, List<List<string>> rumorTags,
         string? senderPrivateKeyHex, string senderPublicKeyHex,
         string recipientPublicKeyHex, List<string>? targetRelayUrls = null);
+
+    /// <summary>
+    /// Publish a NIP-09 deletion event (kind 5) for the specified event.
+    /// The deletion is signed by the current auth credentials (private key or external signer).
+    /// </summary>
+    /// <param name="eventId">The ID of the event to delete.</param>
+    /// <param name="reason">Optional human-readable reason for deletion.</param>
+    Task PublishDeletionAsync(string eventId, string? reason = null);
 }
 
 public class NostrConnectionStatus
