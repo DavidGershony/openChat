@@ -423,77 +423,6 @@ public partial class MainViewModel : ViewModelBase
         // For signer users, PrivateKeyHex is null but PublicKeyHex is still needed.
         ChatViewModel.SetUserContext(CurrentUser.PrivateKeyHex, CurrentUser.PublicKeyHex);
 
-        // If using external signer (no private key), wire it into NostrService.
-        // First, try auto-reconnect from persisted signer session if not already connected.
-        if (string.IsNullOrEmpty(CurrentUser.PrivateKeyHex) && ExternalSigner?.IsConnected != true)
-        {
-            if (!string.IsNullOrEmpty(CurrentUser.SignerRelayUrl) &&
-                !string.IsNullOrEmpty(CurrentUser.SignerRemotePubKey) &&
-                !string.IsNullOrEmpty(CurrentUser.SignerLocalPrivateKeyHex) &&
-                !string.IsNullOrEmpty(CurrentUser.SignerLocalPublicKeyHex))
-            {
-                _logger.LogInformation("Restoring signer session (relay and keys redacted)");
-
-                try
-                {
-                    // Restore session using persisted ephemeral keypair — no connect request needed,
-                    // Amber already authorized this keypair during initial login
-                    var connected = await ExternalSigner!.RestoreSessionAsync(
-                        CurrentUser.GetSignerRelayUrls(),
-                        CurrentUser.SignerRemotePubKey,
-                        CurrentUser.SignerLocalPrivateKeyHex,
-                        CurrentUser.SignerLocalPublicKeyHex,
-                        CurrentUser.SignerSecret);
-
-                    if (connected)
-                    {
-                        _logger.LogInformation("Signer session restored successfully");
-
-                        // The signer may report a PublicKeyHex that differs from the stored
-                        // CurrentUser.PublicKeyHex (stale signer state, mis-routed reply on
-                        // a shared relay, foreign signer answering). Earlier this was treated
-                        // as authoritative and the User row was rewritten in place — that
-                        // overwrote the active profile's current_user with whatever identity
-                        // the signer happened to report, including foreign accounts'. The
-                        // resulting corruption was observable as "wrong npub for this profile".
-                        // Identity is set authoritatively at login (HandleSignerConnectedAsync
-                        // resolves the signing pubkey via get_public_key before saving the
-                        // User). Don't second-guess it here — log the mismatch as a diagnostic
-                        // signal and leave the saved row untouched. Use the reconcile tool to
-                        // fix any data already corrupted by the previous behaviour.
-                        if (ExternalSigner!.PublicKeyHex != null &&
-                            !string.Equals(ExternalSigner.PublicKeyHex, CurrentUser.PublicKeyHex, StringComparison.OrdinalIgnoreCase))
-                        {
-                            _logger.LogWarning("Signer reported pubkey ({SignerKey}) does not match stored user pubkey ({UserKey}) — keeping stored identity. If this persists, profile data may be split across DBs from older builds; run the reconcile tool.",
-                                ExternalSigner.PublicKeyHex[..Math.Min(16, ExternalSigner.PublicKeyHex.Length)] + "...",
-                                CurrentUser.PublicKeyHex[..Math.Min(16, CurrentUser.PublicKeyHex.Length)] + "...");
-                        }
-                    }
-                    else
-                    {
-                        _logger.LogWarning("Signer session restore failed — signer may be offline. Continuing without signer.");
-                        ChatListViewModel.StatusMessage = "Signer disconnected. Restart your signer app.";
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Signer session restore failed");
-                    ChatListViewModel.StatusMessage = "Signer restore failed. Restart your signer app.";
-                }
-            }
-            else
-            {
-                _logger.LogWarning("Signer user has no persisted session details — cannot auto-reconnect");
-            }
-        }
-
-        if (string.IsNullOrEmpty(CurrentUser.PrivateKeyHex) && ExternalSigner?.IsConnected == true)
-        {
-            _nostrService.SetExternalSigner(ExternalSigner);
-            ChatViewModel.MediaUploadService?.SetExternalSigner(ExternalSigner);
-            _logger.LogInformation("External signer wired to NostrService and MediaUploadService");
-        }
-
         // Initialize MLS service with user's keys (non-fatal if native library unavailable)
         // ManagedMlsService only needs the public key — pass empty private key for signer users
         if (!string.IsNullOrEmpty(CurrentUser.PublicKeyHex))
@@ -520,20 +449,11 @@ public partial class MainViewModel : ViewModelBase
                 }
 
                 // Wire up the Nostr event signer for kind 445 MLS group messages.
-                // Local key users sign with their private key; external signer users delegate to Amber/NIP-46.
+                // Local key users sign immediately; signer users wire after background restore.
                 if (!string.IsNullOrEmpty(CurrentUser.PrivateKeyHex))
                 {
                     _mlsService.SetNostrEventSigner(new LocalNostrEventSigner(CurrentUser.PrivateKeyHex));
                     _logger.LogInformation("MLS event signer set to LocalNostrEventSigner");
-                }
-                else if (ExternalSigner?.IsConnected == true)
-                {
-                    _mlsService.SetNostrEventSigner(new ExternalNostrEventSigner(ExternalSigner));
-                    _logger.LogInformation("MLS event signer set to ExternalNostrEventSigner");
-                }
-                else
-                {
-                    _logger.LogWarning("No Nostr event signer available — kind 445 signing will fall back to local key in ManagedMlsService");
                 }
             }
             catch (Exception ex)
@@ -569,12 +489,104 @@ public partial class MainViewModel : ViewModelBase
         });
         _ = InitializeNetworkAsync();
 
+        // === BACKGROUND: Signer restore runs without blocking chats or relays ===
+        // The 60 s get_public_key timeout was blocking the entire init path.
+        // Signer is only needed for signing outgoing events (kind 445, NIP-42 AUTH);
+        // receiving messages, loading chats, and connecting relays all work without it.
+        if (string.IsNullOrEmpty(CurrentUser.PrivateKeyHex) && ExternalSigner?.IsConnected != true)
+        {
+            _ = RestoreSignerInBackgroundAsync();
+        }
+        else if (string.IsNullOrEmpty(CurrentUser.PrivateKeyHex) && ExternalSigner?.IsConnected == true)
+        {
+            WireExternalSigner();
+        }
+
         _logger.LogInformation("InitializeAfterLoginAsync completed (network init continuing in background)");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "InitializeAfterLoginAsync failed");
         }
+    }
+
+    /// <summary>
+    /// Restores the external signer session in the background so it doesn't block
+    /// chat loading or relay connections. When the signer connects, it's wired into
+    /// NostrService, MediaUploadService, and MLS on the main thread.
+    /// </summary>
+    private async Task RestoreSignerInBackgroundAsync()
+    {
+        if (CurrentUser == null || ExternalSigner == null) return;
+
+        if (string.IsNullOrEmpty(CurrentUser.SignerRelayUrl) ||
+            string.IsNullOrEmpty(CurrentUser.SignerRemotePubKey) ||
+            string.IsNullOrEmpty(CurrentUser.SignerLocalPrivateKeyHex) ||
+            string.IsNullOrEmpty(CurrentUser.SignerLocalPublicKeyHex))
+        {
+            _logger.LogWarning("Signer user has no persisted session details — cannot auto-reconnect");
+            return;
+        }
+
+        _logger.LogInformation("Restoring signer session in background (relay and keys redacted)");
+
+        try
+        {
+            var connected = await ExternalSigner.RestoreSessionAsync(
+                CurrentUser.GetSignerRelayUrls(),
+                CurrentUser.SignerRemotePubKey,
+                CurrentUser.SignerLocalPrivateKeyHex,
+                CurrentUser.SignerLocalPublicKeyHex,
+                CurrentUser.SignerSecret);
+
+            if (connected)
+            {
+                _logger.LogInformation("Signer session restored successfully (background)");
+
+                if (ExternalSigner.PublicKeyHex != null &&
+                    !string.Equals(ExternalSigner.PublicKeyHex, CurrentUser.PublicKeyHex, StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogWarning("Signer reported pubkey ({SignerKey}) does not match stored user pubkey ({UserKey}) — keeping stored identity.",
+                        ExternalSigner.PublicKeyHex[..Math.Min(16, ExternalSigner.PublicKeyHex.Length)] + "...",
+                        CurrentUser.PublicKeyHex[..Math.Min(16, CurrentUser.PublicKeyHex.Length)] + "...");
+                }
+
+                // Wire signer on main thread (UI-bound properties and services)
+                Observable.Return(System.Reactive.Unit.Default)
+                    .ObserveOn(RxSchedulers.MainThreadScheduler)
+                    .Subscribe(_ => WireExternalSigner());
+            }
+            else
+            {
+                _logger.LogWarning("Signer session restore failed — signer may be offline. Continuing without signer.");
+                Observable.Return(System.Reactive.Unit.Default)
+                    .ObserveOn(RxSchedulers.MainThreadScheduler)
+                    .Subscribe(_ => ChatListViewModel.StatusMessage = "Signer disconnected. Restart your signer app.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Signer session restore failed (background)");
+            Observable.Return(System.Reactive.Unit.Default)
+                .ObserveOn(RxSchedulers.MainThreadScheduler)
+                .Subscribe(_ => ChatListViewModel.StatusMessage = "Signer restore failed. Restart your signer app.");
+        }
+    }
+
+    /// <summary>
+    /// Wires the connected external signer into NostrService, MediaUploadService, and MLS.
+    /// Must be called on the main thread.
+    /// </summary>
+    private void WireExternalSigner()
+    {
+        if (ExternalSigner?.IsConnected != true) return;
+
+        _nostrService.SetExternalSigner(ExternalSigner);
+        ChatViewModel.MediaUploadService?.SetExternalSigner(ExternalSigner);
+        _logger.LogInformation("External signer wired to NostrService and MediaUploadService");
+
+        _mlsService.SetNostrEventSigner(new ExternalNostrEventSigner(ExternalSigner));
+        _logger.LogInformation("MLS event signer set to ExternalNostrEventSigner (background restore)");
     }
 
     private void RefreshRelayStatusesFromSettings()
