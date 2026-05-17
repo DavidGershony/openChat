@@ -900,26 +900,32 @@ public partial class ChatViewModel : ViewModelBase
     {
         if (string.IsNullOrEmpty(chatId)) return;
 
-        IsLoading = true;
-
         try
         {
-            Messages.Clear();
-
+            // Fetch messages from DB while keeping old messages visible (no flash of empty content).
             var messages = await _messageService.GetMessagesAsync(chatId);
 
             if (requestId != Volatile.Read(ref _messageLoadRequestId) ||
                 !string.Equals(ChatId, chatId, StringComparison.Ordinal))
             {
-                // Ignore stale data if a newer selection started, or if the chat was cleared/switched.
-                // The finally-block below keeps IsLoading owned by the latest active request only.
+                // Stale request — a newer chat selection has started.
                 return;
             }
 
-            foreach (var message in messages)
-            {
-                Messages.Add(new MessageViewModel(message));
-            }
+            // Pre-read MIP-04 setting once and cache it so MessageViewModel constructors
+            // don't fire 50 individual async void DB reads (even with cache, the async overhead
+            // of 50 concurrent state machines is wasteful).
+            var mip04 = await _storageService.GetSettingAsync("mip04_enabled");
+            MessageViewModel.CachedMip04Enabled = mip04 == "true";
+
+            // Build the full list off the UI thread, then swap in one batch.
+            var viewModels = messages.Select(m => new MessageViewModel(m)).ToList();
+
+            // Replace collection contents in one go — Clear + AddRange minimizes
+            // CollectionChanged event overhead compared to 50 individual Add calls.
+            Messages.Clear();
+            foreach (var vm in viewModels)
+                Messages.Add(vm);
 
             ScrollToBottomRequested?.Invoke(this, EventArgs.Empty);
         }
@@ -1300,6 +1306,12 @@ public partial class MessageViewModel : ViewModelBase
     internal static Func<string, byte[]?>? MediaCacheGet { get; set; }
     internal static Action<string, byte[]>? MediaCacheSet { get; set; }
 
+    /// <summary>
+    /// Cached MIP-04 setting, pre-read by ChatViewModel.LoadMessagesAsync once per chat switch.
+    /// Avoids 50+ concurrent async void DB reads from MessageViewModel constructors.
+    /// </summary>
+    internal static bool? CachedMip04Enabled { get; set; }
+
     public string Id { get; }
     public string SenderPublicKey { get; }
 
@@ -1533,6 +1545,15 @@ public partial class MessageViewModel : ViewModelBase
 
     private async void LoadMip04Setting()
     {
+        // Use the static cache pre-read by ChatViewModel.LoadMessagesAsync when available.
+        // This eliminates 50+ concurrent async DB reads per chat switch.
+        if (CachedMip04Enabled.HasValue)
+        {
+            IsMip04Enabled = CachedMip04Enabled.Value;
+            return;
+        }
+
+        // Fallback for messages created outside LoadMessagesAsync (e.g. live incoming messages)
         if (StorageServiceRef == null) return;
         try
         {
