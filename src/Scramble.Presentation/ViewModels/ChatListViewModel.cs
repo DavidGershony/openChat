@@ -28,6 +28,7 @@ public partial class ChatListViewModel : ViewModelBase
     private IDisposable? _inviteSubscription;
     private IDisposable? _decryptionErrorSubscription;
     private IDisposable? _skippedInviteSubscription;
+    private ChatItemViewModel? _deviceSyncChatItem;
 
     public ObservableCollection<ChatItemViewModel> Chats { get; } = new();
     public ObservableCollection<ChatItemViewModel> AgentChats { get; } = new();
@@ -486,7 +487,8 @@ public partial class ChatListViewModel : ViewModelBase
                     AgentChats.Add(chatItem);
                 else if (chat.Type == Core.Models.ChatType.DeviceSync)
                 {
-                    // Show device-sync chat only if user opted in via Settings
+                    // Always cache the device-sync chat item so visibility can be toggled live
+                    _deviceSyncChatItem = chatItem;
                     var showSync = await _storageService.GetSettingAsync("show_device_sync_chat");
                     if (showSync == "true")
                         Chats.Insert(0, chatItem); // always at top (pinned)
@@ -558,6 +560,21 @@ public partial class ChatListViewModel : ViewModelBase
         {
             IsLoading = false;
         }
+    }
+
+    /// <summary>
+    /// Adds or removes the device-sync ("Private Notes") chat from the visible chat list
+    /// without requiring a full reload.
+    /// </summary>
+    public void SetDeviceSyncChatVisibility(bool show)
+    {
+        if (_deviceSyncChatItem == null) return;
+
+        var alreadyShown = Chats.Contains(_deviceSyncChatItem);
+        if (show && !alreadyShown)
+            Chats.Insert(0, _deviceSyncChatItem);
+        else if (!show && alreadyShown)
+            Chats.Remove(_deviceSyncChatItem);
     }
 
     private static string AvatarCacheDir => Path.Combine(

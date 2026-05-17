@@ -115,6 +115,7 @@ public class NostrService : INostrService, IDisposable
     private bool IsBotOnlyRelay(string relayUrl)
         => _botOnlyRelays.ContainsKey(relayUrl.TrimEnd('/'));
     private const int RateLimitBackoffSeconds = 60;
+    private const int MaxInitialConnectRetries = 3;
     private DateTimeOffset? _groupMessagesSince;
     private DateTimeOffset? _welcomeMessagesSince;
     private string? _subscribedUserPubKey;
@@ -303,11 +304,11 @@ public class NostrService : INostrService, IDisposable
         await Task.WhenAll(connectionTasks);
     }
 
-    private async Task ConnectToRelayAsync(string relayUrl)
+    private async Task ConnectToRelayAsync(string relayUrl, int retryAttempt = 0)
     {
         try
         {
-            _logger.LogDebug("Attempting connection to relay: {RelayUrl}", relayUrl);
+            _logger.LogDebug("Attempting connection to relay: {RelayUrl} (attempt {Attempt})", relayUrl, retryAttempt + 1);
 
             var validationError = await ValidateRelayUrlAsync(relayUrl);
             if (validationError != null)
@@ -328,6 +329,12 @@ public class NostrService : INostrService, IDisposable
                         IsConnected = false,
                         Error = validationError
                     });
+
+                    // Retry DNS resolution failures — network may not be ready yet
+                    if (validationError.Contains("Cannot resolve hostname") && retryAttempt < MaxInitialConnectRetries)
+                    {
+                        ScheduleConnectionRetry(relayUrl, retryAttempt);
+                    }
                     return;
                 }
             }
@@ -394,6 +401,10 @@ public class NostrService : INostrService, IDisposable
                 IsConnected = false,
                 Error = "Rate-limited (429)"
             });
+            if (retryAttempt < MaxInitialConnectRetries)
+            {
+                ScheduleConnectionRetry(relayUrl, retryAttempt, RateLimitBackoffSeconds);
+            }
         }
         catch (Exception ex)
         {
@@ -404,7 +415,28 @@ public class NostrService : INostrService, IDisposable
                 IsConnected = false,
                 Error = ex.Message
             });
+            if (retryAttempt < MaxInitialConnectRetries)
+            {
+                ScheduleConnectionRetry(relayUrl, retryAttempt);
+            }
         }
+    }
+
+    /// <summary>
+    /// Schedules a fire-and-forget retry of <see cref="ConnectToRelayAsync"/> with exponential backoff.
+    /// Used when the initial connection attempt fails (DNS, timeout, WebSocket error) so the app
+    /// automatically recovers without requiring the user to manually reconnect.
+    /// </summary>
+    private void ScheduleConnectionRetry(string relayUrl, int currentAttempt, int? forcedBackoffSeconds = null)
+    {
+        var backoff = forcedBackoffSeconds ?? (int)Math.Pow(2, currentAttempt + 1); // 2s, 4s, 8s
+        _logger.LogInformation("Scheduling retry for {RelayUrl} in {Seconds}s (attempt {Attempt}/{Max})",
+            relayUrl, backoff, currentAttempt + 1, MaxInitialConnectRetries);
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(TimeSpan.FromSeconds(backoff));
+            await ConnectToRelayAsync(relayUrl, currentAttempt + 1);
+        });
     }
 
     /// <summary>

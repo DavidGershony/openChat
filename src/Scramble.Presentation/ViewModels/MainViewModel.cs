@@ -26,6 +26,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly IPlatformClipboard _clipboard;
     private readonly IQrCodeGenerator _qrCodeGenerator;
     private NotificationOrchestrator? _notificationOrchestrator;
+    private bool _connectionGracePeriodActive;
 
     [Reactive] public partial User? CurrentUser { get; set; }
     [Reactive] public partial bool IsLoggedIn { get; set; }
@@ -149,6 +150,12 @@ public partial class MainViewModel : ViewModelBase
         // so the back command must live on the view model rather than relying on
         // a $parent[Window] visual-tree walk (which only works on desktop).
         SettingsViewModel.BackCommand = ShowChatsCommand;
+
+        // When the user toggles "Show Private Notes in chat list", update the chat list immediately
+        SettingsViewModel.WhenAnyValue(x => x.ShowDeviceSyncChat)
+            .Skip(1) // skip initial value — LoadChatsAsync handles that
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
+            .Subscribe(show => ChatListViewModel.SetDeviceSyncChatVisibility(show));
 
         // Wire ChatView's back arrow to clear the active chat and return to the list.
         // Only on mobile — on desktop the chat list is always visible side-by-side.
@@ -550,6 +557,16 @@ public partial class MainViewModel : ViewModelBase
         _logger.LogInformation("Chat list loaded from DB — UI is now responsive");
 
         // === BACKGROUND: All relay/network operations run without blocking the UI ===
+        // Suppress the "no internet" banner for 15 s while initial connections + retries complete.
+        _connectionGracePeriodActive = true;
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(TimeSpan.FromSeconds(15));
+            _connectionGracePeriodActive = false;
+            Observable.Return(System.Reactive.Unit.Default)
+                .ObserveOn(RxSchedulers.MainThreadScheduler)
+                .Subscribe(_ => UpdateRelayCounts());
+        });
         _ = InitializeNetworkAsync();
 
         _logger.LogInformation("InitializeAfterLoginAsync completed (network init continuing in background)");
@@ -596,7 +613,17 @@ public partial class MainViewModel : ViewModelBase
         ConnectedRelayCount = RelayStatuses.Count(r => r.IsConnected);
         TotalRelayCount = RelayStatuses.Count;
         RelayCountText = $"Relays: {ConnectedRelayCount}/{TotalRelayCount}";
-        ShowNoInternet = TotalRelayCount > 0 && ConnectedRelayCount == 0;
+
+        // Once any relay connects, the grace period is no longer needed.
+        if (ConnectedRelayCount > 0)
+            _connectionGracePeriodActive = false;
+
+        // Suppress the "no internet" banner during the initial connection grace period
+        // so it doesn't flash on every app launch while relays are still connecting.
+        if (_connectionGracePeriodActive)
+            ShowNoInternet = false;
+        else
+            ShowNoInternet = TotalRelayCount > 0 && ConnectedRelayCount == 0;
     }
 
     /// <summary>
@@ -866,6 +893,23 @@ public partial class MainViewModel : ViewModelBase
                         // Idempotent: no-ops if a local unused KP already exists.
                         await _messageService.AutoPublishKeyPackageIfNeededAsync();
 
+                        // Publish dummy KeyPackages to mask real device count.
+                        // Only when feature is opted in AND a private relay is configured.
+                        // Best-effort, non-blocking — failures are logged and ignored.
+                        try
+                        {
+                            var dummyKpEnabled = await _storageService.GetSettingAsync("dummy_keypackages_enabled");
+                            var syncRelayUrl = await _storageService.GetSettingAsync("sync_relay_url");
+                            if (dummyKpEnabled == "true" && !string.IsNullOrEmpty(syncRelayUrl))
+                            {
+                                await _messageService.PublishDummyKeyPackagesAsync(syncRelayUrl);
+                            }
+                        }
+                        catch (Exception dummyEx)
+                        {
+                            _logger.LogDebug(dummyEx, "Dummy KP publishing failed (non-fatal)");
+                        }
+
                         // If we don't have a local slot ID yet (v3 state migration or pre-multi-device),
                         // try to adopt the d-tag from a relay KP that matches our local key material.
                         // This prevents the device from seeing its own KP as a "peer device".
@@ -886,12 +930,16 @@ public partial class MainViewModel : ViewModelBase
                             var lostSlotIds = new HashSet<string>(
                                 lostRaw?.Split(',', StringSplitOptions.RemoveEmptyEntries) ?? Array.Empty<string>());
 
+                            // Compute dummy slot IDs so we never treat our own decoys as peer devices
+                            var dummySlotIds = MessageService.ComputeDummySlotIds(CurrentUser.PrivateKeyHex);
+
                             var peerKps = myKeyPackages
                                 .Where(kp => kp.IsCipherSuiteSupported
                                     && !string.IsNullOrEmpty(kp.SlotId)
                                     && kp.SlotId != localSlotId
                                     && !seenSlotIds.Contains(kp.SlotId!)
-                                    && !lostSlotIds.Contains(kp.SlotId!))
+                                    && !lostSlotIds.Contains(kp.SlotId!)
+                                    && !dummySlotIds.Contains(kp.SlotId!))
                                 .ToList();
 
                             if (peerKps.Count > 0)

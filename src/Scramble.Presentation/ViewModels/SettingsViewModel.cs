@@ -91,6 +91,12 @@ public partial class SettingsViewModel : ViewModelBase
     // Notifications — both default to false (opt-in only)
     [Reactive] public partial bool NotificationModeBackground { get; set; }
 
+    /// <summary>Whether the app is running as a desktop (non-mobile) host.</summary>
+    public bool IsDesktop => _platform is null or { IsMobile: false };
+
+    /// <summary>Whether the app is running as a mobile host (Android, etc.).</summary>
+    public bool IsMobile => _platform is { IsMobile: true };
+
     // My Devices
     [Reactive] public partial bool ShowDeviceSection { get; set; } = true;
     [Reactive] public partial bool IsFetchingDevices { get; set; }
@@ -104,6 +110,7 @@ public partial class SettingsViewModel : ViewModelBase
     [Reactive] public partial bool IsEditingSyncRelay { get; set; }
     [Reactive] public partial string? SyncRelayStatus { get; set; }
     [Reactive] public partial bool ShowDeviceSyncChat { get; set; }
+    [Reactive] public partial bool DummyKeyPackagesEnabled { get; set; }
     [Reactive] public partial bool NotificationModePush { get; set; }
     [Reactive] public partial string NotificationServerNpub { get; set; } = string.Empty;
     [Reactive] public partial string NotificationServerRelay { get; set; } = string.Empty;
@@ -348,6 +355,19 @@ public partial class SettingsViewModel : ViewModelBase
                     _logger.LogInformation("Device-sync chat visibility {Status}", show ? "enabled" : "disabled");
                 }
                 catch (Exception ex) { _logger.LogError(ex, "Failed to save device-sync chat visibility"); }
+            });
+
+        // Persist dummy KeyPackage obfuscation toggle
+        this.WhenAnyValue(x => x.DummyKeyPackagesEnabled)
+            .Skip(1)
+            .Subscribe(async enabled =>
+            {
+                try
+                {
+                    await _storageService.SaveSettingAsync("dummy_keypackages_enabled", enabled ? "true" : "false");
+                    _logger.LogInformation("Dummy KeyPackage obfuscation {Status}", enabled ? "enabled" : "disabled");
+                }
+                catch (Exception ex) { _logger.LogError(ex, "Failed to save dummy KeyPackage setting"); }
             });
 
         // Add default relays (will be replaced by saved relays in LoadSettingsAsync)
@@ -599,6 +619,10 @@ public partial class SettingsViewModel : ViewModelBase
         // Load device-sync chat visibility
         var showSync = await _storageService.GetSettingAsync("show_device_sync_chat");
         ShowDeviceSyncChat = showSync == "true";
+
+        // Load dummy KeyPackage obfuscation setting (default: off)
+        var dummyKpEnabled = await _storageService.GetSettingAsync("dummy_keypackages_enabled");
+        DummyKeyPackagesEnabled = dummyKpEnabled == "true";
 
         // Auto-fetch devices from relays
         _ = FetchDevicesAsync();
@@ -1240,6 +1264,9 @@ public partial class SettingsViewModel : ViewModelBase
             var lostSlotIds = new HashSet<string>(
                 lostRaw?.Split(',', StringSplitOptions.RemoveEmptyEntries) ?? Array.Empty<string>());
 
+            // Compute dummy slot IDs so we don't show our own decoys in the device list
+            var dummySlotIds = MessageService.ComputeDummySlotIds(PrivateKeyHex);
+
             if (keyPackages.Count == 0)
             {
                 DeviceStatus = "No KeyPackages found on relays. Publish a KeyPackage first.";
@@ -1247,8 +1274,9 @@ public partial class SettingsViewModel : ViewModelBase
             }
 
             // Group by slot ID — each unique slot ID is a device
+            // Filter out dummy slot IDs (our own decoys for privacy)
             var deviceGroups = keyPackages
-                .Where(kp => !string.IsNullOrEmpty(kp.SlotId))
+                .Where(kp => !string.IsNullOrEmpty(kp.SlotId) && !dummySlotIds.Contains(kp.SlotId!))
                 .GroupBy(kp => kp.SlotId!)
                 .OrderByDescending(g => g.Key == localSlotId) // This device first
                 .ThenByDescending(g => g.Max(kp => kp.CreatedAt))

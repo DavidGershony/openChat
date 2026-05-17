@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Reactive;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
+using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
 using Scramble.Core.Logging;
 using Scramble.Core.Crypto;
@@ -112,13 +113,9 @@ public class MessageService : IMessageService, IDisposable
     {
         var messages = await _storageService.GetMessagesForChatAsync(chatId, limit, offset);
 
-        // Batch-resolve all unique senders in a single query instead of N queries
+        // Batch-resolve all unique senders in a single SQL query instead of N sequential queries
         var uniqueSenderKeys = messages.Select(m => m.SenderPublicKey).Distinct().ToList();
-        var senderLookup = new Dictionary<string, User?>();
-        foreach (var key in uniqueSenderKeys)
-        {
-            senderLookup[key] = await _storageService.GetUserByPublicKeyAsync(key);
-        }
+        var senderLookup = await _storageService.GetUsersByPublicKeysAsync(uniqueSenderKeys);
 
         // Build a lookup of loaded messages so reply resolution can avoid extra DB queries
         var messageList = messages.ToList();
@@ -724,6 +721,98 @@ public class MessageService : IMessageService, IDisposable
             await _storageService.SaveSettingAsync(
                 $"sync_invite_{peerKeyPackage.SlotId}", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString());
         }
+    }
+
+    /// <summary>
+    /// Number of dummy KeyPackage events to publish per login.
+    /// Chosen to be plausible (a user might have 2-6 real devices).
+    /// </summary>
+    internal const int DummyKeyPackageCount = 4;
+
+    /// <summary>
+    /// Deterministically computes dummy slot IDs from the user's private key.
+    /// Any device with the same private key produces the same set, so no
+    /// cross-device sync is needed to know which slot IDs are dummies.
+    /// Returns empty set if privateKeyHex is null/empty (external signer).
+    /// </summary>
+    public static HashSet<string> ComputeDummySlotIds(string? privateKeyHex, int count = DummyKeyPackageCount)
+    {
+        if (string.IsNullOrEmpty(privateKeyHex))
+            return new HashSet<string>();
+
+        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using var hmac = new HMACSHA256(Convert.FromHexString(privateKeyHex));
+        for (int i = 0; i < count; i++)
+        {
+            var input = System.Text.Encoding.UTF8.GetBytes($"dummy_kp_{i}");
+            var hash = hmac.ComputeHash(input);
+            // Slot IDs are 32-byte hex strings (64 chars) — HMACSHA256 output is exactly 32 bytes
+            result.Add(Convert.ToHexString(hash).ToLowerInvariant());
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Publish dummy KeyPackage events to the private relay to mask the real device count.
+    /// Each dummy uses a deterministic slot ID (derived from the private key)
+    /// and random opaque content that looks like a valid KeyPackage to observers.
+    /// Only publishes to the specified private relay — not broadcast to all relays.
+    /// Skipped for external signer users (no private key).
+    /// </summary>
+    public async Task PublishDummyKeyPackagesAsync(string privateRelayUrl)
+    {
+        if (_currentUser == null)
+            throw new InvalidOperationException("User not logged in");
+
+        if (string.IsNullOrEmpty(privateRelayUrl))
+        {
+            _logger.LogInformation("PublishDummyKeyPackages: skipping — no private relay configured");
+            return;
+        }
+
+        if (string.IsNullOrEmpty(_currentUser.PrivateKeyHex))
+        {
+            _logger.LogInformation("PublishDummyKeyPackages: skipping — no private key (external signer)");
+            return;
+        }
+
+        var dummySlotIds = ComputeDummySlotIds(_currentUser.PrivateKeyHex);
+
+        var rng = RandomNumberGenerator.Create();
+        int published = 0;
+
+        foreach (var slotId in dummySlotIds)
+        {
+            try
+            {
+                // Generate random bytes that look like a KeyPackage (200-300 bytes)
+                var fakeSize = 200 + (int)(slotId.GetHashCode() & 0x7F); // deterministic-ish size per slot
+                if (fakeSize < 200) fakeSize = 200;
+                if (fakeSize > 350) fakeSize = 350;
+                var fakeData = new byte[fakeSize];
+                rng.GetBytes(fakeData);
+
+                // Build realistic MIP-00 tags — relay tag points only to the private relay
+                var tags = new List<List<string>>
+                {
+                    new() { "d", slotId },
+                    new() { "ciphersuite", "0x0001" },
+                    new() { "mls_protocol_version", "mls10" },
+                    new() { "relays", privateRelayUrl },
+                };
+
+                await _nostrService.PublishKeyPackageAsync(fakeData, _currentUser.PrivateKeyHex, tags);
+                published++;
+            }
+            catch (Exception ex)
+            {
+                // Non-fatal: dummy KPs are best-effort
+                _logger.LogDebug(ex, "PublishDummyKeyPackages: failed for slot {SlotId}", slotId[..Math.Min(8, slotId.Length)]);
+            }
+        }
+
+        _logger.LogInformation("PublishDummyKeyPackages: published {Count}/{Total} dummy KeyPackages to private relay",
+            published, dummySlotIds.Count);
     }
 
     public async Task<Chat> GetOrCreateDirectMessageAsync(string recipientPublicKey)

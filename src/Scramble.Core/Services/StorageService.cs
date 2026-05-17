@@ -421,6 +421,13 @@ public class StorageService : IStorageService
 
     public async Task<User?> GetUserByPublicKeyAsync(string publicKeyHex)
     {
+        // Fast path: if the requested key matches the cached current user, return it
+        // directly. This avoids a DB round-trip and — on Desktop — a DPAPI Unprotect
+        // call (ReadUser decrypts PrivateKeyHex/Nsec) on every chat switch.
+        var cached = _cachedCurrentUser;
+        if (cached != null && string.Equals(cached.PublicKeyHex, publicKeyHex, StringComparison.Ordinal))
+            return cached;
+
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync();
 
@@ -435,6 +442,50 @@ public class StorageService : IStorageService
         }
 
         return null;
+    }
+
+    public async Task<Dictionary<string, User>> GetUsersByPublicKeysAsync(IReadOnlyList<string> publicKeyHexList)
+    {
+        var result = new Dictionary<string, User>(publicKeyHexList.Count);
+
+        if (publicKeyHexList.Count == 0)
+            return result;
+
+        // Satisfy what we can from the cached current user (avoids DPAPI per key)
+        var remaining = new List<string>(publicKeyHexList.Count);
+        var cached = _cachedCurrentUser;
+        foreach (var key in publicKeyHexList)
+        {
+            if (cached != null && string.Equals(cached.PublicKeyHex, key, StringComparison.Ordinal))
+                result[key] = cached;
+            else
+                remaining.Add(key);
+        }
+
+        if (remaining.Count == 0)
+            return result;
+
+        // Single query with IN clause instead of N sequential queries
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        var command = connection.CreateCommand();
+        var paramNames = new string[remaining.Count];
+        for (var i = 0; i < remaining.Count; i++)
+        {
+            paramNames[i] = $"@pk{i}";
+            command.Parameters.AddWithValue(paramNames[i], remaining[i]);
+        }
+        command.CommandText = $"SELECT * FROM Users WHERE PublicKeyHex IN ({string.Join(",", paramNames)})";
+
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var user = ReadUser(reader);
+            result[user.PublicKeyHex] = user;
+        }
+
+        return result;
     }
 
     public async Task SaveUserAsync(User user) => await ExecuteWithWriteLockAsync(async () =>

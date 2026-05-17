@@ -127,6 +127,18 @@ public interface IMessageService
     Task InvitePeerToSyncGroupAsync(KeyPackage peerKeyPackage, string syncChatId);
 
     /// <summary>
+    /// Publish dummy KeyPackage events to the private relay to obfuscate the real
+    /// device count. Requires a configured private relay URL and an opt-in feature flag.
+    /// Uses deterministic slot IDs derived from the private key so all devices
+    /// can independently compute and filter them out.
+    /// Skipped when the feature is disabled, no private relay is configured,
+    /// or for external signer users (no private key available).
+    /// </summary>
+    /// <param name="privateRelayUrl">The private relay URL to target. Only this relay
+    /// will appear in the dummy KP relay tags.</param>
+    Task PublishDummyKeyPackagesAsync(string privateRelayUrl);
+
+    /// <summary>
     /// Add a member to a group.
     /// </summary>
     Task AddMemberAsync(string chatId, string memberPublicKey);

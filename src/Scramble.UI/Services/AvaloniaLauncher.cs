@@ -48,9 +48,11 @@ public class AvaloniaLauncher : IPlatformLauncher
         var fullPath = Path.GetFullPath(path);
         var dataDir = Path.GetFullPath(ProfileConfiguration.DataDirectory);
         var rootDir = Path.GetFullPath(ProfileConfiguration.RootDataDirectory);
+        var logDir = Path.GetFullPath(LoggingConfiguration.LogDirectory);
 
         if (!fullPath.StartsWith(dataDir, StringComparison.OrdinalIgnoreCase) &&
-            !fullPath.StartsWith(rootDir, StringComparison.OrdinalIgnoreCase))
+            !fullPath.StartsWith(rootDir, StringComparison.OrdinalIgnoreCase) &&
+            !fullPath.StartsWith(logDir, StringComparison.OrdinalIgnoreCase))
         {
             _logger.LogWarning("Blocked OpenFolder outside app directories: {Path}", fullPath);
             return null;

@@ -223,6 +223,15 @@ public class NostrRelayConnection : IAsyncDisposable
                 {
                     tcs.TrySetResult(true);
                 }
+                else if (msgType == "CLOSED")
+                {
+                    // Relay rejected the subscription (e.g. "auth-required:").
+                    // Complete immediately instead of waiting for the full timeout.
+                    var reason = root.GetArrayLength() >= 3 ? root[2].GetString() : null;
+                    _logger.LogDebug("Query {SubId} closed by {RelayUrl}: {Reason}",
+                        subId, RelayUrl, reason ?? "(no reason)");
+                    tcs.TrySetResult(false);
+                }
             }
             catch (JsonException)
             {

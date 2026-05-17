@@ -362,10 +362,10 @@
                         </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
-                        <!-- Sync Relay -->
+                        <!-- Private Relay (optional) -->
                         <StackPanel Spacing="6" Margin="0,8,0,0">
-                            <TextBlock Text="Sync Relay" FontWeight="SemiBold" FontSize="13" />
-                            <TextBlock Text="A dedicated relay for device sync. All devices connect to this relay to discover each other and exchange KeyPackages."
+                            <TextBlock Text="Private Relay (optional)" FontWeight="SemiBold" FontSize="13" />
+                            <TextBlock Text="A highly trusted relay that supplements your other relays. Used for device sync and KeyPackage discovery. Does not replace your normal relays."
                                        Classes="muted" FontSize="11" TextWrapping="Wrap" />
 
                             <!-- Display mode -->
@@ -418,7 +418,18 @@
                                            Classes="muted" FontSize="11" TextWrapping="Wrap" />
                             </StackPanel>
                             <ToggleSwitch Grid.Column="1" IsChecked="{Binding ShowDeviceSyncChat}"
-                                          VerticalAlignment="Center" />
+                                           VerticalAlignment="Center" />
+                        </Grid>
+
+                        <!-- Dummy KeyPackage obfuscation toggle -->
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,8,0,0">
+                            <StackPanel Grid.Column="0" Spacing="2">
+                                <TextBlock Text="Device count obfuscation" FontSize="13" />
+                                <TextBlock Text="Publishes dummy KeyPackages to your private relay to mask how many devices you have. Requires a private relay to be configured."
+                                           Classes="muted" FontSize="11" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding DummyKeyPackagesEnabled}"
+                                           VerticalAlignment="Center" />
                         </Grid>
                     </StackPanel>
             </Border>
@@ -714,21 +725,30 @@
             <Border Classes="card">
                 <StackPanel Spacing="16">
                     <TextBlock Text="Notifications" FontWeight="SemiBold" FontSize="16" />
-                    <TextBlock Text="Choose how you want to receive notifications. Both options are off by default."
-                               Classes="muted" FontSize="12" />
 
-                    <!-- Mode selection -->
-                    <StackPanel Spacing="8">
-                        <RadioButton Content="Background service (keep relay connections alive)"
-                                     IsChecked="{Binding NotificationModeBackground}" />
-                        <TextBlock Text="The app keeps relay connections open in the background. Uses more battery but works without a notification server. Requires notification permission on Android 13+."
-                                   Classes="muted" FontSize="12"
-                                   IsVisible="{Binding NotificationModeBackground}" />
-                        <RadioButton Content="UnifiedPush (via ntfy)"
-                                     IsChecked="{Binding NotificationModePush}" />
+                    <!-- Desktop: notifications are always active -->
+                    <TextBlock Text="Desktop notifications are always active when the app is not in focus. No configuration needed."
+                               Classes="muted" FontSize="12"
+                               IsVisible="{Binding IsDesktop}" />
+
+                    <!-- Mobile: opt-in background/push modes -->
+                    <StackPanel Spacing="8" IsVisible="{Binding IsMobile}">
+                        <TextBlock Text="Choose how you want to receive notifications. Both options are off by default."
+                                   Classes="muted" FontSize="12" />
+
+                        <!-- Mode selection -->
+                        <StackPanel Spacing="8">
+                            <RadioButton Content="Background service (keep relay connections alive)"
+                                         IsChecked="{Binding NotificationModeBackground}" />
+                            <TextBlock Text="The app keeps relay connections open in the background. Uses more battery but works without a notification server. Requires notification permission on Android 13+."
+                                       Classes="muted" FontSize="12"
+                                       IsVisible="{Binding NotificationModeBackground}" />
+                            <RadioButton Content="UnifiedPush (via ntfy)"
+                                         IsChecked="{Binding NotificationModePush}" />
+                        </StackPanel>
                     </StackPanel>
 
-                    <!-- Push mode settings -->
+                    <!-- Push mode settings (mobile only) -->
                     <StackPanel Spacing="12" IsVisible="{Binding NotificationModePush}">
                         <TextBlock Text="Register with a notification server to receive push notifications. Lower battery usage."
                                    Classes="muted" FontSize="12" />

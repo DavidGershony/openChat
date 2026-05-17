@@ -41,6 +41,8 @@ public class MessageServiceTests : IDisposable
         _storageMock.Setup(s => s.SaveChatAsync(It.IsAny<Chat>())).Returns(Task.CompletedTask);
         _storageMock.Setup(s => s.GetChatByGroupIdAsync(It.IsAny<string>())).ReturnsAsync((string _) => null as Chat);
         _storageMock.Setup(s => s.GetArchivedChatsAsync()).ReturnsAsync(Enumerable.Empty<Chat>());
+        _storageMock.Setup(s => s.GetUsersByPublicKeysAsync(It.IsAny<IReadOnlyList<string>>()))
+            .ReturnsAsync(new Dictionary<string, User>());
 
         _mlsMock.Setup(m => m.InitializeAsync(It.IsAny<string>(), It.IsAny<string>())).Returns(Task.CompletedTask);
         _mlsMock.Setup(m => m.GetAdminPubkeys(It.IsAny<byte[]>())).Returns(new List<string>());
@@ -1054,10 +1056,19 @@ public class MessageServiceTests : IDisposable
             .ReturnsAsync(new List<Message> { originalMessage, replyMessage });
         _storageMock.Setup(s => s.GetMessageAsync("msg-original"))
             .ReturnsAsync(originalMessage);
-        _storageMock.Setup(s => s.GetUserByPublicKeyAsync(senderPubKey))
-            .ReturnsAsync(new User { PublicKeyHex = senderPubKey, DisplayName = "Sender", Npub = "npub1sender" });
-        _storageMock.Setup(s => s.GetUserByPublicKeyAsync(_currentUser.PublicKeyHex))
-            .ReturnsAsync(_currentUser);
+
+        var senderUser = new User { PublicKeyHex = senderPubKey, DisplayName = "Sender", Npub = "npub1sender" };
+        _storageMock.Setup(s => s.GetUsersByPublicKeysAsync(It.IsAny<IReadOnlyList<string>>()))
+            .ReturnsAsync((IReadOnlyList<string> keys) =>
+            {
+                var dict = new Dictionary<string, User>();
+                foreach (var k in keys)
+                {
+                    if (k == senderPubKey) dict[k] = senderUser;
+                    else if (k == _currentUser.PublicKeyHex) dict[k] = _currentUser;
+                }
+                return dict;
+            });
 
         // Act
         var messages = (await _sut.GetMessagesAsync("chat-1")).ToList();

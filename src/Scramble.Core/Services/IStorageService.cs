@@ -14,6 +14,7 @@ public interface IStorageService
     Task SaveCurrentUserAsync(User user);
     Task ClearCurrentUserAsync();
     Task<User?> GetUserByPublicKeyAsync(string publicKeyHex);
+    Task<Dictionary<string, User>> GetUsersByPublicKeysAsync(IReadOnlyList<string> publicKeyHexList);
     Task SaveUserAsync(User user);
     Task<IEnumerable<User>> GetAllUsersAsync();
 

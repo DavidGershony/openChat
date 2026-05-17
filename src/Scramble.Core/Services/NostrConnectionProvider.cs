@@ -231,6 +231,13 @@ public class NostrConnectionProvider : IAsyncDisposable
     {
         if (!_subscriptions.TryGetValue(subId, out var tracked))
         {
+            // Ephemeral one-shot query subscriptions (q_ prefix from QueryAsync) are never
+            // registered with the provider — they handle their own events directly via the
+            // relay message stream. Silently drop without logging to avoid massive log spam
+            // (thousands of warnings per day from late-arriving events after CLOSE is sent).
+            if (subId.StartsWith("q_", StringComparison.Ordinal))
+                return false;
+
             _logger.LogWarning("H2: Dropping event — unknown subscription ID {SubId}", subId);
             return false;
         }
